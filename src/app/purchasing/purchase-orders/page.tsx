@@ -597,14 +597,24 @@ const STANDARD_ORIGINS = [
                     <td className="table-cell text-right font-semibold text-emerald-600">
                       {formatWeight(po.total_received_qty)}
                     </td>
-                    <td className="table-cell text-right font-bold text-blue-700">
-                      <div>{formatWeight(po.total_actionable_pending_qty ?? po.total_balance_qty)}</div>
-                      {((po.total_physical_short_qty ?? 0) > (po.total_actionable_pending_qty ?? po.total_balance_qty ?? 0)) && (
-                        <span className="block text-[10px] font-normal text-slate-400">
-                          Short: {formatWeight(po.total_physical_short_qty ?? 0)}
-                        </span>
-                      )}
-                    </td>
+                    {(() => {
+                      const bal = po.total_actionable_pending_qty ?? po.total_balance_qty ?? 0;
+                      return (
+                        <td className={`table-cell text-right font-bold ${bal < 0 ? 'text-purple-700' : 'text-blue-700'}`}>
+                          <div>{formatWeight(bal)}</div>
+                          {bal >= 0 && (po.total_physical_short_qty ?? 0) > bal && (
+                            <span className="block text-[10px] font-normal text-slate-400">
+                              Short: {formatWeight(po.total_physical_short_qty ?? 0)}
+                            </span>
+                          )}
+                          {bal < 0 && (
+                            <span className="block text-[10px] font-normal text-purple-600">
+                              Over: {formatWeight(Math.abs(bal))}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })()}
                     <td className="table-cell">
                       <span className="text-slate-600 block">{formatDate(po.expected_delivery_date)}</span>
                       {po.is_overdue && (

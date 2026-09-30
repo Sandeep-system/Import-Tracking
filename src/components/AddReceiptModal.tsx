@@ -73,7 +73,7 @@ export function AddReceiptModal({
   const numReceived = parseFloat(receivedQty) || 0;
   const currentPending = currentItem?.balance_quantity ?? 0;
   const newPending = currentPending - numReceived;
-  const isOverReceipt = numReceived > currentPending && currentPending > 0;
+  const isOverReceipt = numReceived > currentPending;
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -198,7 +198,9 @@ export function AddReceiptModal({
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Current Pending</span>
-                <span className="text-xs font-bold text-blue-600">{formatWeight(currentItem.balance_quantity)}</span>
+                <span className={`text-xs font-bold ${(currentItem.balance_quantity ?? 0) < 0 ? 'text-purple-700' : 'text-blue-600'}`}>
+                  {formatWeight(currentItem.balance_quantity)}
+                </span>
               </div>
             </div>
           )}

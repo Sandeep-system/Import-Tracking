@@ -94,6 +94,9 @@ class Store {
 
   constructor() {
     this.state = getInitialState();
+    for (const po of this.state.purchaseOrders) {
+      this.recomputePOAggregates(po);
+    }
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(PREV_STORAGE_KEY);
@@ -874,17 +877,21 @@ class Store {
     item.waived_qty = wQty;
     const resolvedQty = cfQty + wQty;
     const actionablePending = Math.max(0, item.physical_short_qty - resolvedQty);
-    item.actionable_pending_qty = actionablePending;
-    item.balance_quantity = actionablePending;
 
-    // Status logic matching Section 8
-    if (item.ordered_quantity <= totalRecd) {
-      if (totalRecd === item.ordered_quantity) {
-        item.status = 'Received';
-      } else {
-        item.status = 'Over Received';
-      }
+    // If over-received: show balance / pending qty in negative (don't make it zero)
+    if (totalRecd > item.ordered_quantity) {
+      const overBalance = item.ordered_quantity - totalRecd; // negative number (e.g. -200 KG)
+      item.actionable_pending_qty = overBalance;
+      item.balance_quantity = overBalance;
+      item.status = 'Over Received';
+    } else if (totalRecd === item.ordered_quantity) {
+      item.actionable_pending_qty = 0;
+      item.balance_quantity = 0;
+      item.status = 'Received';
     } else {
+      item.actionable_pending_qty = actionablePending;
+      item.balance_quantity = actionablePending;
+
       if (actionablePending === 0) {
         if (cfQty > 0 && wQty > 0) {
           item.status = 'Closed — Balance Resolved';
@@ -920,19 +927,24 @@ class Store {
     po.total_carried_forward_qty = po.items.reduce((acc, i) => acc + (i.carried_forward_qty || 0), 0);
     po.total_waived_qty = po.items.reduce((acc, i) => acc + (i.waived_qty || 0), 0);
     po.total_actionable_pending_qty = po.items.reduce((acc, i) => acc + (i.actionable_pending_qty || 0), 0);
-    po.total_balance_qty = po.total_actionable_pending_qty;
+    po.total_balance_qty = po.items.reduce((acc, i) => acc + (i.balance_quantity || 0), 0);
     po.total_order_value = po.items.reduce((acc, i) => acc + ((i.ordered_quantity || 0) * (i.purchase_price || 0)), 0);
-    po.total_pending_value = po.items.reduce((acc, i) => acc + ((i.actionable_pending_qty || 0) * (i.purchase_price || 0)), 0);
+    po.total_pending_value = po.items.reduce((acc, i) => acc + (Math.max(0, i.actionable_pending_qty || 0) * (i.purchase_price || 0)), 0);
+
+    const hasShortage = po.items.some(i => (i.physical_short_qty || 0) > 0 && ((i.actionable_pending_qty || 0) > 0));
+    const hasOverReceived = po.items.some(i => i.status === 'Over Received' || (i.balance_quantity || 0) < 0);
 
     if (po.is_closed) {
       po.status = 'Closed';
-    } else if (po.total_actionable_pending_qty === 0) {
+    } else if (!hasShortage) {
       if (po.total_waived_qty > 0 && po.total_carried_forward_qty > 0) {
         po.status = 'Closed — Balance Resolved';
       } else if (po.total_carried_forward_qty > 0) {
         po.status = 'Closed — Balance Carried Forward';
       } else if (po.total_waived_qty > 0) {
         po.status = 'Closed — Short Received';
+      } else if (hasOverReceived) {
+        po.status = 'Over Received';
       } else {
         po.status = 'Received';
       }

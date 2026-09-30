@@ -571,7 +571,9 @@ const STANDARD_ORIGINS = [
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pending</span>
-              <span className="text-sm font-bold text-blue-700">{formatWeight(po.total_balance_qty)}</span>
+              <span className={`text-sm font-bold ${(po.total_balance_qty || 0) < 0 ? 'text-purple-700' : 'text-blue-700'}`}>
+                {formatWeight(po.total_balance_qty)}
+              </span>
             </div>
           </div>
         </div>
@@ -756,11 +758,16 @@ const STANDARD_ORIGINS = [
                     <td className="table-cell text-right font-bold text-emerald-600">
                       {formatWeight(item.received_quantity)}
                     </td>
-                    <td className="table-cell text-right font-bold text-blue-700">
+                    <td className={`table-cell text-right font-bold ${actionable < 0 ? 'text-purple-700' : 'text-blue-700'}`}>
                       <div>{formatWeight(actionable)}</div>
-                      {physicalShort > actionable && (
+                      {actionable >= 0 && physicalShort > actionable && (
                         <div className="text-[10px] text-amber-700 font-normal">
                           Short: {formatWeight(physicalShort)}
+                        </div>
+                      )}
+                      {actionable < 0 && (
+                        <div className="text-[10px] text-purple-600 font-normal">
+                          Over: {formatWeight(Math.abs(actionable))}
                         </div>
                       )}
                     </td>
@@ -940,12 +947,19 @@ const STANDARD_ORIGINS = [
                     <span className="text-[10px] text-slate-400 font-bold uppercase block">Waived / Short</span>
                     <span className="text-sm font-bold text-amber-600">{formatWeight(selectedItem.waived_qty || 0)}</span>
                   </div>
-                  <div className="p-2.5 bg-blue-50 rounded-lg border border-blue-200">
-                    <span className="text-[10px] text-blue-600 font-bold uppercase block">Pending Qty</span>
-                    <span className="text-sm font-bold text-blue-900">
-                      {formatWeight(selectedItem.actionable_pending_qty ?? selectedItem.balance_quantity)}
-                    </span>
-                  </div>
+                  {(() => {
+                    const selBal = selectedItem.actionable_pending_qty ?? selectedItem.balance_quantity ?? 0;
+                    return (
+                      <div className={`p-2.5 rounded-lg border ${selBal < 0 ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
+                        <span className={`text-[10px] font-bold uppercase block ${selBal < 0 ? 'text-purple-600' : 'text-blue-600'}`}>
+                          {selBal < 0 ? 'Over Received' : 'Pending Qty'}
+                        </span>
+                        <span className={`text-sm font-bold ${selBal < 0 ? 'text-purple-900' : 'text-blue-900'}`}>
+                          {formatWeight(selBal)}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
