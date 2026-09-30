@@ -117,9 +117,14 @@ export interface PurchaseOrder {
   supplier_id: string;
   supplier_name?: string | null;
   supplier_country?: string | null;
+  customer_id?: string | null;
+  customer_name?: string | null;
   reference?: string | null;
+  reference_person?: string | null;
+  origin?: string | null;
   origin_make_id?: string | null;
   origin_make_name?: string | null;
+  commission?: number | string | null;
   currency: string;
   payment_terms?: string | null;
   delivery_terms?: string | null;
@@ -166,6 +171,7 @@ export interface PurchaseOrderItem {
   treatment?: string | null;
   condition_id?: string | null;
   condition_name?: string | null;
+  lot_number?: string | null;
   ordered_quantity: number;
   received_quantity?: number;
   balance_quantity?: number;

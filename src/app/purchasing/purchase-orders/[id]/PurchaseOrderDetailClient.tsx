@@ -64,10 +64,64 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
     }
   };
 
+const STANDARD_PAYMENT_TERMS = [
+  'DP at sight',
+  'CAD (Cash Against Documents)',
+  'LC at sight',
+  'LC 30 Days from BL Date',
+  'LC 60 Days from BL Date',
+  'LC 90 Days from BL Date',
+  'LC 120 Days from BL Date',
+  'LC 180 Days from BL Date',
+  'DA 60 Days from BL Date',
+  'DA 90 Days from BL Date',
+  '100% Advance TT',
+  '10% Advance, Balance DP against BL',
+  '10% Deposit & 90% TT against BL',
+  '20% Advance, Balance CAD',
+  'Bank assignment 90 days after invoice',
+  'Open Account 30 days',
+  'Net 30 days',
+  'Net 60 days',
+  'Custom...'
+];
+
+const STANDARD_SURFACE_CONDITIONS = [
+  'BLACK ROLLED',
+  'BRIGHT / PEELED',
+  'MACHINED / TURNED',
+  'GROUND',
+  'ROUGH TURNED',
+  'HOT ROLLED',
+  'COLD DRAWN',
+  'FORGED',
+  'AS CAST',
+  'MILLED'
+];
+
+const STANDARD_ORIGINS = [
+  'Germany',
+  'China',
+  'Japan',
+  'South Korea',
+  'Italy',
+  'Taiwan',
+  'India',
+  'Sweden',
+  'Austria',
+  'Buderus',
+  'Kind & Co',
+  'Dillinger',
+  'Groditz',
+  'Dongbei',
+  'Baosteel',
+  'Fushun'
+];
+
   // Resolve Balance Modal State
   const [isResolveOpen, setIsResolveOpen] = useState(false);
   const [resolvingItem, setResolvingItem] = useState<PurchaseOrderItem | null>(null);
-  const [resolveOption, setResolveOption] = useState<'KEEP_PENDING' | 'CARRY_FORWARD' | 'WAIVED' | 'MIXED'>('CARRY_FORWARD');
+  const [resolveOption, setResolveOption] = useState<'CARRY_FORWARD' | 'WAIVED'>('CARRY_FORWARD');
   const [cfQty, setCfQty] = useState('');
   const [waivedQty, setWaivedQty] = useState('');
   const [resolveReason, setResolveReason] = useState('Supplier production shortage accepted');
@@ -80,10 +134,15 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
   const [isEditPoOpen, setIsEditPoOpen] = useState(false);
   const [editOrderDate, setEditOrderDate] = useState('');
   const [editSupplierName, setEditSupplierName] = useState('');
+  const [editCustomer, setEditCustomer] = useState('');
+  const [editReferencePerson, setEditReferencePerson] = useState('');
+  const [editOrigin, setEditOrigin] = useState('');
+  const [editCommission, setEditCommission] = useState('');
   const [editCurrency, setEditCurrency] = useState('USD');
   const [editDestination, setEditDestination] = useState('');
   const [editDeliveryTerms, setEditDeliveryTerms] = useState('FOB');
   const [editPaymentTerms, setEditPaymentTerms] = useState('');
+  const [isEditCustomPaymentTerms, setIsEditCustomPaymentTerms] = useState(false);
   const [editOcNumber, setEditOcNumber] = useState('');
   const [editOcDate, setEditOcDate] = useState('');
   const [editExpDelivery, setEditExpDelivery] = useState('');
@@ -100,6 +159,7 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
   const [itemLen, setItemLen] = useState('');
   const [itemTreatment, setItemTreatment] = useState('Annealed');
   const [itemCondition, setItemCondition] = useState('BLACK ROLLED');
+  const [itemLotNo, setItemLotNo] = useState('');
   const [itemQty, setItemQty] = useState('');
   const [itemPrice, setItemPrice] = useState('');
   const [itemExpDelivery, setItemExpDelivery] = useState('');
@@ -243,6 +303,7 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
   }
 
   const suppliers = dataStore.getSuppliers();
+  const customers = dataStore.getCustomers();
 
   const handleOpenReceiptForItem = (itemId: string) => {
     setTargetItemId(itemId);
@@ -253,10 +314,15 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
     if (!po) return;
     setEditOrderDate(po.order_date ? po.order_date.split('T')[0] : '');
     setEditSupplierName(po.supplier_name || '');
+    setEditCustomer(po.customer_name || '');
+    setEditReferencePerson(po.reference_person || po.reference || '');
+    setEditOrigin(po.origin || po.origin_make_name || '');
+    setEditCommission(po.commission !== undefined && po.commission !== null ? String(po.commission) : '');
     setEditCurrency(po.currency || 'USD');
     setEditDestination(po.destination || 'N.S.');
     setEditDeliveryTerms(po.delivery_terms || 'FOB');
-    setEditPaymentTerms(po.payment_terms || '');
+    setEditPaymentTerms(po.payment_terms || 'DP at sight');
+    setIsEditCustomPaymentTerms(!STANDARD_PAYMENT_TERMS.slice(0, -1).includes(po.payment_terms || ''));
     setEditOcNumber(po.oc_number || '');
     setEditOcDate(po.oc_date ? po.oc_date.split('T')[0] : '');
     setEditExpDelivery(po.expected_delivery_date ? po.expected_delivery_date.split('T')[0] : '');
@@ -272,6 +338,12 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
     dataStore.updatePurchaseOrder(po.id, {
       order_date: editOrderDate,
       supplier_name: editSupplierName,
+      customer_name: editCustomer.trim() || undefined,
+      reference_person: editReferencePerson.trim() || undefined,
+      reference: editReferencePerson.trim() || undefined,
+      origin: editOrigin.trim() || undefined,
+      origin_make_name: editOrigin.trim() || undefined,
+      commission: editCommission.trim() || undefined,
       currency: editCurrency,
       destination: editDestination,
       delivery_terms: editDeliveryTerms,
@@ -308,27 +380,23 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
     e.preventDefault();
     if (!resolvingItem || !po) return;
 
-    if (resolveOption === 'KEEP_PENDING') {
-      setIsResolveOpen(false);
-      return;
-    }
-
     const actionable = resolvingItem.actionable_pending_qty ?? resolvingItem.balance_quantity ?? 0;
-    const cf = resolveOption === 'CARRY_FORWARD' || resolveOption === 'MIXED' ? parseFloat(cfQty) || 0 : 0;
-    const waived = resolveOption === 'WAIVED' || resolveOption === 'MIXED' ? parseFloat(waivedQty) || 0 : 0;
+    const cf = resolveOption === 'CARRY_FORWARD' ? parseFloat(cfQty) || 0 : 0;
+    const waived = resolveOption === 'WAIVED' ? parseFloat(waivedQty) || 0 : 0;
 
     if (cf < 0 || waived < 0) {
       setResolveError('Quantities cannot be negative.');
       return;
     }
 
-    if (cf + waived <= 0) {
+    const resolvingQty = resolveOption === 'CARRY_FORWARD' ? cf : waived;
+    if (resolvingQty <= 0) {
       setResolveError('Please specify a quantity greater than zero to resolve.');
       return;
     }
 
-    if (cf + waived > actionable) {
-      setResolveError(`Resolved quantity (${cf + waived} KG) cannot exceed current pending quantity of ${actionable.toLocaleString()} KG.`);
+    if (resolvingQty > actionable) {
+      setResolveError(`Resolved quantity (${resolvingQty} KG) cannot exceed current pending quantity of ${actionable.toLocaleString()} KG.`);
       return;
     }
 
@@ -389,6 +457,7 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
       length: parseFloat(itemLen) || 0,
       treatment: itemTreatment.trim() || 'Annealed',
       condition_name: itemCondition.trim() || 'BLACK ROLLED',
+      lot_number: itemLotNo.trim() || undefined,
       ordered_quantity: parseFloat(itemQty),
       purchase_price: parseFloat(itemPrice) || 0,
       currency: po.currency,
@@ -396,6 +465,7 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
     });
 
     setIsAddItemOpen(false);
+    setItemLotNo('');
     setItemQty('');
     setItemPrice('');
     setItemDiaW('');
@@ -507,10 +577,26 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
         </div>
 
         {/* Contract Meta Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4 pt-5 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4 pt-5 text-xs">
           <div>
             <span className="text-slate-400 block text-[11px]">Order Date</span>
             <span className="font-semibold text-slate-800">{formatDate(po.order_date)}</span>
+          </div>
+          <div>
+            <span className="text-slate-400 block text-[11px]">Customer</span>
+            <span className="font-semibold text-blue-800">{po.customer_name || 'Sandeep Edgetech (Self)'}</span>
+          </div>
+          <div>
+            <span className="text-slate-400 block text-[11px]">Reference Person</span>
+            <span className="font-semibold text-slate-800">{po.reference_person || po.reference || '—'}</span>
+          </div>
+          <div>
+            <span className="text-slate-400 block text-[11px]">Origin / Make</span>
+            <span className="font-semibold text-slate-800">{po.origin || po.origin_make_name || '—'}</span>
+          </div>
+          <div>
+            <span className="text-slate-400 block text-[11px]">Commission</span>
+            <span className="font-semibold text-emerald-700">{po.commission ? (typeof po.commission === 'number' ? `$${po.commission}` : po.commission) : '—'}</span>
           </div>
           <div>
             <span className="text-slate-400 block text-[11px]">Currency</span>
@@ -653,8 +739,13 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
                     <td className="table-cell font-medium text-slate-700">{item.section_name}</td>
                     <td className="table-cell font-mono text-slate-800">{dimStr}</td>
                     <td className="table-cell text-slate-600">
-                      <span>{item.treatment || 'Annealed'}</span>
-                      <span className="text-[10px] text-slate-400 block">{item.condition_name || 'BLACK ROLLED'}</span>
+                      <span className="font-medium text-slate-800">{item.treatment || 'Annealed'}</span>
+                      <span className="text-[10px] text-slate-500 font-medium block">{item.condition_name || 'BLACK ROLLED'}</span>
+                      {item.lot_number && (
+                        <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono font-bold">
+                          Lot: {item.lot_number}
+                        </span>
+                      )}
                     </td>
                     <td className="table-cell text-right font-mono text-slate-700">
                       {formatCurrency(item.purchase_price, item.currency)}
@@ -1113,15 +1204,25 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-semibold mb-1 text-slate-800">Surface Condition</label>
                   <input
                     type="text"
-                    placeholder="BLACK ROLLED / BRIGHT / MACHINED"
+                    placeholder="BLACK ROLLED / BRIGHT"
                     value={itemCondition}
                     onChange={(e) => setItemCondition(e.target.value)}
                     className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Lot No. (Batch / Heat #)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. LOT-1093-01 / HT-982"
+                    value={itemLotNo}
+                    onChange={(e) => setItemLotNo(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -1349,6 +1450,69 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Customer</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sandeep Edgetech (Self)"
+                    value={editCustomer}
+                    onChange={(e) => setEditCustomer(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Reference Person</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sandeep / Rep"
+                    value={editReferencePerson}
+                    onChange={(e) => setEditReferencePerson(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Origin / Make</label>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={STANDARD_ORIGINS.includes(editOrigin) ? editOrigin : (editOrigin ? '__custom__' : '')}
+                      onChange={(e) => {
+                        if (e.target.value !== '__custom__') {
+                          setEditOrigin(e.target.value);
+                        }
+                      }}
+                      className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                    >
+                      <option value="">Select Origin...</option>
+                      {STANDARD_ORIGINS.map(o => (
+                        <option key={o} value={o}>{o}</option>
+                      ))}
+                      <option value="__custom__">Custom / Other...</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="e.g. Germany"
+                      value={editOrigin}
+                      onChange={(e) => setEditOrigin(e.target.value)}
+                      className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Commission</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. $15/MT or 2%"
+                    value={editCommission}
+                    onChange={(e) => setEditCommission(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-semibold mb-1 text-slate-800">Delivery Terms</label>
@@ -1375,13 +1539,31 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
                 </div>
                 <div>
                   <label className="block font-semibold mb-1 text-slate-800">Payment Terms</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. DP at sight, LC 90 days"
-                    value={editPaymentTerms}
-                    onChange={(e) => setEditPaymentTerms(e.target.value)}
-                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+                  <select
+                    value={isEditCustomPaymentTerms ? 'Custom...' : (STANDARD_PAYMENT_TERMS.includes(editPaymentTerms) ? editPaymentTerms : 'Custom...')}
+                    onChange={(e) => {
+                      if (e.target.value === 'Custom...') {
+                        setIsEditCustomPaymentTerms(true);
+                      } else {
+                        setIsEditCustomPaymentTerms(false);
+                        setEditPaymentTerms(e.target.value);
+                      }
+                    }}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                  >
+                    {STANDARD_PAYMENT_TERMS.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  {isEditCustomPaymentTerms && (
+                    <input
+                      type="text"
+                      placeholder="Enter custom payment terms"
+                      value={editPaymentTerms}
+                      onChange={(e) => setEditPaymentTerms(e.target.value)}
+                      className="mt-1.5 w-full p-2 bg-white border border-blue-400 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -1470,8 +1652,8 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
         const actionable = resolvingItem.actionable_pending_qty ?? resolvingItem.balance_quantity ?? 0;
         const physicalShort = resolvingItem.physical_short_qty ?? Math.max(0, resolvingItem.ordered_quantity - (resolvingItem.received_quantity || 0));
         const alreadyResolved = (resolvingItem.carried_forward_qty || 0) + (resolvingItem.waived_qty || 0);
-        const cfNum = resolveOption === 'CARRY_FORWARD' || resolveOption === 'MIXED' ? (parseFloat(cfQty) || 0) : 0;
-        const waivedNum = resolveOption === 'WAIVED' || resolveOption === 'MIXED' ? (parseFloat(waivedQty) || 0) : 0;
+        const cfNum = resolveOption === 'CARRY_FORWARD' ? (parseFloat(cfQty) || 0) : 0;
+        const waivedNum = resolveOption === 'WAIVED' ? (parseFloat(waivedQty) || 0) : 0;
         const totalResolving = cfNum + waivedNum;
         const isOverLimit = totalResolving > actionable;
         const remainingAfter = Math.max(0, actionable - totalResolving);
@@ -1531,30 +1713,7 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
                     How do you want to handle the remaining balance of {formatWeight(actionable)}?
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {/* Option 1: Keep Pending */}
-                    <label 
-                      className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all ${
-                        resolveOption === 'KEEP_PENDING'
-                          ? 'border-blue-600 bg-blue-50/60 ring-1 ring-blue-500'
-                          : 'border-slate-200 bg-white hover:bg-slate-50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="resolveOption"
-                        checked={resolveOption === 'KEEP_PENDING'}
-                        onChange={() => setResolveOption('KEEP_PENDING')}
-                        className="mt-0.5 text-blue-600"
-                      />
-                      <div>
-                        <strong className="block font-bold text-slate-900">1. Keep Pending</strong>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          Continue expecting the supplier to deliver remaining material. Item remains Partially Received.
-                        </p>
-                      </div>
-                    </label>
-
-                    {/* Option 2: Carry Forward */}
+                    {/* Option 1: Carry Forward */}
                     <label 
                       className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all ${
                         resolveOption === 'CARRY_FORWARD'
@@ -1574,14 +1733,14 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
                         className="mt-0.5 text-indigo-600"
                       />
                       <div>
-                        <strong className="block font-bold text-slate-900">2. Carry Forward / New Item</strong>
+                        <strong className="block font-bold text-slate-900">1. Carry Forward / New Item</strong>
                         <p className="text-[11px] text-slate-500 mt-0.5">
                           Close this balance and spawn a new linked line item under this PO with original specs.
                         </p>
                       </div>
                     </label>
 
-                    {/* Option 3: Short Close / Waive */}
+                    {/* Option 2: Short Close / Waive */}
                     <label 
                       className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all ${
                         resolveOption === 'WAIVED'
@@ -1601,161 +1760,119 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
                         className="mt-0.5 text-amber-600"
                       />
                       <div>
-                        <strong className="block font-bold text-slate-900">3. Short Close / Waive</strong>
+                        <strong className="block font-bold text-slate-900">2. Short Close / Waive</strong>
                         <p className="text-[11px] text-slate-500 mt-0.5">
                           Accept shortage without expecting delivery. Preserves ordered vs received for supplier rating.
-                        </p>
-                      </div>
-                    </label>
-
-                    {/* Option 4: Split / Mixed */}
-                    <label 
-                      className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all ${
-                        resolveOption === 'MIXED'
-                          ? 'border-cyan-600 bg-cyan-50/60 ring-1 ring-cyan-500'
-                          : 'border-slate-200 bg-white hover:bg-slate-50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="resolveOption"
-                        checked={resolveOption === 'MIXED'}
-                        onChange={() => {
-                          setResolveOption('MIXED');
-                          setCfQty(String(Math.floor(actionable * 0.9)));
-                          setWaivedQty(String(Math.ceil(actionable * 0.1)));
-                        }}
-                        className="mt-0.5 text-cyan-600"
-                      />
-                      <div>
-                        <strong className="block font-bold text-slate-900">4. Split (Carry Forward + Waive)</strong>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          Carry forward a portion into a new order item and waive the rest as commercial shortage.
                         </p>
                       </div>
                     </label>
                   </div>
                 </div>
 
-                {/* Option 1 Detail Notice */}
-                {resolveOption === 'KEEP_PENDING' && (
-                  <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2">
-                    <HelpCircle className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <strong className="font-semibold block">No Changes Required</strong>
-                      <span>
-                        The system will keep the outstanding balance of {formatWeight(actionable)} active and overdue tracking will continue normally. No transaction will be generated.
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Form Fields for Carry Forward / Waive / Mixed */}
-                {resolveOption !== 'KEEP_PENDING' && (
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3.5">
-                    {/* Quantity Inputs */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {(resolveOption === 'CARRY_FORWARD' || resolveOption === 'MIXED') && (
-                        <div>
-                          <label className="block font-semibold mb-1 text-slate-800">
-                            Quantity to Carry Forward (KG) *
-                          </label>
-                          <input
-                            type="number"
-                            required
-                            step="any"
-                            min="0"
-                            max={actionable}
-                            value={cfQty}
-                            onChange={(e) => setCfQty(e.target.value)}
-                            placeholder="e.g. 1000"
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-900"
-                          />
-                        </div>
-                      )}
-
-                      {(resolveOption === 'WAIVED' || resolveOption === 'MIXED') && (
-                        <div>
-                          <label className="block font-semibold mb-1 text-slate-800">
-                            Waived / Short Closed Quantity (KG) *
-                          </label>
-                          <input
-                            type="number"
-                            required
-                            step="any"
-                            min="0"
-                            max={actionable}
-                            value={waivedQty}
-                            onChange={(e) => setWaivedQty(e.target.value)}
-                            placeholder="e.g. 70"
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-bold text-slate-900"
-                          />
-                        </div>
-                      )}
-
-                      {(resolveOption === 'CARRY_FORWARD' || resolveOption === 'MIXED') && (
-                        <div>
-                          <label className="block font-semibold mb-1 text-slate-800">
-                            Expected Delivery Date (New Item)
-                          </label>
-                          <input
-                            type="date"
-                            value={resolveExpDate}
-                            onChange={(e) => setResolveExpDate(e.target.value)}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          />
-                        </div>
-                      )}
-
+                {/* Form Fields for Carry Forward / Waive */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3.5">
+                  {/* Quantity Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {resolveOption === 'CARRY_FORWARD' && (
                       <div>
                         <label className="block font-semibold mb-1 text-slate-800">
-                          Primary Reason *
+                          Quantity to Carry Forward (KG) *
                         </label>
-                        <select
-                          value={resolveReason}
-                          onChange={(e) => setResolveReason(e.target.value)}
-                          className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
-                        >
-                          <option value="Supplier production shortage accepted">Supplier production shortage accepted</option>
-                          <option value="Commercial weight tolerance accepted (<1%)">Commercial weight tolerance accepted (&lt;1%)</option>
-                          <option value="Balance carried forward to fresh schedule">Balance carried forward to fresh schedule</option>
-                          <option value="Supplier out of stock / end of campaign">Supplier out of stock / end of campaign</option>
-                          <option value="Cancelled by mutual commercial agreement">Cancelled by mutual commercial agreement</option>
-                          <option value="Material specification superseded">Material specification superseded</option>
-                          <option value="Other / Special Reason">Other / Special Reason</option>
-                        </select>
+                        <input
+                          type="number"
+                          required
+                          step="any"
+                          min="0"
+                          max={actionable}
+                          value={cfQty}
+                          onChange={(e) => setCfQty(e.target.value)}
+                          placeholder="e.g. 1000"
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-slate-900"
+                        />
                       </div>
-                    </div>
+                    )}
+
+                    {resolveOption === 'WAIVED' && (
+                      <div>
+                        <label className="block font-semibold mb-1 text-slate-800">
+                          Waived / Short Closed Quantity (KG) *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          step="any"
+                          min="0"
+                          max={actionable}
+                          value={waivedQty}
+                          onChange={(e) => setWaivedQty(e.target.value)}
+                          placeholder="e.g. 70"
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-bold text-slate-900"
+                        />
+                      </div>
+                    )}
+
+                    {resolveOption === 'CARRY_FORWARD' && (
+                      <div>
+                        <label className="block font-semibold mb-1 text-slate-800">
+                          Expected Delivery Date (New Item)
+                        </label>
+                        <input
+                          type="date"
+                          value={resolveExpDate}
+                          onChange={(e) => setResolveExpDate(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    )}
 
                     <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Remarks / Documentation Notes</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Agreed via email with supplier rep on 28-Sep"
-                        value={resolveRemarks}
-                        onChange={(e) => setResolveRemarks(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {/* Live Calculation Summary */}
-                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
-                      <div className="space-x-2">
-                        <span className="text-slate-500">Total Resolving:</span>
-                        <strong className={`font-mono font-bold ${isOverLimit ? 'text-rose-600' : 'text-slate-900'}`}>
-                          {formatWeight(totalResolving)}
-                        </strong>
-                        <span className="text-slate-400">of {formatWeight(actionable)}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500">Remaining Actionable:</span>{' '}
-                        <strong className="font-mono font-bold text-blue-700">
-                          {formatWeight(remainingAfter)}
-                        </strong>
-                      </div>
+                      <label className="block font-semibold mb-1 text-slate-800">
+                        Primary Reason *
+                      </label>
+                      <select
+                        value={resolveReason}
+                        onChange={(e) => setResolveReason(e.target.value)}
+                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                      >
+                        <option value="Supplier production shortage accepted">Supplier production shortage accepted</option>
+                        <option value="Commercial weight tolerance accepted (<1%)">Commercial weight tolerance accepted (&lt;1%)</option>
+                        <option value="Balance carried forward to fresh schedule">Balance carried forward to fresh schedule</option>
+                        <option value="Supplier out of stock / end of campaign">Supplier out of stock / end of campaign</option>
+                        <option value="Cancelled by mutual commercial agreement">Cancelled by mutual commercial agreement</option>
+                        <option value="Material specification superseded">Material specification superseded</option>
+                        <option value="Other / Special Reason">Other / Special Reason</option>
+                      </select>
                     </div>
                   </div>
-                )}
+
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Remarks / Documentation Notes</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Agreed via email with supplier rep on 28-Sep"
+                      value={resolveRemarks}
+                      onChange={(e) => setResolveRemarks(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Live Calculation Summary */}
+                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
+                    <div className="space-x-2">
+                      <span className="text-slate-500">Total Resolving:</span>
+                      <strong className={`font-mono font-bold ${isOverLimit ? 'text-rose-600' : 'text-slate-900'}`}>
+                        {formatWeight(totalResolving)}
+                      </strong>
+                      <span className="text-slate-400">of {formatWeight(actionable)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Remaining Actionable:</span>{' '}
+                      <strong className="font-mono font-bold text-blue-700">
+                        {formatWeight(remainingAfter)}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Validation Error Alert */}
                 {(isOverLimit || resolveError) && (
@@ -1778,14 +1895,12 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmittingResolve || (resolveOption !== 'KEEP_PENDING' && (isOverLimit || totalResolving <= 0))}
+                    disabled={isSubmittingResolve || isOverLimit || totalResolving <= 0}
                     className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg shadow-sm transition-colors"
                   >
                     {isSubmittingResolve 
                       ? 'Processing...' 
-                      : resolveOption === 'KEEP_PENDING' 
-                        ? 'Keep Pending & Close' 
-                        : 'Confirm & Apply Resolution'}
+                      : 'Confirm & Apply Resolution'}
                   </button>
                 </div>
               </form>

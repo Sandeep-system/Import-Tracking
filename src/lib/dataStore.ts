@@ -210,6 +210,7 @@ class Store {
       length: item.length,
       treatment: item.treatment || 'Annealed',
       condition_name: item.condition_name || 'BLACK ROLLED',
+      lot_number: item.lot_number || null,
       ordered_quantity: Number(item.ordered_quantity) || 0,
       received_quantity: 0,
       balance_quantity: Number(item.ordered_quantity) || 0,
@@ -230,8 +231,13 @@ class Store {
       order_date: po.order_date || new Date().toISOString().split('T')[0],
       supplier_id: po.supplier_id || 'sup-1',
       supplier_name: po.supplier_name || 'Selected Supplier',
-      reference: po.reference,
-      origin_make_name: po.origin_make_name,
+      customer_id: po.customer_id || null,
+      customer_name: po.customer_name || null,
+      reference: po.reference || po.reference_person || null,
+      reference_person: po.reference_person || po.reference || null,
+      origin: po.origin || po.origin_make_name || null,
+      origin_make_name: po.origin_make_name || po.origin || null,
+      commission: po.commission || null,
       currency: po.currency || 'USD',
       payment_terms: po.payment_terms || 'DP at sight',
       delivery_terms: po.delivery_terms || 'FOB',
@@ -268,6 +274,13 @@ class Store {
     if (!po) throw new Error(`Purchase order ${idOrPoNumber} not found`);
 
     if (updates.supplier_name !== undefined) po.supplier_name = updates.supplier_name;
+    if (updates.customer_name !== undefined) po.customer_name = updates.customer_name;
+    if (updates.customer_id !== undefined) po.customer_id = updates.customer_id;
+    if (updates.reference !== undefined) po.reference = updates.reference;
+    if (updates.reference_person !== undefined) po.reference_person = updates.reference_person;
+    if (updates.origin !== undefined) po.origin = updates.origin;
+    if (updates.origin_make_name !== undefined) po.origin_make_name = updates.origin_make_name;
+    if (updates.commission !== undefined) po.commission = updates.commission;
     if (updates.order_date !== undefined) po.order_date = updates.order_date;
     if (updates.currency !== undefined) po.currency = updates.currency;
     if (updates.destination !== undefined) po.destination = updates.destination;
@@ -364,6 +377,7 @@ class Store {
       length: itemData.length || null,
       treatment: itemData.treatment || 'Annealed',
       condition_name: itemData.condition_name || 'BLACK ROLLED',
+      lot_number: itemData.lot_number || null,
       ordered_quantity: ordQty,
       received_quantity: 0,
       balance_quantity: ordQty,
