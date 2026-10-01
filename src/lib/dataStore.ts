@@ -129,28 +129,42 @@ class Store {
 
   constructor() {
     this.state = getInitialState();
-    for (const po of this.state.purchaseOrders) {
-      this.recomputePOAggregates(po);
-    }
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(PREV_STORAGE_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
-          // Ensure we have the full dataset including historical closed orders
-          if (
-            parsed && 
-            Array.isArray(parsed.purchaseOrders) && 
-            parsed.purchaseOrders.length >= initialDataRaw.purchaseOrders.length
-          ) {
-            this.state = parsed;
-            if (!Array.isArray(this.state.balanceResolutions)) {
-              this.state.balanceResolutions = [];
+          if (parsed) {
+            // Restore saved operational POs if available
+            if (Array.isArray(parsed.purchaseOrders) && parsed.purchaseOrders.length > 0) {
+              const poMap = new Map(this.state.purchaseOrders.map(p => [p.id, p]));
+              for (const savedPo of parsed.purchaseOrders) {
+                poMap.set(savedPo.id, savedPo);
+              }
+              this.state.purchaseOrders = Array.from(poMap.values());
             }
-            if (!Array.isArray(this.state.incomingStock) || this.state.incomingStock.length === 0) {
-              const defaultInc = ([...(incomingStockRaw.inTransit || []), ...(incomingStockRaw.received || [])] as unknown) as IncomingStockItem[];
-              this.state.incomingStock = defaultInc;
+            if (Array.isArray(parsed.suppliers)) this.state.suppliers = parsed.suppliers;
+            if (Array.isArray(parsed.customers)) this.state.customers = parsed.customers;
+            if (Array.isArray(parsed.lots)) this.state.lots = parsed.lots;
+            if (Array.isArray(parsed.receipts)) this.state.receipts = parsed.receipts;
+            if (Array.isArray(parsed.inventoryTransactions)) this.state.inventoryTransactions = parsed.inventoryTransactions;
+            if (Array.isArray(parsed.customerAllocations)) this.state.customerAllocations = parsed.customerAllocations;
+            if (Array.isArray(parsed.sales)) this.state.sales = parsed.sales;
+            if (Array.isArray(parsed.auditLogs)) this.state.auditLogs = parsed.auditLogs;
+            if (Array.isArray(parsed.balanceResolutions)) this.state.balanceResolutions = parsed.balanceResolutions;
+
+            // Merge saved user incomingStock state over default baseline
+            if (Array.isArray(parsed.incomingStock)) {
+              for (const savedInc of parsed.incomingStock) {
+                const idx = this.state.incomingStock.findIndex(i => i.id === savedInc.id || (i.lot_number === savedInc.lot_number && i.grade === savedInc.grade));
+                if (idx >= 0) {
+                  this.state.incomingStock[idx] = { ...this.state.incomingStock[idx], ...savedInc };
+                } else {
+                  this.state.incomingStock.unshift(savedInc);
+                }
+              }
             }
+
             // Ensure customer "SE" is always Sandeep Edgetech (Self)
             const seCust = this.state.customers?.find(c => 
               c.id === 'cust-1' || 
@@ -164,9 +178,6 @@ class Store {
               seCust.customer_code = 'SE';
               seCust.contact_person = 'Head Office / Self';
             }
-          } else {
-            // Outdated cache with fewer POs, re-populate full dataset
-            this.state = getInitialState();
           }
         }
         // Link incoming stock to purchase orders
@@ -191,13 +202,58 @@ class Store {
   private save(options: { skipAutoSync?: boolean } = {}) {
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+        // Build a compact payload for localStorage to strictly respect the 5MB browser quota
+        // The static seed dataset (394 POs & 2,000 historical received items) is already in JSON bundle
+        const compactIncomingStock = (this.state.incomingStock || []).filter(
+          i => i.received_status === 'IN_TRANSIT' || i.id.includes('up') || i.id.includes('user') || i.linked_receipt_id
+        );
+
+        const storagePayload = {
+          purchaseOrders: this.getOperationalPurchaseOrders(),
+          suppliers: this.state.suppliers,
+          customers: this.state.customers,
+          lots: this.state.lots,
+          receipts: this.state.receipts,
+          inventoryTransactions: this.state.inventoryTransactions,
+          customerAllocations: this.state.customerAllocations,
+          sales: this.state.sales,
+          auditLogs: this.state.auditLogs.slice(0, 100),
+          balanceResolutions: this.state.balanceResolutions,
+          incomingStock: compactIncomingStock
+        };
+
+        const jsonStr = JSON.stringify(storagePayload);
+        localStorage.setItem(STORAGE_KEY, jsonStr);
+      } catch (e: any) {
+        console.warn('LocalStorage quota limit reached; maintaining dataset in memory & saving fallback:', e?.message || e);
+        try {
+          // Ultra-compact fallback payload
+          const fallbackPayload = {
+            purchaseOrders: this.getOperationalPurchaseOrders(),
+            suppliers: this.state.suppliers,
+            customers: this.state.customers,
+            lots: this.state.lots,
+            receipts: this.state.receipts.slice(0, 300),
+            inventoryTransactions: this.state.inventoryTransactions.slice(0, 300),
+            customerAllocations: this.state.customerAllocations,
+            sales: this.state.sales,
+            auditLogs: this.state.auditLogs.slice(0, 30),
+            balanceResolutions: this.state.balanceResolutions,
+            incomingStock: (this.state.incomingStock || []).filter(i => i.received_status === 'IN_TRANSIT')
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(fallbackPayload));
+        } catch (fallbackErr) {
+          console.warn('Fallback storage quota reached:', fallbackErr);
+        }
+      }
+
+      try {
         window.dispatchEvent(new CustomEvent('app:data-updated'));
         if (!options.skipAutoSync) {
           googleSync.queueAutoSync(this.getOperationalPurchaseOrders());
         }
-      } catch (e) {
-        console.error('Failed to save to local storage:', e);
+      } catch (err) {
+        console.error('Error dispatching update event:', err);
       }
     }
   }
