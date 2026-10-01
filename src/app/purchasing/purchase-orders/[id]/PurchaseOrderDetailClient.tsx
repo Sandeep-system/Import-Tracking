@@ -27,6 +27,7 @@ import {
   CheckCircle,
   HelpCircle,
   PackageCheck,
+  PackagePlus,
   Ship,
   ExternalLink
 } from 'lucide-react';
@@ -131,6 +132,26 @@ const STANDARD_ORIGINS = [
   const [resolveExpDate, setResolveExpDate] = useState('');
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [isSubmittingResolve, setIsSubmittingResolve] = useState(false);
+
+  // Shipment Details Modal State (Ready to Ship -> In Transit)
+  const [shippingItem, setShippingItem] = useState<PurchaseOrderItem | null>(null);
+  const [shipmentDate, setShipmentDate] = useState('');
+  const [etaSeaport, setEtaSeaport] = useState('');
+  const [heatNo, setHeatNo] = useState('');
+  const [sims, setSims] = useState('');
+  const [shipDeliveryTerms, setShipDeliveryTerms] = useState('FOB');
+  const [shipPaymentTerms, setShipPaymentTerms] = useState('DP at sight');
+  const [isShipCustomPaymentTerms, setIsShipCustomPaymentTerms] = useState(false);
+  const [shipPort, setShipPort] = useState('N.S.');
+  const [isSubmittingShipment, setIsSubmittingShipment] = useState(false);
+  const [shipmentError, setShipmentError] = useState<string | null>(null);
+
+  // Receive Cargo Modal State (In Transit -> Received)
+  const [receivingItem, setReceivingItem] = useState<PurchaseOrderItem | null>(null);
+  const [receiveDate, setReceiveDate] = useState('');
+  const [receiveLocation, setReceiveLocation] = useState('Nhava Sheva Yard');
+  const [isSubmittingReceive, setIsSubmittingReceive] = useState(false);
+  const [receiveError, setReceiveError] = useState<string | null>(null);
 
   // Edit PO Modal State
   const [isEditPoOpen, setIsEditPoOpen] = useState(false);
@@ -310,6 +331,109 @@ const STANDARD_ORIGINS = [
   const handleOpenReceiptForItem = (itemId: string) => {
     setTargetItemId(itemId);
     setIsAddReceiptOpen(true);
+  };
+
+  const handleOpenShipmentModal = (item: PurchaseOrderItem) => {
+    setShippingItem(item);
+    setShipmentError(null);
+    const today = new Date().toISOString().split('T')[0];
+    setShipmentDate(item.date_of_shipment || today);
+
+    // Default ETA ~ 30 days from today or PO expected delivery
+    let defaultEta = item.eta_seaport || po?.expected_delivery_date || '';
+    if (!defaultEta) {
+      const d = new Date();
+      d.setDate(d.getDate() + 30);
+      defaultEta = d.toISOString().split('T')[0];
+    }
+    setEtaSeaport(defaultEta);
+    setHeatNo(item.heat_no || '');
+    setSims(item.sims || '');
+    setShipDeliveryTerms(item.delivery_terms || po?.delivery_terms || 'FOB');
+    const pTerms = item.payment_terms || po?.payment_terms || 'DP at sight';
+    setShipPaymentTerms(pTerms);
+    setIsShipCustomPaymentTerms(!STANDARD_PAYMENT_TERMS.slice(0, -1).includes(pTerms));
+    setShipPort(item.destination_port || po?.destination || 'N.S.');
+  };
+
+  const handleSubmitShipment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shippingItem || !po) return;
+    setShipmentError(null);
+
+    if (!shipmentDate) {
+      setShipmentError('Please enter Date of Shipment.');
+      return;
+    }
+    if (!etaSeaport) {
+      setShipmentError('Please enter ETA (sea port).');
+      return;
+    }
+
+    try {
+      setIsSubmittingShipment(true);
+      dataStore.markItemShipped({
+        poIdOrNumber: po.id,
+        itemId: shippingItem.id,
+        dateOfShipment: shipmentDate,
+        etaSeaport: etaSeaport,
+        heatNo: heatNo.trim() || undefined,
+        sims: sims.trim() || undefined,
+        deliveryTerms: shipDeliveryTerms,
+        paymentTerms: shipPaymentTerms,
+        port: shipPort
+      });
+
+      setIsSubmittingShipment(false);
+      setShippingItem(null);
+      loadData();
+      setDataVersion(v => v + 1);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('app:data-updated'));
+      }
+    } catch (err: any) {
+      setIsSubmittingShipment(false);
+      setShipmentError(err.message || 'Failed to dispatch shipment.');
+    }
+  };
+
+  const handleOpenReceiveModal = (item: PurchaseOrderItem) => {
+    setReceivingItem(item);
+    setReceiveError(null);
+    setReceiveDate(new Date().toISOString().split('T')[0]);
+    setReceiveLocation(
+      (item.destination_port || po?.destination || '').toLowerCase().includes('nhava') ||
+      (item.destination_port || po?.destination || '').toLowerCase().includes('n.s')
+        ? 'Nhava Sheva Yard'
+        : 'Main Warehouse Yard'
+    );
+  };
+
+  const handleSubmitReceive = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!receivingItem || !po) return;
+    setReceiveError(null);
+
+    try {
+      setIsSubmittingReceive(true);
+      dataStore.markItemReceived({
+        poIdOrNumber: po.id,
+        itemId: receivingItem.id,
+        receiptDate: receiveDate,
+        warehouseLocation: receiveLocation
+      });
+
+      setIsSubmittingReceive(false);
+      setReceivingItem(null);
+      loadData();
+      setDataVersion(v => v + 1);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('app:data-updated'));
+      }
+    } catch (err: any) {
+      setIsSubmittingReceive(false);
+      setReceiveError(err.message || 'Failed to confirm cargo receipt.');
+    }
   };
 
   const handleOpenEditPO = () => {
@@ -527,7 +651,7 @@ const STANDARD_ORIGINS = [
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span>Add Receipt to PO</span>
+            <span>Record Material Ready</span>
           </button>
         </div>
       </div>
@@ -568,8 +692,8 @@ const STANDARD_ORIGINS = [
               <span className="text-sm font-bold text-slate-800">{formatWeight(po.total_ordered_qty)}</span>
             </div>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Received</span>
-              <span className="text-sm font-bold text-emerald-600">{formatWeight(po.total_received_qty)}</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ready Qty</span>
+              <span className="text-sm font-bold text-emerald-600">{formatWeight(po.total_ready_qty ?? po.total_received_qty)}</span>
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pending</span>
@@ -777,7 +901,7 @@ const STANDARD_ORIGINS = [
                 <th className="table-header">Treatment & Condition</th>
                 <th className="table-header text-right">Price</th>
                 <th className="table-header text-right">Ordered Qty</th>
-                <th className="table-header text-right">Received Qty</th>
+                <th className="table-header text-right">Ready Qty</th>
                 <th className="table-header text-right">Pending Qty</th>
                 <th className="table-header text-center">Receipts</th>
                 <th className="table-header text-center">Status</th>
@@ -826,7 +950,7 @@ const STANDARD_ORIGINS = [
                       {formatWeight(item.ordered_quantity)}
                     </td>
                     <td className="table-cell text-right font-bold text-emerald-600">
-                      {formatWeight(item.received_quantity)}
+                      {formatWeight(item.ready_quantity ?? item.received_quantity ?? 0)}
                     </td>
                     <td className={`table-cell text-right font-bold ${actionable < 0 ? 'text-purple-700' : 'text-blue-700'}`}>
                       <div>{formatWeight(actionable)}</div>
@@ -847,28 +971,71 @@ const STANDARD_ORIGINS = [
                       </span>
                     </td>
                     <td className="table-cell text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeClass(item.status)}`}>
+                      <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border tracking-wide uppercase ${getStatusBadgeClass(item.status)}`}>
                         {item.status}
                       </span>
                     </td>
                     <td className="table-cell text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenReceiptForItem(item.id);
-                          }}
-                          className="px-2 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 font-semibold text-[11px] transition-colors"
-                        >
-                          + Receive
-                        </button>
-                        {actionable > 0 && (
+                      <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {/* 1. Status is Open -> Ready button */}
+                        {item.status === 'Open' && (
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenResolveBalance(item);
-                            }}
-                            className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-600 hover:text-white text-amber-800 border border-amber-200 font-semibold text-[11px] transition-colors"
+                            onClick={() => handleOpenReceiptForItem(item.id)}
+                            className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 border border-blue-200 font-bold text-[11px] transition-colors flex items-center gap-1 shadow-sm"
+                            title="Record material ready at mill / supplier"
+                          >
+                            <PackagePlus className="h-3 w-3" />
+                            <span>Ready</span>
+                          </button>
+                        )}
+
+                        {/* 2. Status is Ready to Ship -> Shipped button */}
+                        {item.status === 'Ready to Ship' && (
+                          <button
+                            onClick={() => handleOpenShipmentModal(item)}
+                            className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1"
+                            title="Record maritime dispatch details (Date of Shipment, Port ETA, Heat, SIMS, Terms)"
+                          >
+                            <Ship className="h-3 w-3" />
+                            <span>Shipped</span>
+                          </button>
+                        )}
+
+                        {/* 3. Status is In Transit -> Received button */}
+                        {item.status === 'In Transit' && (
+                          <button
+                            onClick={() => handleOpenReceiveModal(item)}
+                            className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1"
+                            title="Confirm physical arrival into warehouse/yard"
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>Received</span>
+                          </button>
+                        )}
+
+                        {/* 4. Status is Received -> Received badge */}
+                        {item.status === 'Received' && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[10px]">
+                            <CheckCircle className="h-3 w-3 text-emerald-600" />
+                            <span>Received</span>
+                          </span>
+                        )}
+
+                        {/* Fallback for other statuses */}
+                        {!['Open', 'Ready to Ship', 'In Transit', 'Received'].includes(item.status) && (
+                          <button
+                            onClick={() => handleOpenReceiptForItem(item.id)}
+                            className="px-2.5 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 font-semibold text-[11px] transition-colors"
+                          >
+                            Ready
+                          </button>
+                        )}
+
+                        {/* Balance resolution button for shortages */}
+                        {actionable > 0 && item.status !== 'In Transit' && item.status !== 'Open' && (
+                          <button
+                            onClick={() => handleOpenResolveBalance(item)}
+                            className="px-2 py-1 rounded bg-slate-50 hover:bg-amber-600 hover:text-white text-amber-800 border border-amber-200 font-semibold text-[11px] transition-colors"
                             title="Resolve remaining balance"
                           >
                             Resolve
@@ -2257,6 +2424,330 @@ const STANDARD_ORIGINS = [
                 Yes, Delete Receipt
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shipment Details Modal (Ready to Ship -> In Transit) */}
+      {shippingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500 text-white">
+                  <Ship className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">
+                    Shipment Dispatch Details — Item #{shippingItem.line_number}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    PO {po.po_number} • {shippingItem.grade_code} • Lot: {shippingItem.lot_number || `LOT-${po.po_number}`}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShippingItem(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitShipment} className="p-6 space-y-4 text-xs text-slate-700">
+              {shipmentError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <span>{shipmentError}</span>
+                </div>
+              )}
+
+              {/* Cargo Summary Banner */}
+              <div className="grid grid-cols-3 gap-3 p-3 bg-amber-50/60 border border-amber-200 rounded-xl text-center">
+                <div>
+                  <span className="text-[10px] text-amber-700 font-bold uppercase block">Material</span>
+                  <span className="font-bold text-slate-900">{shippingItem.grade_code} {shippingItem.section_name}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-amber-700 font-bold uppercase block">Cargo Weight</span>
+                  <span className="font-bold text-emerald-700">
+                    {formatWeight(shippingItem.ready_quantity || shippingItem.received_quantity || shippingItem.ordered_quantity)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-amber-700 font-bold uppercase block">Target Port</span>
+                  <span className="font-bold text-slate-800">{shipPort || 'N.S.'}</span>
+                </div>
+              </div>
+
+              {/* Date of Shipment & ETA (sea port) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Date of Shipment *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={shipmentDate}
+                    onChange={(e) => setShipmentDate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Vessel Bill of Lading (BL) / Departure date</span>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    ETA (sea port) *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={etaSeaport}
+                    onChange={(e) => setEtaSeaport(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Estimated arrival date at sea port of discharge</span>
+                </div>
+              </div>
+
+              {/* Heat & SIMS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Heat Number (Heat)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. HT-2024-9881 / 67210"
+                    value={heatNo}
+                    onChange={(e) => setHeatNo(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Mill MTC heat melt identification</span>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    SIMS
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. SIMS-882190 / Reg #"
+                    value={sims}
+                    onChange={(e) => setSims(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Steel Import Monitoring System reference</span>
+                </div>
+              </div>
+
+              {/* Delivery Terms & Port */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Delivery Terms (Incoterms)
+                  </label>
+                  <select
+                    value={shipDeliveryTerms}
+                    onChange={(e) => setShipDeliveryTerms(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  >
+                    <option value="FOB">FOB (Free on Board)</option>
+                    <option value="CFR">CFR (Cost and Freight)</option>
+                    <option value="CIF">CIF (Cost, Insurance & Freight)</option>
+                    <option value="Ex-Works">Ex-Works</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Destination / Port of Discharge
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Nhava Sheva (N.S.)"
+                    value={shipPort}
+                    onChange={(e) => setShipPort(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Payment Terms */}
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">
+                  Payment Terms
+                </label>
+                <select
+                  value={isShipCustomPaymentTerms ? 'Custom...' : (STANDARD_PAYMENT_TERMS.includes(shipPaymentTerms) ? shipPaymentTerms : 'Custom...')}
+                  onChange={(e) => {
+                    if (e.target.value === 'Custom...') {
+                      setIsShipCustomPaymentTerms(true);
+                    } else {
+                      setIsShipCustomPaymentTerms(false);
+                      setShipPaymentTerms(e.target.value);
+                    }
+                  }}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                >
+                  {STANDARD_PAYMENT_TERMS.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                {isShipCustomPaymentTerms && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom payment terms"
+                    value={shipPaymentTerms}
+                    onChange={(e) => setShipPaymentTerms(e.target.value)}
+                    className="mt-1.5 w-full p-2.5 bg-white border border-blue-400 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                )}
+              </div>
+
+              {/* Notice */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-[11px] leading-relaxed">
+                Saving shipment details will set this item to <strong>In Transit</strong> and automatically sync it to the <strong>In-Transit Stock</strong> board with vessel ETA.
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShippingItem(null)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingShipment}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Ship className="h-4 w-4" />
+                  <span>{isSubmittingShipment ? 'Saving...' : 'Confirm & Set In Transit'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Receive Cargo Modal (In Transit -> Received) */}
+      {receivingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-600 text-white">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">
+                    Confirm Cargo Receipt — Item #{receivingItem.line_number}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    PO {po.po_number} • {receivingItem.grade_code} • Port Arrival to Warehouse
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReceivingItem(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitReceive} className="p-6 space-y-4 text-xs text-slate-700">
+              {receiveError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <span>{receiveError}</span>
+                </div>
+              )}
+
+              {/* Cargo Details Card */}
+              <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-emerald-800 font-semibold">Material Item:</span>
+                  <span className="font-bold text-slate-900">{receivingItem.grade_code} ({receivingItem.section_name})</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-emerald-800 font-semibold">Lot Number:</span>
+                  <span className="font-mono font-bold text-slate-900">{receivingItem.lot_number || `LOT-${po.po_number}`}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-emerald-800 font-semibold">Cargo Weight:</span>
+                  <span className="font-mono font-bold text-emerald-700 text-sm">
+                    {formatWeight(receivingItem.ready_quantity || receivingItem.received_quantity || receivingItem.ordered_quantity)}
+                  </span>
+                </div>
+                {receivingItem.date_of_shipment && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-emerald-800 font-semibold">Shipment Date:</span>
+                    <span className="text-slate-700">{formatDate(receivingItem.date_of_shipment)}</span>
+                  </div>
+                )}
+                {receivingItem.eta_seaport && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-emerald-800 font-semibold">Port ETA:</span>
+                    <span className="text-slate-700">{formatDate(receivingItem.eta_seaport)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Receipt Date & Location */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Receipt Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={receiveDate}
+                    onChange={(e) => setReceiveDate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Warehouse / Yard Location
+                  </label>
+                  <input
+                    type="text"
+                    value={receiveLocation}
+                    onChange={(e) => setReceiveLocation(e.target.value)}
+                    placeholder="e.g. Nhava Sheva Yard"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-[11px] leading-relaxed">
+                Confirming receipt transitions the item status to <strong>Received</strong>, moves the cargo in Incoming Stock to <strong>Received Stock (INCOMING CLOSE)</strong>, and registers available physical inventory in the warehouse.
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setReceivingItem(null)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReceive}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>{isSubmittingReceive ? 'Processing...' : 'Confirm Receipt'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

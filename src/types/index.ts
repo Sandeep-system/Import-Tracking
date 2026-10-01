@@ -1,6 +1,8 @@
 export type POStatus = 
   | 'Draft' 
   | 'Open' 
+  | 'Ready to Ship'
+  | 'In Transit'
   | 'Partially Received' 
   | 'Received' 
   | 'Over Received' 
@@ -14,6 +16,8 @@ export type POStatus =
 
 export type ItemStatus = 
   | 'Open' 
+  | 'Ready to Ship'
+  | 'In Transit'
   | 'Partially Received' 
   | 'Received' 
   | 'Over Received' 
@@ -23,6 +27,7 @@ export type ItemStatus =
   | 'Closed — Short Received'
   | 'Closed — Balance Carried Forward'
   | 'Closed — Balance Resolved';
+
 
 export type ResolutionType = 'CARRY_FORWARD' | 'WAIVED';
 export type ResolutionStatus = 'ACTIVE' | 'REVERSED';
@@ -141,6 +146,7 @@ export interface PurchaseOrder {
   total_items?: number;
   total_ordered_qty?: number;
   total_received_qty?: number;
+  total_ready_qty?: number;
   total_balance_qty?: number;
   total_physical_short_qty?: number;
   total_carried_forward_qty?: number;
@@ -193,6 +199,14 @@ export interface PurchaseOrderItem {
   is_overdue?: boolean;
   days_overdue?: number;
   receipt_count?: number;
+  ready_quantity?: number;
+  date_of_shipment?: string | null;
+  eta_seaport?: string | null;
+  heat_no?: string | null;
+  sims?: string | null;
+  delivery_terms?: string | null;
+  payment_terms?: string | null;
+  destination_port?: string | null;
   legacy_source_sheet?: string | null;
   legacy_excel_row?: number | null;
   receipts?: Receipt[];

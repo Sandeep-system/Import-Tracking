@@ -265,7 +265,7 @@ const STANDARD_ORIGINS = [
       'Status': po.status,
       'Total Items': po.total_items,
       'Ordered Qty (KG)': po.total_ordered_qty,
-      'Received Qty (KG)': po.total_received_qty,
+      'Ready Qty (KG)': po.total_ready_qty ?? po.total_received_qty,
       'Physical Short (KG)': po.total_physical_short_qty || 0,
       'Carried Forward (KG)': po.total_carried_forward_qty || 0,
       'Waived (KG)': po.total_waived_qty || 0,
@@ -467,8 +467,10 @@ const STANDARD_ORIGINS = [
           >
             <option value="all">All Statuses</option>
             <option value="Open">Open</option>
-            <option value="Partially Received">Partially Received</option>
+            <option value="Ready to Ship">Ready to Ship</option>
+            <option value="In Transit">In Transit</option>
             <option value="Received">Received</option>
+            <option value="Partially Received">Partially Received</option>
             <option value="Closed">Closed</option>
           </select>
 
@@ -536,7 +538,7 @@ const STANDARD_ORIGINS = [
                 <th className="table-header">Port / Terms</th>
                 <th className="table-header text-center">Items</th>
                 <th className="table-header text-right">Ordered Qty</th>
-                <th className="table-header text-right">Received Qty</th>
+                <th className="table-header text-right">Ready Qty</th>
                 <th className="table-header text-right">Pending Qty</th>
                 <th className="table-header">Expected</th>
                 <th className="table-header text-center">Status</th>
@@ -595,7 +597,7 @@ const STANDARD_ORIGINS = [
                       {formatWeight(po.total_ordered_qty)}
                     </td>
                     <td className="table-cell text-right font-semibold text-emerald-600">
-                      {formatWeight(po.total_received_qty)}
+                      {formatWeight(po.total_ready_qty ?? po.total_received_qty)}
                     </td>
                     {(() => {
                       const bal = po.total_actionable_pending_qty ?? po.total_balance_qty ?? 0;

@@ -589,19 +589,170 @@ class Store {
     };
     this.state.inventoryTransactions.unshift(tx);
 
+    // Set item status to Ready to Ship and assign ready quantity
+    item.status = 'Ready to Ship';
+    item.ready_quantity = (item.ready_quantity || 0) + qty;
+    item.lot_number = lot.lot_number;
+
     // Recompute Item & PO Quantities, Physical Shortage, and Statuses
     this.recomputePOAggregates(po);
 
     this.addAuditLog(
-      'RECEIPT_ENTRY', 
+      'READY_TO_SHIP_ENTRY', 
       'receipts', 
       newReceipt.id, 
-      `Received ${qty} KG for PO ${po.po_number} (Item #${item.line_number}) into Lot ${lot.lot_number}`
+      `Marked ${qty} KG Ready to Ship for PO ${po.po_number} (Item #${item.line_number}) into Lot ${lot.lot_number}`
     );
     this.save();
 
     return { receipt: newReceipt, updatedItem: item, updatedPO: po };
   }
+
+  // --- Mark Item Shipped & Set In-Transit ---
+  public markItemShipped(params: {
+    poIdOrNumber: string;
+    itemId: string;
+    dateOfShipment: string;
+    etaSeaport: string;
+    heatNo?: string;
+    sims?: string;
+    deliveryTerms?: string;
+    paymentTerms?: string;
+    port?: string;
+  }): { updatedItem: PurchaseOrderItem; updatedPO: PurchaseOrder; incomingItem: IncomingStockItem } {
+    const po = this.state.purchaseOrders.find(
+      p => p.id === params.poIdOrNumber || p.po_number === params.poIdOrNumber
+    );
+    if (!po) throw new Error(`Purchase order ${params.poIdOrNumber} not found`);
+
+    const item = po.items?.find(i => i.id === params.itemId);
+    if (!item) throw new Error(`PO Line Item ${params.itemId} not found`);
+
+    item.status = 'In Transit';
+    item.date_of_shipment = params.dateOfShipment;
+    item.eta_seaport = params.etaSeaport;
+    item.heat_no = params.heatNo || item.heat_no || null;
+    item.sims = params.sims || item.sims || null;
+    item.delivery_terms = params.deliveryTerms || po.delivery_terms || 'FOB';
+    item.payment_terms = params.paymentTerms || po.payment_terms || null;
+    item.destination_port = params.port || po.destination || 'N.S.';
+
+    // Create or update incoming stock item linked to this PO Item
+    const incId = `inc-po-${po.po_number}-${item.id}`;
+    let incomingItem = (this.state.incomingStock || []).find(
+      i => i.id === incId || (i.linked_po_number === po.po_number && item.lot_number && i.lot_number === item.lot_number)
+    );
+
+    const cargoWeight = item.ready_quantity || item.received_quantity || item.ordered_quantity;
+    const lotNo = item.lot_number || `LOT-${po.po_number}`;
+
+    if (incomingItem) {
+      incomingItem.date_of_shipment = params.dateOfShipment;
+      incomingItem.eta_seaport = params.etaSeaport;
+      incomingItem.heat_no = params.heatNo || incomingItem.heat_no;
+      incomingItem.sims = params.sims || incomingItem.sims;
+      incomingItem.delivery_terms = params.deliveryTerms || incomingItem.delivery_terms;
+      incomingItem.payment_terms = params.paymentTerms || incomingItem.payment_terms;
+      incomingItem.port = params.port || incomingItem.port || 'N.S.';
+      incomingItem.received_status = 'IN_TRANSIT';
+      incomingItem.source_sheet = 'INCOMING SE';
+      incomingItem.weight = cargoWeight;
+    } else {
+      incomingItem = {
+        id: incId,
+        make: po.origin || po.origin_make_name || 'Standard',
+        supplier: po.supplier_name || 'Unknown Supplier',
+        lot_number: lotNo,
+        grade: item.grade_code,
+        condition: item.condition_name || 'BLACK ROLLED',
+        dia_w: item.diameter_width,
+        t: item.thickness,
+        l: item.length,
+        pieces: item.receipts?.length || 1,
+        weight: cargoWeight,
+        customer: po.customer_name || 'SE',
+        port: params.port || po.destination || 'N.S.',
+        date_of_shipment: params.dateOfShipment,
+        eta_seaport: params.etaSeaport,
+        received_status: 'IN_TRANSIT',
+        heat_no: params.heatNo || null,
+        delivery_terms: params.deliveryTerms || po.delivery_terms || 'FOB',
+        price: item.purchase_price,
+        currency: item.currency || po.currency || 'USD',
+        sims: params.sims || null,
+        payment_terms: params.paymentTerms || po.payment_terms || null,
+        source_sheet: 'INCOMING SE',
+        linked_po_number: po.po_number,
+        linked_po_id: po.id
+      };
+      if (!this.state.incomingStock) this.state.incomingStock = [];
+      this.state.incomingStock.unshift(incomingItem);
+    }
+
+    this.recomputePOAggregates(po);
+
+    this.addAuditLog(
+      'SHIPMENT_DISPATCHED',
+      'purchase_orders',
+      po.id,
+      `Item #${item.line_number} (Lot ${lotNo}) marked as In Transit with ETA ${params.etaSeaport}`
+    );
+    this.save();
+
+    return { updatedItem: item, updatedPO: po, incomingItem };
+  }
+
+  // --- Mark Item Received (Both PO & Incoming Stock Synced) ---
+  public markItemReceived(params: {
+    poIdOrNumber: string;
+    itemId: string;
+    receiptDate?: string;
+    warehouseLocation?: string;
+  }): { updatedItem: PurchaseOrderItem; updatedPO: PurchaseOrder } {
+    const po = this.state.purchaseOrders.find(
+      p => p.id === params.poIdOrNumber || p.po_number === params.poIdOrNumber
+    );
+    if (!po) throw new Error(`Purchase order ${params.poIdOrNumber} not found`);
+
+    const item = po.items?.find(i => i.id === params.itemId);
+    if (!item) throw new Error(`PO Line Item ${params.itemId} not found`);
+
+    item.status = 'Received';
+
+    // Synchronize linked Incoming Stock items
+    if (this.state.incomingStock) {
+      for (const inc of this.state.incomingStock) {
+        if (
+          inc.linked_po_number === po.po_number &&
+          (inc.id === `inc-po-${po.po_number}-${item.id}` || (item.lot_number && inc.lot_number === item.lot_number))
+        ) {
+          inc.received_status = 'RECEIVED';
+          inc.source_sheet = 'INCOMING CLOSE';
+        }
+      }
+    }
+
+    // Ensure lot in inventory is available
+    if (item.lot_number) {
+      const lot = this.state.lots.find(l => l.lot_number === item.lot_number);
+      if (lot && params.warehouseLocation) {
+        lot.warehouse_location = params.warehouseLocation;
+      }
+    }
+
+    this.recomputePOAggregates(po);
+
+    this.addAuditLog(
+      'ITEM_RECEIVED',
+      'purchase_orders',
+      po.id,
+      `Marked Item #${item.line_number} as RECEIVED at warehouse.`
+    );
+    this.save();
+
+    return { updatedItem: item, updatedPO: po };
+  }
+
 
   // --- Bulk Receipts & Multi-Item Edit Workflow ---
   public addBulkReceipt(params: {
@@ -980,34 +1131,33 @@ class Store {
       const overBalance = item.ordered_quantity - totalRecd; // negative number (e.g. -200 KG)
       item.actionable_pending_qty = overBalance;
       item.balance_quantity = overBalance;
-      item.status = 'Over Received';
-    } else if (totalRecd === item.ordered_quantity) {
-      item.actionable_pending_qty = 0;
-      item.balance_quantity = 0;
-      item.status = 'Received';
     } else {
       item.actionable_pending_qty = actionablePending;
       item.balance_quantity = actionablePending;
+    }
 
-      if (actionablePending === 0) {
-        if (cfQty > 0 && wQty > 0) {
-          item.status = 'Closed — Balance Resolved';
-        } else if (cfQty > 0) {
-          item.status = 'Closed — Balance Carried Forward';
-        } else if (wQty > 0) {
-          item.status = 'Closed — Short Received';
-        } else if (totalRecd === 0) {
-          item.status = 'Closed';
-        } else {
-          item.status = 'Closed — Fully Received';
-        }
-      } else if (resolvedQty > 0) {
-        item.status = 'Partially Resolved';
-      } else if (totalRecd > 0) {
-        item.status = 'Partially Received';
-      } else {
-        item.status = 'Open';
+    // Preserve lifecycle statuses if already set to Ready to Ship, In Transit, or Received
+    if (item.status === 'In Transit' || item.status === 'Received') {
+      return;
+    }
+    if (item.status === 'Ready to Ship' && (totalRecd > 0 || (item.ready_quantity || 0) > 0)) {
+      return;
+    }
+
+    if (totalRecd > item.ordered_quantity) {
+      item.status = 'Over Received';
+    } else if (actionablePending === 0 && resolvedQty > 0) {
+      if (cfQty > 0 && wQty > 0) {
+        item.status = 'Closed — Balance Resolved';
+      } else if (cfQty > 0) {
+        item.status = 'Closed — Balance Carried Forward';
+      } else if (wQty > 0) {
+        item.status = 'Closed — Short Received';
       }
+    } else if (totalRecd > 0 || (item.ready_quantity || 0) > 0) {
+      item.status = 'Ready to Ship';
+    } else {
+      item.status = 'Open';
     }
   }
 
@@ -1020,6 +1170,7 @@ class Store {
     po.total_items = po.items.length;
     po.total_ordered_qty = po.items.reduce((acc, i) => acc + (i.ordered_quantity || 0), 0);
     po.total_received_qty = po.items.reduce((acc, i) => acc + (i.received_quantity || 0), 0);
+    po.total_ready_qty = po.items.reduce((acc, i) => acc + (i.ready_quantity || i.received_quantity || 0), 0);
     po.total_physical_short_qty = po.items.reduce((acc, i) => acc + (i.physical_short_qty || 0), 0);
     po.total_carried_forward_qty = po.items.reduce((acc, i) => acc + (i.carried_forward_qty || 0), 0);
     po.total_waived_qty = po.items.reduce((acc, i) => acc + (i.waived_qty || 0), 0);
@@ -1033,22 +1184,18 @@ class Store {
 
     if (po.is_closed) {
       po.status = 'Closed';
-    } else if (!hasShortage) {
-      if (po.total_waived_qty > 0 && po.total_carried_forward_qty > 0) {
-        po.status = 'Closed — Balance Resolved';
-      } else if (po.total_carried_forward_qty > 0) {
-        po.status = 'Closed — Balance Carried Forward';
-      } else if (po.total_waived_qty > 0) {
-        po.status = 'Closed — Short Received';
-      } else if (hasOverReceived) {
-        po.status = 'Over Received';
-      } else {
-        po.status = 'Received';
-      }
+    } else if (po.items.length > 0 && po.items.every(i => i.status === 'Received' || i.status?.startsWith('Closed'))) {
+      po.status = 'Received';
+    } else if (po.items.some(i => i.status === 'In Transit')) {
+      po.status = 'In Transit';
+    } else if (po.items.some(i => i.status === 'Ready to Ship')) {
+      po.status = 'Ready to Ship';
+    } else if (!hasShortage && po.total_received_qty > 0) {
+      po.status = 'Received';
     } else if (po.items.some(i => (i.carried_forward_qty || 0) > 0 || (i.waived_qty || 0) > 0)) {
       po.status = 'Partially Resolved';
     } else if (po.total_received_qty > 0) {
-      po.status = 'Partially Received';
+      po.status = 'Ready to Ship';
     } else {
       po.status = 'Open';
     }
@@ -1759,6 +1906,7 @@ class Store {
           created_at: new Date().toISOString()
         });
 
+        matchedItem.status = 'Received';
         this.recomputePOAggregates(po);
       }
     }

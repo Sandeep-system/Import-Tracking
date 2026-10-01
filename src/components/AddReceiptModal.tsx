@@ -134,8 +134,8 @@ export function AddReceiptModal({
               <PackagePlus className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Add Physical Material Receipt</h2>
-              <p className="text-xs text-slate-400">Record inbound delivery against PO Line Item</p>
+              <h2 className="text-base font-bold text-white">Record Material Ready (Ready to Ship)</h2>
+              <p className="text-xs text-slate-400">Record ready quantity & lot details against PO Line Item</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
@@ -193,7 +193,7 @@ export function AddReceiptModal({
                 <span className="text-xs font-bold text-slate-800">{formatWeight(currentItem.ordered_quantity)}</span>
               </div>
               <div>
-                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Already Received</span>
+                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block">Already Ready</span>
                 <span className="text-xs font-bold text-emerald-600">{formatWeight(currentItem.received_quantity)}</span>
               </div>
               <div>
@@ -208,7 +208,7 @@ export function AddReceiptModal({
           {/* Receipt Inputs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Receiving Quantity (KG) *</label>
+              <label className="block font-semibold text-slate-700 mb-1">Ready Quantity (KG) *</label>
               <input
                 type="number"
                 step="any"
@@ -333,7 +333,7 @@ export function AddReceiptModal({
                 disabled={isSubmitting}
                 className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors disabled:opacity-50"
               >
-                {isSubmitting ? 'Saving...' : isOverReceipt ? 'Confirm Over-Receipt & Save' : 'Confirm & Save Receipt'}
+                {isSubmitting ? 'Saving...' : isOverReceipt ? 'Confirm Over-Receipt & Set Ready' : 'Confirm & Set Ready to Ship'}
               </button>
             )}
           </div>
