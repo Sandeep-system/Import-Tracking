@@ -30,7 +30,8 @@ function PurchaseOrdersContent() {
   const [dataVersion, setDataVersion] = useState(0);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [supplierFilter, setSupplierFilter] = useState('all');
+  const initialSupplier = searchParams.get('supplier') || 'all';
+  const [supplierFilter, setSupplierFilter] = useState(initialSupplier);
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'date' | 'po' | 'pending'>('po');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -208,6 +209,11 @@ const STANDARD_ORIGINS = [
   };
 
   useEffect(() => {
+    const urlSup = searchParams.get('supplier');
+    if (urlSup) {
+      setSupplierFilter(urlSup);
+      setCurrentPage(1);
+    }
     if (searchParams.get('new') === 'true') {
       setIsNewPoOpen(true);
     }
@@ -484,10 +490,31 @@ const STANDARD_ORIGINS = [
             className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 max-w-[200px]"
           >
             <option value="all">All Suppliers</option>
+            {supplierFilter !== 'all' && !suppliers.some(s => s.supplier_name.toLowerCase() === supplierFilter.toLowerCase()) && (
+              <option value={supplierFilter}>{supplierFilter}</option>
+            )}
             {suppliers.map(s => (
               <option key={s.id} value={s.supplier_name}>{s.supplier_name}</option>
             ))}
           </select>
+
+          {supplierFilter !== 'all' && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-xs font-medium animate-in fade-in duration-150">
+              <Building2 className="h-3 w-3 text-blue-600" />
+              <span>Supplier: <strong>{supplierFilter}</strong></span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSupplierFilter('all');
+                  setCurrentPage(1);
+                }}
+                className="ml-1 text-slate-400 hover:text-slate-700 p-0.5"
+                title="Clear supplier filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
 
           {/* Overdue Toggle */}
           <label className="flex items-center gap-1.5 text-slate-700 font-medium cursor-pointer select-none">

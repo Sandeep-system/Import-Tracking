@@ -272,7 +272,21 @@ class Store {
         list = list.filter(po => po.status.toLowerCase() === filter.status?.toLowerCase());
       }
       if (filter.supplier && filter.supplier !== 'all') {
-        list = list.filter(po => po.supplier_name?.toLowerCase().includes(filter.supplier!.toLowerCase()));
+        const supKey = filter.supplier.toLowerCase().trim();
+        const exactMatches = list.filter(po => {
+          const poSup = (po.supplier_name || '').toLowerCase().trim();
+          const poSupId = (po.supplier_id || '').toLowerCase().trim();
+          return poSup === supKey || poSupId === supKey;
+        });
+
+        if (exactMatches.length > 0) {
+          list = exactMatches;
+        } else {
+          list = list.filter(po => {
+            const poSup = (po.supplier_name || '').toLowerCase().trim();
+            return poSup.includes(supKey);
+          });
+        }
       }
       if (filter.overdueOnly) {
         list = list.filter(po => po.is_overdue);
@@ -1416,6 +1430,16 @@ class Store {
         l.supplier_name?.toLowerCase().includes(q)
       );
     }
+    list.sort((a, b) => {
+      const lotA = (a.lot_number || '').trim();
+      const lotB = (b.lot_number || '').trim();
+      const numA = parseFloat(lotA);
+      const numB = parseFloat(lotB);
+      if (!isNaN(numA) && !isNaN(numB) && String(numA) === lotA && String(numB) === lotB) {
+        return numB - numA;
+      }
+      return lotB.localeCompare(lotA, undefined, { numeric: true, sensitivity: 'base' });
+    });
     return list;
   }
 

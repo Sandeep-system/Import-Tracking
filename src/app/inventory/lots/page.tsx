@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { 
   Truck, 
@@ -15,7 +15,8 @@ import {
   PackageOpen,
   Ship,
   MapPin,
-  ExternalLink
+  ExternalLink,
+  ArrowUpDown
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { Lot, InventoryTransaction } from '@/types';
@@ -25,6 +26,7 @@ import * as XLSX from 'xlsx';
 export default function LotsPage() {
   const [dataVersion, setDataVersion] = useState(0);
   const [search, setSearch] = useState('');
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [selectedLot, setSelectedLot] = useState<Lot | null>(null);
   const [lotHistory, setLotHistory] = useState<InventoryTransaction[]>([]);
 
@@ -34,7 +36,22 @@ export default function LotsPage() {
     return () => window.removeEventListener('app:data-updated', handleUpdate);
   }, []);
 
-  const lots = dataStore.getLots(search);
+  const lots = useMemo(() => {
+    const list = dataStore.getLots(search);
+    return list.sort((a, b) => {
+      const lotA = (a.lot_number || '').trim();
+      const lotB = (b.lot_number || '').trim();
+      const numA = parseFloat(lotA);
+      const numB = parseFloat(lotB);
+      let diff = 0;
+      if (!isNaN(numA) && !isNaN(numB) && String(numA) === lotA && String(numB) === lotB) {
+        diff = numB - numA;
+      } else {
+        diff = lotB.localeCompare(lotA, undefined, { numeric: true, sensitivity: 'base' });
+      }
+      return sortDir === 'desc' ? diff : -diff;
+    });
+  }, [search, dataVersion, sortDir]);
 
   const handleInspectLot = (lot: Lot) => {
     setSelectedLot(lot);
@@ -94,7 +111,10 @@ export default function LotsPage() {
           />
         </div>
 
-        <div className="flex items-center gap-4 text-slate-600">
+        <div className="flex items-center gap-3 text-slate-600">
+          <span className="text-[11px] bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-medium">
+            Order: <strong className="text-slate-900">{sortDir === 'desc' ? 'Highest to Lowest Lot #' : 'Lowest to Highest Lot #'}</strong>
+          </span>
           <span>Active Lots: <strong className="text-slate-900">{lots.length}</strong></span>
           <span>•</span>
           <span>
@@ -111,7 +131,18 @@ export default function LotsPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr>
-                <th className="table-header">Lot Number</th>
+                <th 
+                  className="table-header cursor-pointer select-none hover:bg-slate-100 transition-colors"
+                  onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+                  title="Click to toggle sorting order"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Lot Number</span>
+                    <span className="text-[10px] text-blue-700 bg-blue-50 font-bold px-1.5 py-0.5 rounded border border-blue-200">
+                      {sortDir === 'desc' ? 'Highest → Lowest ↓' : 'Lowest → Highest ↑'}
+                    </span>
+                  </div>
+                </th>
                 <th className="table-header">Purchase Order</th>
                 <th className="table-header">Supplier</th>
                 <th className="table-header">Steel Grade</th>
