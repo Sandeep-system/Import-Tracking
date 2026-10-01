@@ -2,18 +2,54 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Anchor, Search, MapPin, Truck, Calendar, ShoppingBag } from 'lucide-react';
+import { Anchor, Search, MapPin, Truck, Calendar, ShoppingBag, Ship, ArrowRight } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { formatDate, formatWeight } from '@/lib/utils';
 
 export default function ShipmentsPage() {
   const allPOs = dataStore.getPurchaseOrders().filter(p => !p.is_closed);
+  const incSummary = dataStore.getIncomingStockSummary();
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Shipments, Ports & Logistics</h1>
-        <p className="text-xs text-slate-500">Track inbound maritime shipments, bill of ladings (BL), containers, and discharge ports</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Shipments, Ports & Logistics</h1>
+          <p className="text-xs text-slate-500">Track inbound maritime shipments, bill of ladings (BL), containers, and discharge ports</p>
+        </div>
+
+        <Link
+          href="/purchasing/incoming-stock"
+          className="inline-flex items-center gap-2 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg shadow-sm transition-colors"
+        >
+          <Ship className="h-4 w-4" />
+          <span>View In-Transit Stock Board ({incSummary.totalInTransitItems} items)</span>
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+
+      {/* Linked Logistics Banner */}
+      <div className="p-4 bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-xl shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-white/10 rounded-lg text-blue-200">
+            <Ship className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-blue-200 uppercase tracking-wider">Live Sea-Port Logistics Linked</div>
+            <div className="text-sm font-extrabold text-white mt-0.5">
+              {formatWeight(incSummary.totalInTransitWeight)} in transit across {incSummary.uniqueTransitLots} lots
+            </div>
+            <p className="text-[11px] text-blue-200/80 mt-0.5">
+              Directly synced from <code className="bg-white/10 px-1 rounded font-mono">INCOMING STOCK.xlsx</code> • Primary discharge at Nhava Sheva (N.S.)
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/purchasing/incoming-stock"
+          className="px-3.5 py-1.5 bg-white text-blue-900 hover:bg-blue-50 font-bold text-xs rounded-lg transition-colors whitespace-nowrap self-start sm:self-auto shadow-sm"
+        >
+          Open In-Transit Logistics →
+        </Link>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 card-shadow overflow-hidden">

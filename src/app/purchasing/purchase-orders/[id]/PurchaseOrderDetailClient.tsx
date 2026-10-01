@@ -26,7 +26,9 @@ import {
   RotateCcw,
   CheckCircle,
   HelpCircle,
-  PackageCheck
+  PackageCheck,
+  Ship,
+  ExternalLink
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { PurchaseOrder, PurchaseOrderItem, Receipt, BalanceResolution } from '@/types';
@@ -629,6 +631,74 @@ const STANDARD_ORIGINS = [
             <span>{po.remarks}</span>
           </div>
         )}
+
+        {/* Linked Inbound Logistics from INCOMING STOCK */}
+        {(() => {
+          const incItems = dataStore.getIncomingStockForPO(po.po_number);
+          if (incItems.length === 0) return null;
+          const transitItems = incItems.filter(i => i.received_status === 'IN_TRANSIT');
+          const receivedItems = incItems.filter(i => i.received_status === 'RECEIVED');
+          const lotsList = Array.from(new Set(incItems.map(i => i.lot_number))).filter(Boolean);
+
+          return (
+            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50/80 to-indigo-50/60 rounded-xl border border-blue-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-blue-200/60">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-600 text-white rounded-lg shadow-sm">
+                    <Ship className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-blue-950 uppercase tracking-wider">
+                      Inbound Logistics & Maritime Transit (INCOMING STOCK.xlsx)
+                    </h4>
+                    <p className="text-[11px] text-blue-700">
+                      {incItems.length} linked shipment items across Lot(s): <strong className="font-mono">{lotsList.join(', ')}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <Link
+                  href="/purchasing/incoming-stock"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 bg-white px-2.5 py-1 rounded-md border border-blue-200 shadow-2xs self-start sm:self-auto"
+                >
+                  <span>Open Transit Tracker</span>
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">In-Transit Cargo</span>
+                  <span className="font-extrabold text-blue-700 text-sm">
+                    {formatWeight(transitItems.reduce((acc, i) => acc + (Number(i.weight) || 0), 0))}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block">({transitItems.length} line items at sea)</span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Discharge Port & Terms</span>
+                  <span className="font-bold text-slate-800">
+                    {incItems[0]?.port || po.destination || 'N.S.'} ({incItems[0]?.delivery_terms || po.delivery_terms || 'FOB'})
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Sea Port ETA</span>
+                  <span className="font-bold text-slate-800">
+                    {incItems[0]?.eta_seaport ? formatDate(incItems[0].eta_seaport) : 'In Transit'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Heat / Metallurgy</span>
+                  <span className="font-bold font-mono text-slate-800">
+                    {incItems.find(i => i.heat_no)?.heat_no ? `Heat: ${incItems.find(i => i.heat_no)?.heat_no}` : 'Verified specs'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Material Line Items Table */}

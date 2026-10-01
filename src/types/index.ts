@@ -318,3 +318,36 @@ export interface MigrationSummary {
   formulaDummyCount: number;
   readyForImportCount: number;
 }
+
+export interface IncomingStockItem {
+  id: string;
+  make: string;
+  supplier: string;
+  lot_number: string;
+  grade: string;
+  condition?: string | null;
+  dia_w?: number | string | null;
+  t?: number | string | null;
+  l?: number | string | null;
+  pieces?: number | string | null;
+  weight: number;
+  customer?: string | null;
+  port?: string | null;
+  date_of_shipment?: string | null;
+  eta_seaport?: string | null;
+  received_status: 'IN_TRANSIT' | 'RECEIVED';
+  heat_no?: string | null;
+  sec_weight?: number | null;
+  delivery_terms?: string | null;
+  price?: number | null;
+  currency?: string | null;
+  sims?: string | null;
+  payment_terms?: string | null;
+  hsn_code?: string | null;
+  bis?: string | null;
+  source_sheet: 'INCOMING SE' | 'INCOMING CLOSE';
+  linked_po_number?: string | null;
+  linked_po_id?: string | null;
+  linked_receipt_id?: string | null;
+}
+

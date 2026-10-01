@@ -12,7 +12,10 @@ import {
   X,
   Building2,
   PackageCheck,
-  PackageOpen
+  PackageOpen,
+  Ship,
+  MapPin,
+  ExternalLink
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { Lot, InventoryTransaction } from '@/types';
@@ -217,6 +220,51 @@ export default function LotsPage() {
                   <span className="font-bold text-emerald-600">{formatWeight(selectedLot.available_qty)}</span>
                 </div>
               </div>
+
+              {/* Linked Incoming Stock / Logistics Details */}
+              {(() => {
+                const incItems = dataStore.getIncomingStockByLot(selectedLot.lot_number);
+                if (incItems.length === 0) return null;
+                const first = incItems[0];
+                return (
+                  <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-blue-900 font-bold text-xs">
+                        <Ship className="h-4 w-4 text-blue-600" />
+                        <span>Port Logistics & Sea Transit Specs (INCOMING STOCK.xlsx)</span>
+                      </div>
+                      <Link 
+                        href="/purchasing/incoming-stock"
+                        className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                      >
+                        <span>View In-Transit Board</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </Link>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px] pt-1">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Port & Terms</span>
+                        <span className="font-semibold text-slate-800">{first.port || 'N.S.'} ({first.delivery_terms || 'FOB'})</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Sea Port ETA</span>
+                        <span className="font-semibold text-slate-800">{formatDate(first.eta_seaport)}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Heat Number</span>
+                        <span className="font-semibold text-slate-800 font-mono">{first.heat_no || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Transit Status</span>
+                        <span className={`inline-block px-1.5 py-0.2 rounded font-bold text-[10px] ${first.received_status === 'RECEIVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}`}>
+                          {first.received_status === 'RECEIVED' ? 'Received at Yard' : 'In-Transit'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Ledger Table */}
               <div>

@@ -12,13 +12,15 @@ import {
   MigrationSummary,
   BalanceResolution,
   ResolutionType,
-  ResolutionStatus
+  ResolutionStatus,
+  IncomingStockItem
 } from '@/types';
 import initialDataRaw from './initialData.json';
+import incomingStockRaw from './incomingStockData.json';
 import { googleSync } from './googleSync';
 
-const STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V7';
-const PREV_STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V6';
+const STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V8';
+const PREV_STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V7';
 
 export interface DataState {
   purchaseOrders: PurchaseOrder[];
@@ -31,7 +33,9 @@ export interface DataState {
   sales: Sale[];
   auditLogs: AuditLog[];
   balanceResolutions: BalanceResolution[];
+  incomingStock: IncomingStockItem[];
 }
+
 
 function getInitialState(): DataState {
   const defaultSuppliers: Supplier[] = initialDataRaw.suppliers as unknown as Supplier[];
@@ -75,6 +79,36 @@ function getInitialState(): DataState {
     }
   ];
 
+  const defaultIncomingTransit = (incomingStockRaw.inTransit || []) as unknown as IncomingStockItem[];
+  const defaultIncomingReceived = (incomingStockRaw.received || []) as unknown as IncomingStockItem[];
+  const defaultIncomingStock = [...defaultIncomingTransit, ...defaultIncomingReceived];
+
+  // Auto-link incoming stock with default POs
+  const lotToPo = new Map<string, { po_number: string; po_id: string }>();
+  for (const po of defaultPOs) {
+    if (po.items) {
+      for (const item of po.items) {
+        if (item.lot_number) {
+          lotToPo.set(String(item.lot_number).trim(), { po_number: po.po_number, po_id: po.id });
+        }
+      }
+    }
+  }
+  for (const rc of defaultReceipts) {
+    if (rc.lot_number && rc.po_number) {
+      const foundPo = defaultPOs.find(p => p.po_number === rc.po_number);
+      lotToPo.set(String(rc.lot_number).trim(), { po_number: rc.po_number, po_id: foundPo?.id || '' });
+    }
+  }
+
+  for (const inc of defaultIncomingStock) {
+    const match = lotToPo.get(String(inc.lot_number).trim());
+    if (match) {
+      inc.linked_po_number = match.po_number;
+      inc.linked_po_id = match.po_id;
+    }
+  }
+
   return {
     purchaseOrders: defaultPOs,
     suppliers: defaultSuppliers,
@@ -85,7 +119,8 @@ function getInitialState(): DataState {
     customerAllocations: [],
     sales: [],
     auditLogs: defaultAuditLogs,
-    balanceResolutions: []
+    balanceResolutions: [],
+    incomingStock: defaultIncomingStock
   };
 }
 
@@ -112,6 +147,10 @@ class Store {
             if (!Array.isArray(this.state.balanceResolutions)) {
               this.state.balanceResolutions = [];
             }
+            if (!Array.isArray(this.state.incomingStock) || this.state.incomingStock.length === 0) {
+              const defaultInc = ([...(incomingStockRaw.inTransit || []), ...(incomingStockRaw.received || [])] as unknown) as IncomingStockItem[];
+              this.state.incomingStock = defaultInc;
+            }
             // Ensure customer "SE" is always Sandeep Edgetech (Self)
             const seCust = this.state.customers?.find(c => 
               c.id === 'cust-1' || 
@@ -130,6 +169,8 @@ class Store {
             this.state = getInitialState();
           }
         }
+        // Link incoming stock to purchase orders
+        this.linkIncomingStockWithPOs();
         // Initialize balance and resolution aggregates across all loaded POs
         for (const po of this.state.purchaseOrders) {
           this.recomputePOAggregates(po);
@@ -1438,7 +1479,276 @@ class Store {
   public getAuditLogs() {
     return this.state.auditLogs;
   }
+
+  // --- Incoming Stock & In-Transit Tracking ---
+  public linkIncomingStockWithPOs() {
+    if (!Array.isArray(this.state.incomingStock)) {
+      this.state.incomingStock = [];
+      return;
+    }
+
+    const lotToPo = new Map<string, { po_number: string; po_id: string }>();
+    for (const po of this.state.purchaseOrders) {
+      if (po.items) {
+        for (const item of po.items) {
+          if (item.lot_number) {
+            lotToPo.set(String(item.lot_number).trim(), { po_number: po.po_number, po_id: po.id });
+          }
+        }
+      }
+    }
+    for (const rc of this.state.receipts) {
+      if (rc.lot_number && rc.po_number) {
+        const foundPo = this.state.purchaseOrders.find(p => p.po_number === rc.po_number);
+        lotToPo.set(String(rc.lot_number).trim(), { po_number: rc.po_number, po_id: foundPo?.id || '' });
+      }
+    }
+
+    for (const inc of this.state.incomingStock) {
+      const match = lotToPo.get(String(inc.lot_number).trim());
+      if (match) {
+        inc.linked_po_number = match.po_number;
+        inc.linked_po_id = match.po_id;
+      }
+    }
+  }
+
+  public getIncomingStock(filters?: { 
+    status?: 'IN_TRANSIT' | 'RECEIVED' | 'ALL'; 
+    search?: string; 
+    port?: string; 
+    supplier?: string; 
+    lot?: string;
+  }): IncomingStockItem[] {
+    let items = this.state.incomingStock || [];
+
+    if (filters?.status && filters.status !== 'ALL') {
+      items = items.filter(i => i.received_status === filters.status);
+    }
+
+    if (filters?.port && filters.port !== 'ALL') {
+      items = items.filter(i => (i.port || '').toLowerCase() === filters.port?.toLowerCase());
+    }
+
+    if (filters?.supplier && filters.supplier !== 'ALL') {
+      items = items.filter(i => (i.supplier || '').toLowerCase() === filters.supplier?.toLowerCase());
+    }
+
+    if (filters?.lot) {
+      items = items.filter(i => (i.lot_number || '').includes(filters.lot!));
+    }
+
+    if (filters?.search) {
+      const q = filters.search.toLowerCase().trim();
+      items = items.filter(i => 
+        (i.lot_number && i.lot_number.toLowerCase().includes(q)) ||
+        (i.supplier && i.supplier.toLowerCase().includes(q)) ||
+        (i.grade && i.grade.toLowerCase().includes(q)) ||
+        (i.make && i.make.toLowerCase().includes(q)) ||
+        (i.port && i.port.toLowerCase().includes(q)) ||
+        (i.heat_no && i.heat_no.toLowerCase().includes(q)) ||
+        (i.linked_po_number && i.linked_po_number.toLowerCase().includes(q))
+      );
+    }
+
+    return items;
+  }
+
+  public getIncomingStockItem(id: string): IncomingStockItem | undefined {
+    return (this.state.incomingStock || []).find(i => i.id === id);
+  }
+
+  public getIncomingStockByLot(lotNumber: string): IncomingStockItem[] {
+    const key = String(lotNumber).trim();
+    return (this.state.incomingStock || []).filter(i => String(i.lot_number).trim() === key);
+  }
+
+  public getIncomingStockForPO(poNumber: string): IncomingStockItem[] {
+    const key = String(poNumber).trim();
+    return (this.state.incomingStock || []).filter(i => String(i.linked_po_number).trim() === key);
+  }
+
+  public getIncomingStockSummary() {
+    const all = this.state.incomingStock || [];
+    const inTransit = all.filter(i => i.received_status === 'IN_TRANSIT');
+    const received = all.filter(i => i.received_status === 'RECEIVED');
+
+    const totalTransitWeight = inTransit.reduce((acc, i) => acc + (Number(i.weight) || 0), 0);
+    const totalReceivedWeight = received.reduce((acc, i) => acc + (Number(i.weight) || 0), 0);
+    const transitLots = Array.from(new Set(inTransit.map(i => i.lot_number))).filter(Boolean);
+    const receivedLots = Array.from(new Set(received.map(i => i.lot_number))).filter(Boolean);
+
+    const now = new Date();
+    const imminentThreshold = new Date();
+    imminentThreshold.setDate(imminentThreshold.getDate() + 14);
+
+    let imminentCount = 0;
+    let overdueTransitCount = 0;
+
+    for (const item of inTransit) {
+      if (item.eta_seaport) {
+        const etaDate = new Date(item.eta_seaport);
+        if (!isNaN(etaDate.getTime())) {
+          if (etaDate < now) {
+            overdueTransitCount++;
+          } else if (etaDate <= imminentThreshold) {
+            imminentCount++;
+          }
+        }
+      }
+    }
+
+    // Port breakdown
+    const portMap: Record<string, { count: number; weight: number }> = {};
+    for (const item of inTransit) {
+      const port = item.port || 'Unassigned';
+      if (!portMap[port]) portMap[port] = { count: 0, weight: 0 };
+      portMap[port].count++;
+      portMap[port].weight += Number(item.weight) || 0;
+    }
+
+    return {
+      totalInTransitItems: inTransit.length,
+      totalInTransitWeight: totalTransitWeight,
+      uniqueTransitLots: transitLots.length,
+      totalReceivedItems: received.length,
+      totalReceivedWeight: totalReceivedWeight,
+      uniqueReceivedLots: receivedLots.length,
+      imminentArrivals: imminentCount,
+      overdueTransitCount,
+      portStats: Object.entries(portMap).map(([port, data]) => ({ port, ...data })).sort((a, b) => b.weight - a.weight)
+    };
+  }
+
+  public markIncomingStockReceived(id: string, options?: { receipt_date?: string; location?: string }): { success: boolean; item?: IncomingStockItem; receipt?: Receipt; error?: string } {
+    const item = (this.state.incomingStock || []).find(i => i.id === id);
+    if (!item) return { success: false, error: 'Item not found' };
+
+    item.received_status = 'RECEIVED';
+    item.source_sheet = 'INCOMING CLOSE';
+
+    let createdReceipt: Receipt | undefined;
+    const receiptDate = options?.receipt_date || new Date().toISOString().split('T')[0];
+
+    // Check if linked to PO
+    if (item.linked_po_number) {
+      const po = this.state.purchaseOrders.find(p => p.po_number === item.linked_po_number || p.id === item.linked_po_id);
+      if (po && po.items && po.items.length > 0) {
+        const matchedItem = po.items.find(pi => 
+          (item.grade && pi.grade_code && pi.grade_code.toLowerCase().includes(item.grade.toLowerCase())) ||
+          (item.lot_number && pi.lot_number === item.lot_number)
+        ) || po.items[0];
+
+        const receiptNum = `REC-${po.po_number}-${(po.items.reduce((acc, it) => acc + (it.receipts?.length || 0), 0) + 1).toString().padStart(2, '0')}`;
+        createdReceipt = {
+          id: `rec-inc-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+          purchase_order_item_id: matchedItem.id,
+          po_number: po.po_number,
+          lot_id: `lot-${item.lot_number}`,
+          lot_number: item.lot_number,
+          receipt_number: receiptNum,
+          receipt_date: receiptDate,
+          received_quantity: Number(item.weight) || 0,
+          unit: 'KG',
+          supplier_invoice_number: item.heat_no ? `HEAT-${item.heat_no}` : undefined,
+          remarks: `Received at port ${item.port || 'Port'} from vessel transit`,
+          legacy_source_sheet: 'INCOMING CLOSE',
+          created_at: new Date().toISOString()
+        };
+
+        if (!matchedItem.receipts) matchedItem.receipts = [];
+        matchedItem.receipts.push(createdReceipt);
+        this.state.receipts.unshift(createdReceipt);
+        item.linked_receipt_id = createdReceipt.id;
+
+        // Update or create inventory Lot
+        let existingLot = this.state.lots.find(l => l.lot_number === item.lot_number);
+        if (existingLot) {
+          existingLot.total_received_qty += Number(item.weight) || 0;
+          existingLot.available_qty += Number(item.weight) || 0;
+          if (existingLot.available_qty > 0) existingLot.status = 'Available';
+        } else {
+          const dimParts = [item.dia_w ? `DIA ${item.dia_w}` : '', item.t ? `T${item.t}` : '', item.l ? `L${item.l}` : ''].filter(Boolean).join(' × ');
+          existingLot = {
+            id: `lot-${item.lot_number}`,
+            lot_number: item.lot_number,
+            purchase_order_item_id: matchedItem.id,
+            po_number: po.po_number,
+            supplier_name: item.supplier,
+            grade_code: item.grade,
+            section_name: item.dia_w ? 'Round' : 'Block',
+            dimensions_display: dimParts || undefined,
+            total_received_qty: Number(item.weight) || 0,
+            total_allocated_sold_qty: 0,
+            available_qty: Number(item.weight) || 0,
+            warehouse_location: options?.location || 'Main Yard (Port Arrival)',
+            status: 'Available',
+            created_at: new Date().toISOString()
+          };
+          this.state.lots.unshift(existingLot);
+        }
+
+        // Ledger transaction
+        this.state.inventoryTransactions.unshift({
+          id: `tx-inc-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+          lot_id: existingLot.id,
+          lot_number: item.lot_number,
+          transaction_type: 'PURCHASE_RECEIPT',
+          quantity: Number(item.weight) || 0,
+          reference_type: 'receipts',
+          reference_id: createdReceipt.id,
+          reference_display: `PO ${po.po_number} / Lot ${item.lot_number}`,
+          transaction_date: receiptDate,
+          remarks: `Physical stock received from sea port (${item.port || 'Port'})`,
+          created_at: new Date().toISOString()
+        });
+
+        this.recomputePOAggregates(po);
+      }
+    }
+
+    this.addAuditLog(
+      'INCOMING_STOCK_RECEIVED',
+      'INCOMING_STOCK',
+      item.id,
+      `Marked Lot ${item.lot_number} (${item.weight} KG) as RECEIVED at warehouse.`
+    );
+
+    this.save();
+    return { success: true, item, receipt: createdReceipt };
+  }
+
+  public importIncomingStock(items: IncomingStockItem[]): { added: number; updated: number } {
+    if (!Array.isArray(this.state.incomingStock)) {
+      this.state.incomingStock = [];
+    }
+
+    let added = 0;
+    let updated = 0;
+
+    for (const newItem of items) {
+      const existingIdx = this.state.incomingStock.findIndex(i => i.id === newItem.id);
+      if (existingIdx >= 0) {
+        this.state.incomingStock[existingIdx] = { ...this.state.incomingStock[existingIdx], ...newItem };
+        updated++;
+      } else {
+        this.state.incomingStock.unshift(newItem);
+        added++;
+      }
+    }
+
+    this.linkIncomingStockWithPOs();
+    this.addAuditLog(
+      'INCOMING_STOCK_IMPORTED',
+      'INCOMING_STOCK',
+      `batch-${Date.now()}`,
+      `Imported/synchronized ${added} new items and updated ${updated} items from INCOMING STOCK Excel.`
+    );
+    this.save();
+    return { added, updated };
+  }
 }
+
 
 // Global Singleton
 export const dataStore = new Store();
