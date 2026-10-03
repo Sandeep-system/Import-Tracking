@@ -65,6 +65,11 @@ function ShipmentsContent() {
   const router = useRouter();
 
   const [dataVersion, setDataVersion] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Tab State: 'shipments' | 'ports' | 'orders'
   const initialTab = (searchParams.get('tab') as 'shipments' | 'ports' | 'orders') || 'shipments';
@@ -623,8 +628,24 @@ function ShipmentsContent() {
     }
   };
 
+  if (!mounted) {
+    return (
+      <div className="space-y-6 p-4 animate-pulse" suppressHydrationWarning>
+        <div className="h-10 bg-slate-100 rounded-lg w-1/3" />
+        <div className="h-28 bg-slate-100 rounded-2xl" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+          <div className="h-24 bg-slate-100 rounded-xl" />
+          <div className="h-24 bg-slate-100 rounded-xl" />
+          <div className="h-24 bg-slate-100 rounded-xl" />
+          <div className="h-24 bg-slate-100 rounded-xl" />
+        </div>
+        <div className="h-96 bg-slate-100 rounded-xl" />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" suppressHydrationWarning>
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
