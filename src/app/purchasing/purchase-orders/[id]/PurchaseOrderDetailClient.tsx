@@ -196,10 +196,19 @@ const STANDARD_ORIGINS = [
   const [bulkInvoiceDate, setBulkInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [bulkWarehouseLocation, setBulkWarehouseLocation] = useState('Nhava Sheva Yard');
   const [bulkRemarks, setBulkRemarks] = useState('');
-  const [bulkMode, setBulkMode] = useState<'RECEIVE' | 'UPDATE'>('RECEIVE');
+  const [bulkMode, setBulkMode] = useState<'READY' | 'SHIP' | 'RECEIVE' | 'UPDATE'>('READY');
   const [bulkItemQuantities, setBulkItemQuantities] = useState<Record<string, number>>({});
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [isSubmittingBulk, setIsSubmittingBulk] = useState(false);
+
+  // Bulk Shipping fields
+  const [bulkDateOfShipment, setBulkDateOfShipment] = useState(new Date().toISOString().split('T')[0]);
+  const [bulkEtaSeaport, setBulkEtaSeaport] = useState('');
+  const [bulkHeatNo, setBulkHeatNo] = useState('');
+  const [bulkSims, setBulkSims] = useState('');
+  const [bulkDeliveryTerms, setBulkDeliveryTerms] = useState('FOB');
+  const [bulkPaymentTerms, setBulkPaymentTerms] = useState('DP at sight');
+  const [bulkDischargePort, setBulkDischargePort] = useState('N.S.');
 
   const toggleSelectItem = (itemId: string) => {
     setSelectedItemIds(prev => 
@@ -216,9 +225,27 @@ const STANDARD_ORIGINS = [
     }
   };
 
-  const handleOpenBulkReceipt = (mode: 'RECEIVE' | 'UPDATE' = 'RECEIVE') => {
+  const handleOpenBulkAction = (mode?: 'READY' | 'SHIP' | 'RECEIVE' | 'UPDATE') => {
     if (selectedItemIds.length === 0 || !po) return;
-    setBulkMode(mode);
+
+    // Smart default mode based on selected items' stage
+    let targetMode: 'READY' | 'SHIP' | 'RECEIVE' | 'UPDATE' = mode || 'READY';
+    if (!mode) {
+      const selectedItems = po.items?.filter(i => selectedItemIds.includes(i.id)) || [];
+      const hasOpen = selectedItems.some(i => i.status === 'Open' || !i.status);
+      const hasReady = selectedItems.some(i => i.status === 'Ready to Ship');
+      const hasTransit = selectedItems.some(i => i.status === 'In Transit');
+
+      if (hasTransit && !hasReady && !hasOpen) {
+        targetMode = 'RECEIVE';
+      } else if (hasReady && !hasOpen) {
+        targetMode = 'SHIP';
+      } else {
+        targetMode = 'READY';
+      }
+    }
+
+    setBulkMode(targetMode);
     setBulkError(null);
 
     // Auto-fill full ordered / pending quantity for each selected item
@@ -231,6 +258,16 @@ const STANDARD_ORIGINS = [
     setBulkWarehouseLocation('Nhava Sheva Yard');
     setBulkRemarks('');
 
+    setBulkDateOfShipment(todayStr);
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    setBulkEtaSeaport(po.expected_delivery_date || d.toISOString().split('T')[0]);
+    setBulkHeatNo('');
+    setBulkSims('');
+    setBulkDeliveryTerms(po.delivery_terms || 'FOB');
+    setBulkPaymentTerms(po.payment_terms || 'DP at sight');
+    setBulkDischargePort(po.destination || 'N.S.');
+
     for (const itemId of selectedItemIds) {
       const it = po.items?.find(i => i.id === itemId);
       if (it) {
@@ -242,23 +279,39 @@ const STANDARD_ORIGINS = [
     setIsBulkReceiptOpen(true);
   };
 
+  const handleOpenBulkReceipt = handleOpenBulkAction;
+
   const handleSubmitBulkReceipt = (e: React.FormEvent) => {
     e.preventDefault();
     if (!po) return;
     setBulkError(null);
 
-    if (!bulkLotNumber.trim()) {
-      setBulkError('Please enter a Lot Number.');
-      return;
+    if (bulkMode === 'READY' || bulkMode === 'UPDATE') {
+      if (!bulkLotNumber.trim()) {
+        setBulkError('Please enter a Lot Number.');
+        return;
+      }
+      if (!bulkInvoiceNumber.trim()) {
+        setBulkError('Please enter the Supplier Commercial Invoice number.');
+        return;
+      }
     }
-    if (!bulkInvoiceNumber.trim()) {
-      setBulkError('Please enter the Supplier Commercial Invoice number.');
-      return;
+
+    if (bulkMode === 'SHIP') {
+      if (!bulkDateOfShipment) {
+        setBulkError('Please enter Date of Shipment.');
+        return;
+      }
+      if (!bulkEtaSeaport) {
+        setBulkError('Please enter ETA (sea port).');
+        return;
+      }
     }
 
     try {
       setIsSubmittingBulk(true);
-      if (bulkMode === 'RECEIVE') {
+
+      if (bulkMode === 'READY') {
         const { receipts } = dataStore.addBulkReceipt({
           poIdOrNumber: po.id,
           itemIds: selectedItemIds,
@@ -270,7 +323,42 @@ const STANDARD_ORIGINS = [
           remarks: bulkRemarks.trim() || undefined,
           itemQuantities: bulkItemQuantities
         });
+
+        // Ensure status transitions to 'Ready to Ship'
+        for (const itemId of selectedItemIds) {
+          const item = po.items?.find(i => i.id === itemId);
+          if (item) {
+            item.status = 'Ready to Ship';
+            item.ready_quantity = bulkItemQuantities[itemId] || item.ordered_quantity;
+            item.lot_number = bulkLotNumber.trim();
+          }
+        }
+        dataStore.recomputePOAggregates(po);
+        dataStore.save();
         googleSync.syncReceipts(po.po_number, receipts);
+      } else if (bulkMode === 'SHIP') {
+        for (const itemId of selectedItemIds) {
+          dataStore.markItemShipped({
+            poIdOrNumber: po.id,
+            itemId,
+            dateOfShipment: bulkDateOfShipment,
+            etaSeaport: bulkEtaSeaport,
+            heatNo: bulkHeatNo.trim() || undefined,
+            sims: bulkSims.trim() || undefined,
+            deliveryTerms: bulkDeliveryTerms,
+            paymentTerms: bulkPaymentTerms,
+            port: bulkDischargePort
+          });
+        }
+      } else if (bulkMode === 'RECEIVE') {
+        for (const itemId of selectedItemIds) {
+          dataStore.markItemReceived({
+            poIdOrNumber: po.id,
+            itemId,
+            receiptDate: bulkInvoiceDate,
+            warehouseLocation: bulkWarehouseLocation.trim() || undefined
+          });
+        }
       } else {
         dataStore.updateBulkItemReceipts({
           poIdOrNumber: po.id,
@@ -284,10 +372,14 @@ const STANDARD_ORIGINS = [
       setIsSubmittingBulk(false);
       setIsBulkReceiptOpen(false);
       setSelectedItemIds([]);
+      loadData();
       setDataVersion(v => v + 1);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('app:data-updated'));
+      }
     } catch (err: any) {
       setIsSubmittingBulk(false);
-      setBulkError(err.message || 'Failed to process bulk receipt.');
+      setBulkError(err.message || 'Failed to process bulk action.');
     }
   };
 
@@ -854,11 +946,13 @@ const STANDARD_ORIGINS = [
                 </span>
                 <button
                   type="button"
-                  onClick={() => handleOpenBulkReceipt('RECEIVE')}
+                  onClick={() => handleOpenBulkAction()}
                   className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded shadow-sm transition-colors"
+                  title="Execute stage progression (Ready, Shipped, Received) across selected items"
                 >
-                  <PackageCheck className="h-3.5 w-3.5" />
-                  <span>Bulk Receive Items</span>
+                  <Layers className="h-3.5 w-3.5" />
+                  <span>Bulk Action</span>
+                  <span className="text-[10px] opacity-80">▾</span>
                 </button>
                 <button
                   type="button"
@@ -2182,7 +2276,7 @@ const STANDARD_ORIGINS = [
         );
       })()}
 
-      {/* BULK RECEIVE / EDIT MODAL */}
+      {/* BULK ACTION HUB MODAL */}
       {isBulkReceiptOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
@@ -2190,14 +2284,14 @@ const STANDARD_ORIGINS = [
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-2.5">
                 <div className="h-9 w-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
-                  <PackageCheck className="h-5 w-5" />
+                  <Layers className="h-5 w-5" />
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm">
-                    {bulkMode === 'RECEIVE' ? 'Bulk Receive Selected Items' : 'Bulk Edit Lot & Invoice Details'}
+                    Bulk Action Hub ({selectedItemIds.length} items selected)
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Applying shared Lot No. and Invoice across {selectedItemIds.length} selected items
+                    Apply lifecycle transitions or update details across selected items
                   </p>
                 </div>
               </div>
@@ -2209,82 +2303,311 @@ const STANDARD_ORIGINS = [
               </button>
             </div>
 
+            {/* Action Mode Tabs */}
+            <div className="px-6 pt-3 border-b border-slate-200/80 flex items-center gap-2 bg-slate-50/60 overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => { setBulkMode('READY'); setBulkError(null); }}
+                className={`px-3.5 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  bulkMode === 'READY'
+                    ? 'border-blue-600 text-blue-600 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/60'
+                }`}
+              >
+                <PackagePlus className="h-3.5 w-3.5" />
+                <span>1. Mark Ready</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setBulkMode('SHIP'); setBulkError(null); }}
+                className={`px-3.5 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  bulkMode === 'SHIP'
+                    ? 'border-indigo-600 text-indigo-600 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/60'
+                }`}
+              >
+                <Ship className="h-3.5 w-3.5" />
+                <span>2. Mark Shipped</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setBulkMode('RECEIVE'); setBulkError(null); }}
+                className={`px-3.5 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  bulkMode === 'RECEIVE'
+                    ? 'border-emerald-600 text-emerald-600 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/60'
+                }`}
+              >
+                <PackageCheck className="h-3.5 w-3.5" />
+                <span>3. Mark Received</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setBulkMode('UPDATE'); setBulkError(null); }}
+                className={`px-3.5 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  bulkMode === 'UPDATE'
+                    ? 'border-slate-800 text-slate-800 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/60'
+                }`}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                <span>Edit Info</span>
+              </button>
+            </div>
+
             <form onSubmit={handleSubmitBulkReceipt} className="p-6 space-y-4 text-xs">
-              {/* Auto-fill notification alert */}
-              {bulkMode === 'RECEIVE' && (
+              {/* Contextual Notice */}
+              {bulkMode === 'READY' && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-xs flex items-start gap-2.5">
-                  <CheckCircle2 className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <PackagePlus className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold block">Full Ordered Quantities Auto-Filled:</span>
+                    <span className="font-bold block">1. Record Material Ready at Mill:</span>
                     <span>
-                      Since multiple items are selected under one Lot and Invoice, the full contracted / pending quantity for each item has been pre-filled automatically.
+                      Assign shared Lot Number and Commercial Invoice. Selected items will transition to <strong>Ready to Ship</strong> with their ready quantities recorded.
                     </span>
                   </div>
                 </div>
               )}
 
-              {/* Shared Metadata Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/70 p-4 rounded-xl border border-slate-200">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-700">Lot Number *</label>
-                    <button
-                      type="button"
-                      onClick={() => setBulkLotNumber(`LOT-${po.po_number}-${Math.floor(100 + Math.random() * 900)}`)}
-                      className="text-[10px] text-blue-600 hover:underline font-semibold"
-                    >
-                      Generate Lot #
-                    </button>
+              {bulkMode === 'SHIP' && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-indigo-800 text-xs flex items-start gap-2.5">
+                  <Ship className="h-4 w-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">2. Record Maritime Shipment Dispatch:</span>
+                    <span>
+                      Dispatch selected items for sea transit. Transitions items to <strong>In Transit</strong> and syncs them automatically to the Sea Port Tracking board.
+                    </span>
                   </div>
-                  <input
-                    type="text"
-                    required
-                    value={bulkLotNumber}
-                    onChange={(e) => setBulkLotNumber(e.target.value)}
-                    placeholder="e.g. LOT-24-001"
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
                 </div>
+              )}
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Supplier Commercial Invoice *</label>
-                  <input
-                    type="text"
-                    required
-                    value={bulkInvoiceNumber}
-                    onChange={(e) => setBulkInvoiceNumber(e.target.value)}
-                    placeholder="e.g. INV-2024-8841"
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
+              {bulkMode === 'RECEIVE' && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-start gap-2.5">
+                  <PackageCheck className="h-4 w-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">3. Confirm Physical Yard Gate-In & Receipt:</span>
+                    <span>
+                      Record physical warehouse yard gate-in and inspection. Transitions items to <strong>Received</strong> and replenishes active yard inventory.
+                    </span>
+                  </div>
                 </div>
+              )}
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Supplier Invoice Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={bulkInvoiceDate}
-                    onChange={(e) => setBulkInvoiceDate(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
+              {bulkMode === 'UPDATE' && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 text-xs flex items-start gap-2.5">
+                  <Pencil className="h-4 w-4 text-slate-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Edit Lot & Invoice Metadata:</span>
+                    <span>
+                      Update shared Lot Number and Commercial Invoice details across selected items without modifying their lifecycle status.
+                    </span>
+                  </div>
                 </div>
+              )}
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Warehouse Location</label>
-                  <input
-                    type="text"
-                    value={bulkWarehouseLocation}
-                    onChange={(e) => setBulkWarehouseLocation(e.target.value)}
-                    placeholder="e.g. Nhava Sheva Yard"
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
+              {/* MODE: READY OR UPDATE FIELDS */}
+              {(bulkMode === 'READY' || bulkMode === 'UPDATE') && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/70 p-4 rounded-xl border border-slate-200">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-semibold text-slate-700">Lot Number *</label>
+                      <button
+                        type="button"
+                        onClick={() => setBulkLotNumber(`LOT-${po.po_number}-${Math.floor(100 + Math.random() * 900)}`)}
+                        className="text-[10px] text-blue-600 hover:underline font-semibold"
+                      >
+                        Generate Lot #
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={bulkLotNumber}
+                      onChange={(e) => setBulkLotNumber(e.target.value)}
+                      placeholder="e.g. LOT-24-001"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Supplier Commercial Invoice *</label>
+                    <input
+                      type="text"
+                      required
+                      value={bulkInvoiceNumber}
+                      onChange={(e) => setBulkInvoiceNumber(e.target.value)}
+                      placeholder="e.g. INV-2024-8841"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Supplier Invoice Date *</label>
+                    <input
+                      type="date"
+                      required
+                      value={bulkInvoiceDate}
+                      onChange={(e) => setBulkInvoiceDate(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Warehouse Location</label>
+                    <input
+                      type="text"
+                      value={bulkWarehouseLocation}
+                      onChange={(e) => setBulkWarehouseLocation(e.target.value)}
+                      placeholder="e.g. Nhava Sheva Yard"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* MODE: SHIPMENT DISPATCH FIELDS */}
+              {bulkMode === 'SHIP' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-indigo-50/30 p-4 rounded-xl border border-indigo-100">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Date of Shipment (B/L Date) *</label>
+                    <input
+                      type="date"
+                      required
+                      value={bulkDateOfShipment}
+                      onChange={(e) => setBulkDateOfShipment(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">ETA (Sea Port Arrival) *</label>
+                    <input
+                      type="date"
+                      required
+                      value={bulkEtaSeaport}
+                      onChange={(e) => setBulkEtaSeaport(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Discharge Port</label>
+                    <select
+                      value={bulkDischargePort}
+                      onChange={(e) => setBulkDischargePort(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                    >
+                      <option value="N.S.">N.S. (Nhava Sheva / JNPT)</option>
+                      <option value="Nhava Sheva">Nhava Sheva</option>
+                      <option value="Mundra">Mundra</option>
+                      <option value="Chennai">Chennai</option>
+                      <option value="Hazira">Hazira</option>
+                      <option value="Kolkata">Kolkata</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Delivery Terms</label>
+                    <select
+                      value={bulkDeliveryTerms}
+                      onChange={(e) => setBulkDeliveryTerms(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                    >
+                      <option value="FOB">FOB</option>
+                      <option value="CFR">CFR</option>
+                      <option value="CIF">CIF</option>
+                      <option value="EXW">EXW</option>
+                      <option value="FCA">FCA</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Payment Terms</label>
+                    <select
+                      value={bulkPaymentTerms}
+                      onChange={(e) => setBulkPaymentTerms(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                    >
+                      <option value="DP at sight">DP at sight</option>
+                      <option value="CAD (Cash Against Documents)">CAD</option>
+                      <option value="LC at sight">LC at sight</option>
+                      <option value="LC 30 Days from BL Date">LC 30 Days</option>
+                      <option value="LC 60 Days from BL Date">LC 60 Days</option>
+                      <option value="LC 90 Days from BL Date">LC 90 Days</option>
+                      <option value="LC 120 Days from BL Date">LC 120 Days</option>
+                      <option value="100% Advance TT">100% Advance TT</option>
+                      <option value="Open Account 30 days">Open Account 30 days</option>
+                      <option value="Net 30 days">Net 30 days</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Heat Number(s) (Optional)</label>
+                    <input
+                      type="text"
+                      value={bulkHeatNo}
+                      onChange={(e) => setBulkHeatNo(e.target.value)}
+                      placeholder="e.g. H-8831 / H-8832"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-slate-700 mb-1">SIMS Registration (Optional)</label>
+                    <input
+                      type="text"
+                      value={bulkSims}
+                      onChange={(e) => setBulkSims(e.target.value)}
+                      placeholder="e.g. SIMS-2024-81920"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* MODE: RECEIVE FIELDS */}
+              {bulkMode === 'RECEIVE' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-emerald-50/30 p-4 rounded-xl border border-emerald-100">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Physical Yard Location *</label>
+                    <input
+                      type="text"
+                      required
+                      value={bulkWarehouseLocation}
+                      onChange={(e) => setBulkWarehouseLocation(e.target.value)}
+                      placeholder="e.g. Nhava Sheva Yard"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Date of Yard Receipt *</label>
+                    <input
+                      type="date"
+                      required
+                      value={bulkInvoiceDate}
+                      onChange={(e) => setBulkInvoiceDate(e.target.value)}
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-slate-700 mb-1">Yard Remarks / Physical Inspection Notes</label>
+                    <input
+                      type="text"
+                      value={bulkRemarks}
+                      onChange={(e) => setBulkRemarks(e.target.value)}
+                      placeholder="e.g. Bundles unloaded in Yard A, visual inspection verified OK"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Selected Items Breakdown Table */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1.5">
-                  Selected Items ({selectedItemIds.length}) & Landed Quantities
+                  Selected Items ({selectedItemIds.length}) & Quantities
                 </label>
                 <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
                   <table className="w-full text-left text-xs">
@@ -2292,9 +2615,10 @@ const STANDARD_ORIGINS = [
                       <tr>
                         <th className="py-2 px-3 font-semibold text-slate-600">Line</th>
                         <th className="py-2 px-3 font-semibold text-slate-600">Grade & Dimensions</th>
+                        <th className="py-2 px-3 font-semibold text-slate-600 text-center">Status</th>
                         <th className="py-2 px-3 font-semibold text-slate-600 text-right">Ordered</th>
                         <th className="py-2 px-3 font-semibold text-slate-600 text-right">
-                          {bulkMode === 'RECEIVE' ? 'Receive Qty (KG)' : 'Current Received'}
+                          {bulkMode === 'READY' ? 'Ready Qty (KG)' : bulkMode === 'SHIP' ? 'Dispatch Qty' : bulkMode === 'RECEIVE' ? 'Yard Qty' : 'Current Qty'}
                         </th>
                       </tr>
                     </thead>
@@ -2315,11 +2639,16 @@ const STANDARD_ORIGINS = [
                                 {item.diameter_width} x {item.thickness || '—'} x {item.length || '—'} mm
                               </span>
                             </td>
+                            <td className="py-2 px-3 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${getStatusBadgeClass(item.status || 'Open')}`}>
+                                {item.status || 'Open'}
+                              </span>
+                            </td>
                             <td className="py-2 px-3 text-right font-medium text-slate-600">
                               {formatWeight(item.ordered_quantity)}
                             </td>
                             <td className="py-2 px-3 text-right">
-                              {bulkMode === 'RECEIVE' ? (
+                              {bulkMode === 'READY' ? (
                                 <input
                                   type="number"
                                   min="0"
@@ -2332,8 +2661,12 @@ const STANDARD_ORIGINS = [
                                   className="w-28 p-1.5 bg-white border border-slate-300 rounded font-bold text-right text-xs focus:ring-1 focus:ring-blue-500"
                                 />
                               ) : (
-                                <span className="font-bold text-emerald-600">
-                                  {formatWeight(item.received_quantity || 0)}
+                                <span className="font-bold text-slate-800">
+                                  {formatWeight(
+                                    bulkMode === 'RECEIVE'
+                                      ? (item.received_quantity || item.ready_quantity || item.ordered_quantity)
+                                      : (item.ready_quantity || item.ordered_quantity)
+                                  )}
                                 </span>
                               )}
                             </td>
@@ -2346,22 +2679,28 @@ const STANDARD_ORIGINS = [
               </div>
 
               {/* Total Summary */}
-              {bulkMode === 'RECEIVE' && (
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="font-semibold text-slate-600">Total Bulk Quantity to Receive:</span>
-                  <span className="font-bold font-mono text-sm text-blue-700">
-                    {formatWeight(
-                      selectedItemIds.reduce((sum, itemId) => {
-                        const it = po.items?.find(i => i.id === itemId);
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="font-semibold text-slate-600">
+                  {bulkMode === 'READY' && 'Total Bulk Ready Quantity:'}
+                  {bulkMode === 'SHIP' && 'Total Weight to Dispatch:'}
+                  {bulkMode === 'RECEIVE' && 'Total Quantity to Receive at Yard:'}
+                  {bulkMode === 'UPDATE' && 'Total Selected Items Weight:'}
+                </span>
+                <span className="font-bold font-mono text-sm text-blue-700">
+                  {formatWeight(
+                    selectedItemIds.reduce((sum, itemId) => {
+                      const it = po.items?.find(i => i.id === itemId);
+                      if (bulkMode === 'READY') {
                         const val = bulkItemQuantities[itemId] !== undefined 
                           ? bulkItemQuantities[itemId] 
                           : (it?.actionable_pending_qty ?? it?.balance_quantity ?? it?.ordered_quantity ?? 0);
                         return sum + (Number(val) || 0);
-                      }, 0)
-                    )}
-                  </span>
-                </div>
-              )}
+                      }
+                      return sum + (Number(it?.ready_quantity || it?.ordered_quantity) || 0);
+                    }, 0)
+                  )}
+                </span>
+              </div>
 
               {bulkError && (
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
@@ -2382,9 +2721,25 @@ const STANDARD_ORIGINS = [
                 <button
                   type="submit"
                   disabled={isSubmittingBulk}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50"
+                  className={`px-5 py-2 text-white font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50 ${
+                    bulkMode === 'READY'
+                      ? 'bg-blue-600 hover:bg-blue-700'
+                      : bulkMode === 'SHIP'
+                      ? 'bg-indigo-600 hover:bg-indigo-700'
+                      : bulkMode === 'RECEIVE'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-slate-800 hover:bg-slate-900'
+                  }`}
                 >
-                  {isSubmittingBulk ? 'Processing...' : bulkMode === 'RECEIVE' ? 'Record Bulk Receipt' : 'Save Bulk Changes'}
+                  {isSubmittingBulk 
+                    ? 'Processing...' 
+                    : bulkMode === 'READY'
+                    ? 'Record Ready to Ship'
+                    : bulkMode === 'SHIP'
+                    ? 'Confirm Maritime Dispatch (In Transit)'
+                    : bulkMode === 'RECEIVE'
+                    ? 'Confirm Physical Yard Receipt'
+                    : 'Save Bulk Changes'}
                 </button>
               </div>
             </form>

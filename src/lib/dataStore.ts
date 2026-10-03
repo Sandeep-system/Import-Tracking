@@ -199,7 +199,7 @@ class Store {
     );
   }
 
-  private save(options: { skipAutoSync?: boolean } = {}) {
+  public save(options: { skipAutoSync?: boolean } = {}) {
     if (typeof window !== 'undefined') {
       try {
         // Build a compact payload for localStorage to strictly respect the 5MB browser quota

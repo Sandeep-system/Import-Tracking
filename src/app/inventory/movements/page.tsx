@@ -10,12 +10,29 @@ import * as XLSX from 'xlsx';
 export default function MovementsPage() {
   const transactions = dataStore.getInventoryTransactions();
   const [search, setSearch] = useState('');
+  const [selectedType, setSelectedType] = useState('ALL');
 
-  const filtered = transactions.filter(t => 
-    t.lot_number?.toLowerCase().includes(search.toLowerCase()) ||
-    t.transaction_type.toLowerCase().includes(search.toLowerCase()) ||
-    t.reference_display?.toLowerCase().includes(search.toLowerCase())
-  );
+  // Derive unique transaction types
+  const uniqueTypes = React.useMemo(() => {
+    const set = new Set(transactions.map(t => t.transaction_type).filter(Boolean));
+    return Array.from(set).sort();
+  }, [transactions]);
+
+  const filtered = transactions.filter(t => {
+    if (selectedType !== 'ALL' && t.transaction_type !== selectedType) {
+      return false;
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      return (
+        t.lot_number?.toLowerCase().includes(q) ||
+        t.transaction_type.toLowerCase().includes(q) ||
+        t.reference_display?.toLowerCase().includes(q) ||
+        t.remarks?.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
 
   const handleExport = () => {
     const exportData = filtered.map(t => ({
@@ -48,17 +65,43 @@ export default function MovementsPage() {
         </button>
       </div>
 
-      <div className="bg-white p-3.5 rounded-xl border border-slate-200 card-shadow flex items-center justify-between gap-3 text-xs">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search transactions by lot, type, reference..."
-            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
-          />
+      <div className="bg-white p-3.5 rounded-xl border border-slate-200 card-shadow flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
+          <div className="relative flex-1 max-w-sm min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search transactions by lot, type, reference..."
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            />
+          </div>
+
+          <select
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700"
+          >
+            <option value="ALL">All Movement Types</option>
+            {uniqueTypes.map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+
+          {(search || selectedType !== 'ALL') && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setSelectedType('ALL');
+              }}
+              className="text-xs text-blue-600 hover:text-blue-800 font-semibold"
+            >
+              Reset Filters
+            </button>
+          )}
         </div>
+
         <span className="text-slate-600 font-medium">
           Total Movements: <strong className="text-slate-900">{filtered.length}</strong>
         </span>
