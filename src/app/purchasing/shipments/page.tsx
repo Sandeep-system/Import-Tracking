@@ -35,6 +35,31 @@ import { IncomingStockItem, PurchaseOrder, PurchaseOrderItem } from '@/types';
 import { formatDate, formatWeight, getEtaStatus, getStatusBadgeClass, cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
+export type ShipmentStage = 'Pending' | 'Ready' | 'In Transit' | 'Received';
+
+export interface UnifiedShipmentItem {
+  id: string;
+  lot_number: string;
+  linked_po_number?: string | null;
+  supplier: string;
+  make?: string | null;
+  grade?: string;
+  dimensions?: string;
+  weight: number;
+  port: string;
+  date_of_shipment?: string | null;
+  eta_seaport?: string | null;
+  heat_no?: string | null;
+  sims?: string | null;
+  delivery_terms?: string | null;
+  payment_terms?: string | null;
+  customer?: string | null;
+  status: ShipmentStage;
+  rawIncoming?: IncomingStockItem;
+  rawPo?: PurchaseOrder;
+  rawItem?: PurchaseOrderItem;
+}
+
 function ShipmentsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -52,6 +77,7 @@ function ShipmentsContent() {
   const [selectedPort, setSelectedPort] = useState(initialPort);
   const [selectedSupplier, setSelectedSupplier] = useState('ALL');
   const [selectedTerms, setSelectedTerms] = useState('ALL');
+  const [selectedShipmentStatus, setSelectedShipmentStatus] = useState<string>('ALL');
 
   // Tab 3: Lot-Wise Shipment Tracking & View Controls
   const [ordersViewMode, setOrdersViewMode] = useState<'lots' | 'pos'>('lots');
@@ -68,8 +94,8 @@ function ShipmentsContent() {
   } | null>(null);
 
   // Inspection & Receive Modals
-  const [inspectingItem, setInspectingItem] = useState<IncomingStockItem | null>(null);
-  const [receivingItem, setReceivingItem] = useState<IncomingStockItem | null>(null);
+  const [inspectingItem, setInspectingItem] = useState<UnifiedShipmentItem | null>(null);
+  const [receivingItem, setReceivingItem] = useState<UnifiedShipmentItem | null>(null);
   const [receiptDate, setReceiptDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [warehouseLocation, setWarehouseLocation] = useState('Nhava Sheva Yard');
   const [isReceivingSuccess, setIsReceivingSuccess] = useState(false);
@@ -93,47 +119,264 @@ function ShipmentsContent() {
     if (searchParam) {
       setSearch(searchParam);
     }
+    const statusParam = searchParams.get('status');
+    if (statusParam) {
+      setSelectedShipmentStatus(statusParam);
+    }
   }, [searchParams]);
 
   // Data Fetching
   const summary = useMemo(() => dataStore.getIncomingStockSummary(), [dataVersion]);
-  
-  const inTransitItems = useMemo(() => {
-    return dataStore.getIncomingStock({
-      status: 'IN_TRANSIT',
-      search,
-      port: selectedPort === 'ALL' ? undefined : selectedPort,
-      supplier: selectedSupplier === 'ALL' ? undefined : selectedSupplier,
-    });
-  }, [search, selectedPort, selectedSupplier, dataVersion]);
-
-  // Further filter by terms
-  const filteredShipments = useMemo(() => {
-    if (selectedTerms === 'ALL') return inTransitItems;
-    return inTransitItems.filter(i => (i.delivery_terms || '').toUpperCase() === selectedTerms.toUpperCase());
-  }, [inTransitItems, selectedTerms]);
-
-  // Unique ports and suppliers for dropdowns
   const allIncoming = useMemo(() => dataStore.getIncomingStock(), [dataVersion]);
-  const uniquePorts = useMemo(() => {
-    const set = new Set(allIncoming.map(i => i.port).filter(Boolean) as string[]);
-    return Array.from(set).sort();
-  }, [allIncoming]);
 
-  const uniqueSuppliers = useMemo(() => {
-    const set = new Set(allIncoming.map(i => i.supplier).filter(Boolean) as string[]);
-    return Array.from(set).sort();
-  }, [allIncoming]);
-
-  const uniqueTerms = useMemo(() => {
-    const set = new Set(allIncoming.map(i => (i.delivery_terms || '').toUpperCase()).filter(Boolean));
-    return Array.from(set).sort();
-  }, [allIncoming]);
-
-  // Active POs for Orders Tab
+  // Active POs for Orders Tab and Unified Shipments
   const activePOs = useMemo(() => {
     return dataStore.getPurchaseOrders().filter(p => !p.is_closed);
   }, [dataVersion]);
+
+  // Unified Shipments synthesizing incoming stock and contract PO lots across 4 stages: Pending, Ready, In Transit, Received
+  const allUnifiedShipments = useMemo(() => {
+    const list: UnifiedShipmentItem[] = [];
+    const matchedPoItemIds = new Set<string>();
+    const matchedPoLotKeys = new Set<string>();
+
+    // 1. Process all incomingStock items
+    for (const inc of allIncoming) {
+      let matchedPo: PurchaseOrder | undefined;
+      let matchedItem: PurchaseOrderItem | undefined;
+
+      if (inc.linked_po_number) {
+        matchedPo = activePOs.find(p => p.po_number === inc.linked_po_number || p.id === inc.linked_po_id);
+        if (matchedPo && matchedPo.items) {
+          matchedItem = matchedPo.items.find(pi => 
+            (inc.lot_number && pi.lot_number?.trim() === inc.lot_number.trim()) ||
+            inc.id.includes(pi.id)
+          ) || matchedPo.items[0];
+        }
+      } else if (inc.lot_number) {
+        for (const po of activePOs) {
+          const pi = po.items?.find(item => item.lot_number?.trim() === inc.lot_number.trim());
+          if (pi) {
+            matchedPo = po;
+            matchedItem = pi;
+            break;
+          }
+        }
+      }
+
+      if (matchedItem) {
+        matchedPoItemIds.add(matchedItem.id);
+        if (matchedPo) {
+          matchedPoLotKeys.add(`${matchedPo.po_number}-${matchedItem.line_number}`);
+          if (matchedItem.lot_number) {
+            matchedPoLotKeys.add(matchedItem.lot_number.trim());
+          }
+        }
+      }
+
+      // Determine shipment status
+      let stage: ShipmentStage = 'In Transit';
+      if (inc.received_status === 'RECEIVED') {
+        stage = 'Received';
+      } else if (matchedItem) {
+        if (matchedItem.status === 'Received' || matchedItem.status === 'Closed — Fully Received') {
+          stage = 'Received';
+        } else if (matchedItem.status === 'Ready to Ship') {
+          stage = 'Ready';
+        } else if (matchedItem.status === 'Open') {
+          stage = 'Pending';
+        } else {
+          stage = 'In Transit';
+        }
+      } else {
+        stage = 'In Transit';
+      }
+
+      list.push({
+        id: inc.id,
+        lot_number: inc.lot_number || `LOT-${inc.linked_po_number || 'TR'}`,
+        linked_po_number: inc.linked_po_number || matchedPo?.po_number || null,
+        supplier: inc.supplier || matchedPo?.supplier_name || 'Standard Supplier',
+        make: inc.make || matchedPo?.origin || matchedPo?.origin_make_name || null,
+        grade: inc.grade || matchedItem?.grade_code || 'Standard Grade',
+        dimensions: [inc.dia_w ? `DIA ${inc.dia_w}` : '', inc.t ? `T${inc.t}` : '', inc.l ? `L${inc.l}` : ''].filter(Boolean).join(' × '),
+        weight: Number(inc.weight) || Number(matchedItem?.ready_quantity ?? matchedItem?.received_quantity ?? matchedItem?.ordered_quantity ?? 0),
+        port: inc.port || matchedItem?.destination_port || matchedPo?.destination || 'N.S.',
+        date_of_shipment: inc.date_of_shipment || matchedItem?.date_of_shipment || null,
+        eta_seaport: inc.eta_seaport || matchedItem?.eta_seaport || matchedPo?.expected_delivery_date || null,
+        heat_no: inc.heat_no || matchedItem?.heat_no || null,
+        sims: inc.sims || matchedItem?.sims || null,
+        delivery_terms: inc.delivery_terms || matchedItem?.delivery_terms || matchedPo?.delivery_terms || 'FOB',
+        payment_terms: inc.payment_terms || matchedItem?.payment_terms || matchedPo?.payment_terms || 'DP at sight',
+        customer: inc.customer || matchedPo?.customer_name || null,
+        status: stage,
+        rawIncoming: inc,
+        rawPo: matchedPo,
+        rawItem: matchedItem
+      });
+    }
+
+    // 2. Process active PO items not yet present in incomingStock
+    for (const po of activePOs) {
+      if (!po.items) continue;
+      for (const item of po.items) {
+        if (matchedPoItemIds.has(item.id)) continue;
+        const lotNo = item.lot_number?.trim() || `LOT-${po.po_number}-${item.line_number}`;
+        if (matchedPoLotKeys.has(lotNo)) continue;
+        if (matchedPoLotKeys.has(`${po.po_number}-${item.line_number}`)) continue;
+
+        let stage: ShipmentStage = 'Pending';
+        if (item.status === 'Ready to Ship') {
+          stage = 'Ready';
+        } else if (item.status === 'In Transit') {
+          stage = 'In Transit';
+        } else if (item.status === 'Received' || item.status === 'Closed — Fully Received') {
+          stage = 'Received';
+        } else {
+          stage = 'Pending';
+        }
+
+        const dimStr = [
+          item.diameter_width ? `DIA ${item.diameter_width}` : '',
+          item.thickness ? `T${item.thickness}` : '',
+          item.length ? `L${item.length}` : ''
+        ].filter(Boolean).join(' × ');
+
+        list.push({
+          id: `po-ship-${po.id}-${item.id || item.line_number}`,
+          lot_number: lotNo,
+          linked_po_number: po.po_number,
+          supplier: po.supplier_name || 'Standard Supplier',
+          make: po.origin || po.origin_make_name || null,
+          grade: item.grade_code,
+          dimensions: dimStr,
+          weight: Number(item.ready_quantity ?? item.received_quantity ?? item.ordered_quantity ?? 0),
+          port: item.destination_port || po.destination || 'N.S.',
+          date_of_shipment: item.date_of_shipment || null,
+          eta_seaport: item.eta_seaport || po.expected_delivery_date || null,
+          heat_no: item.heat_no || null,
+          sims: item.sims || null,
+          delivery_terms: item.delivery_terms || po.delivery_terms || 'FOB',
+          payment_terms: item.payment_terms || po.payment_terms || 'DP at sight',
+          customer: po.customer_name || null,
+          status: stage,
+          rawPo: po,
+          rawItem: item
+        });
+      }
+    }
+
+    return list;
+  }, [allIncoming, activePOs]);
+
+  // Counts across all 4 shipment stages
+  const statusCounts = useMemo(() => {
+    let pending = 0;
+    let ready = 0;
+    let inTransit = 0;
+    let received = 0;
+    for (const s of allUnifiedShipments) {
+      if (s.status === 'Pending') pending++;
+      else if (s.status === 'Ready') ready++;
+      else if (s.status === 'In Transit') inTransit++;
+      else if (s.status === 'Received') received++;
+    }
+    return { pending, ready, inTransit, received, total: allUnifiedShipments.length };
+  }, [allUnifiedShipments]);
+
+  // Filtered shipments based on status, port, supplier, terms, search
+  const filteredShipments = useMemo(() => {
+    return allUnifiedShipments.filter(item => {
+      // Status filter
+      if (selectedShipmentStatus !== 'ALL' && item.status.toUpperCase() !== selectedShipmentStatus.toUpperCase()) {
+        return false;
+      }
+      // Port filter
+      if (selectedPort !== 'ALL' && (item.port || '').toLowerCase() !== selectedPort.toLowerCase()) {
+        return false;
+      }
+      // Supplier filter
+      if (selectedSupplier !== 'ALL' && (item.supplier || '').toLowerCase() !== selectedSupplier.toLowerCase()) {
+        return false;
+      }
+      // Delivery terms filter
+      if (selectedTerms !== 'ALL' && (item.delivery_terms || '').toUpperCase() !== selectedTerms.toUpperCase()) {
+        return false;
+      }
+      // Search filter
+      if (search.trim()) {
+        const q = search.toLowerCase().trim();
+        const matchLot = item.lot_number.toLowerCase().includes(q);
+        const matchPo = (item.linked_po_number || '').toLowerCase().includes(q);
+        const matchSupplier = item.supplier.toLowerCase().includes(q);
+        const matchPort = (item.port || '').toLowerCase().includes(q);
+        const matchStatus = item.status.toLowerCase().includes(q);
+        if (!matchLot && !matchPo && !matchSupplier && !matchPort && !matchStatus) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [allUnifiedShipments, selectedShipmentStatus, selectedPort, selectedSupplier, selectedTerms, search]);
+
+  // Unique ports, suppliers, and terms for dropdowns
+  const uniquePorts = useMemo(() => {
+    const set = new Set(allUnifiedShipments.map(i => i.port).filter(Boolean) as string[]);
+    return Array.from(set).sort();
+  }, [allUnifiedShipments]);
+
+  const uniqueSuppliers = useMemo(() => {
+    const set = new Set(allUnifiedShipments.map(i => i.supplier).filter(Boolean) as string[]);
+    return Array.from(set).sort();
+  }, [allUnifiedShipments]);
+
+  const uniqueTerms = useMemo(() => {
+    const set = new Set(allUnifiedShipments.map(i => (i.delivery_terms || '').toUpperCase()).filter(Boolean));
+    return Array.from(set).sort();
+  }, [allUnifiedShipments]);
+
+  // Status Badge Renderer Helper
+  const renderShipmentStatusBadge = (status: ShipmentStage | string) => {
+    const norm = String(status).toLowerCase();
+    if (norm === 'pending' || norm === 'open') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
+          <Clock className="h-3 w-3 text-slate-500" />
+          <span>Pending</span>
+        </span>
+      );
+    }
+    if (norm === 'ready' || norm === 'ready to ship') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+          <PackageCheck className="h-3 w-3 text-blue-600" />
+          <span>Ready</span>
+        </span>
+      );
+    }
+    if (norm === 'in transit') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+          <Ship className="h-3 w-3 text-indigo-600" />
+          <span>In Transit</span>
+        </span>
+      );
+    }
+    if (norm === 'received') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+          <span>Received</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+        <span>{status}</span>
+      </span>
+    );
+  };
+
 
   // Compute all individual lots across active POs for Lot-Wise Shipment Tracking
   const allPoLots = useMemo(() => {
@@ -245,22 +488,54 @@ function ShipmentsContent() {
   // Mark Received Handler
   const handleConfirmReceive = () => {
     if (receivingItem) {
-      const res = dataStore.markIncomingStockReceived(receivingItem.id, {
-        receipt_date: receiptDate,
-        location: warehouseLocation
-      });
-
-      if (res.success) {
-        setIsReceivingSuccess(true);
-        setTimeout(() => {
-          setIsReceivingSuccess(false);
-          setReceivingItem(null);
-          setDataVersion(v => v + 1);
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new Event('app:data-updated'));
-          }
-        }, 1000);
+      if (receivingItem.rawIncoming) {
+        dataStore.markIncomingStockReceived(receivingItem.rawIncoming.id, {
+          receipt_date: receiptDate,
+          location: warehouseLocation
+        });
       }
+      if (receivingItem.rawPo && receivingItem.rawItem) {
+        dataStore.markItemReceived({
+          poIdOrNumber: receivingItem.rawPo.id,
+          itemId: receivingItem.rawItem.id,
+          receiptDate: receiptDate,
+          warehouseLocation: warehouseLocation,
+        });
+      } else if (receivingItem.linked_po_number) {
+        const po = dataStore.getPurchaseOrders().find(p => p.po_number === receivingItem.linked_po_number);
+        const item = po?.items?.find(it => (receivingItem.lot_number && it.lot_number === receivingItem.lot_number) || receivingItem.id.includes(it.id));
+        if (po && item) {
+          dataStore.markItemReceived({
+            poIdOrNumber: po.id,
+            itemId: item.id,
+            receiptDate: receiptDate,
+            warehouseLocation: warehouseLocation,
+          });
+        }
+      }
+      // Also sync matching incoming stock if not already processed via rawIncoming
+      if (!receivingItem.rawIncoming) {
+        const matchInc = dataStore.getIncomingStock().find(i => 
+          (receivingItem.lot_number && i.lot_number === receivingItem.lot_number) ||
+          (receivingItem.linked_po_number && i.linked_po_number === receivingItem.linked_po_number)
+        );
+        if (matchInc) {
+          dataStore.markIncomingStockReceived(matchInc.id, {
+            receipt_date: receiptDate,
+            location: warehouseLocation,
+          });
+        }
+      }
+
+      setIsReceivingSuccess(true);
+      setTimeout(() => {
+        setIsReceivingSuccess(false);
+        setReceivingItem(null);
+        setDataVersion(v => v + 1);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('app:data-updated'));
+        }
+      }, 1000);
     } else if (receivingPoLot) {
       dataStore.markItemReceived({
         poIdOrNumber: receivingPoLot.po.id,
@@ -313,16 +588,11 @@ function ShipmentsContent() {
         'Lot Number': l.lotNumber,
         'PO Number': `PO ${l.poNumber}`,
         'Supplier': l.supplierName,
-        'Steel Grade': l.gradeCode,
-        'Section': l.sectionName,
-        'Dimensions': l.dimensions,
+        'Shipment Status': l.status,
         'Ordered Qty (KG)': l.orderedQty,
         'Ready / Recd Qty (KG)': l.readyQty,
-        'Shipment Status': l.status,
         'Date of Shipment': l.dateOfShipment || '—',
         'Sea Port ETA': l.etaSeaport || '—',
-        'Heat Number': l.heatNo || '—',
-        'SIMS': l.sims || '—',
         'Discharge Port': l.port,
         'Delivery Terms': l.deliveryTerms,
         'Payment Terms': l.paymentTerms
@@ -334,20 +604,16 @@ function ShipmentsContent() {
     } else {
       const exportRows = filteredShipments.map(i => ({
         'Lot Number': i.lot_number,
-        'Linked PO': i.linked_po_number || 'Direct Shipment',
-        'Make / Mill': i.make,
+        'Linked PO': i.linked_po_number ? `PO ${i.linked_po_number}` : 'Direct Cargo',
+        'Make / Mill': i.make || 'Standard',
         'Supplier': i.supplier,
-        'Steel Grade': i.grade,
-        'Condition': i.condition || '',
-        'Dimensions': [i.dia_w ? `DIA ${i.dia_w}` : '', i.t ? `T${i.t}` : '', i.l ? `L${i.l}` : ''].filter(Boolean).join(' x '),
+        'Shipment Status': i.status,
         'Weight (KG)': i.weight,
         'Port of Discharge': i.port || 'N.S.',
-        'Date of Shipment': i.date_of_shipment || '',
-        'Sea Port ETA': i.eta_seaport || '',
-        'Heat Number': i.heat_no || '',
-        'SIMS': i.sims || '',
-        'Delivery Terms': i.delivery_terms || '',
-        'Payment Terms': i.payment_terms || '',
+        'Date of Shipment': i.date_of_shipment || '—',
+        'Sea Port ETA': i.eta_seaport || '—',
+        'Delivery Terms': i.delivery_terms || 'FOB',
+        'Payment Terms': i.payment_terms || '—',
         'Customer': i.customer || ''
       }));
       const ws = XLSX.utils.json_to_sheet(exportRows);
@@ -515,9 +781,9 @@ function ShipmentsContent() {
               )}
             >
               <Ship className="h-3.5 w-3.5" />
-              <span>Active Shipments</span>
+              <span>Shipments</span>
               <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 text-blue-800 font-extrabold">
-                {summary.totalInTransitItems}
+                {allUnifiedShipments.length}
               </span>
             </button>
 
@@ -560,9 +826,43 @@ function ShipmentsContent() {
           </div>
         </div>
 
-        {/* TAB 1: ACTIVE INBOUND SHIPMENTS */}
+        {/* TAB 1: SHIPMENTS WITH 4-STAGE STATUS TRACKING */}
         {activeTab === 'shipments' && (
           <div>
+            {/* Quick Status Pill Bar */}
+            <div className="px-3.5 py-2 bg-slate-50/70 border-b border-slate-200 flex items-center gap-2 overflow-x-auto text-xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-1">Status:</span>
+              {(['ALL', 'Pending', 'Ready', 'In Transit', 'Received'] as const).map(st => {
+                const isSelected = selectedShipmentStatus === st;
+                const count = st === 'ALL' ? allUnifiedShipments.length :
+                  st === 'Pending' ? statusCounts.pending :
+                  st === 'Ready' ? statusCounts.ready :
+                  st === 'In Transit' ? statusCounts.inTransit : statusCounts.received;
+
+                return (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setSelectedShipmentStatus(st)}
+                    className={cn(
+                      "px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap",
+                      isSelected
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "bg-white text-slate-700 hover:bg-slate-200/80 border border-slate-200"
+                    )}
+                  >
+                    <span>{st === 'ALL' ? 'All Statuses' : st}</span>
+                    <span className={cn(
+                      "px-1.5 py-0.2 rounded-full text-[10px]",
+                      isSelected ? "bg-white/20 text-white font-extrabold" : "bg-slate-100 text-slate-800 font-bold"
+                    )}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Filter Toolbar */}
             <div className="p-3.5 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
@@ -573,7 +873,7 @@ function ShipmentsContent() {
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search lot, supplier, grade, heat #, SIMS, PO..."
+                    placeholder="Search lot, supplier, PO, port, status..."
                     className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                   {search && (
@@ -585,6 +885,19 @@ function ShipmentsContent() {
                     </button>
                   )}
                 </div>
+
+                {/* Status Dropdown */}
+                <select
+                  value={selectedShipmentStatus}
+                  onChange={(e) => setSelectedShipmentStatus(e.target.value)}
+                  className="py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="ALL">All Statuses ({allUnifiedShipments.length})</option>
+                  <option value="Pending">Pending ({statusCounts.pending})</option>
+                  <option value="Ready">Ready ({statusCounts.ready})</option>
+                  <option value="In Transit">In Transit ({statusCounts.inTransit})</option>
+                  <option value="Received">Received ({statusCounts.received})</option>
+                </select>
 
                 {/* Port Filter */}
                 <select
@@ -622,10 +935,11 @@ function ShipmentsContent() {
                   ))}
                 </select>
 
-                {(search || selectedPort !== 'ALL' || selectedSupplier !== 'ALL' || selectedTerms !== 'ALL') && (
+                {(search || selectedShipmentStatus !== 'ALL' || selectedPort !== 'ALL' || selectedSupplier !== 'ALL' || selectedTerms !== 'ALL') && (
                   <button
                     onClick={() => {
                       setSearch('');
+                      setSelectedShipmentStatus('ALL');
                       setSelectedPort('ALL');
                       setSelectedSupplier('ALL');
                       setSelectedTerms('ALL');
@@ -639,7 +953,7 @@ function ShipmentsContent() {
               </div>
 
               <div className="text-slate-500 font-medium">
-                Showing <strong className="text-slate-900">{filteredShipments.length}</strong> active tracking items
+                Showing <strong className="text-slate-900">{filteredShipments.length}</strong> shipment items
               </div>
             </div>
 
@@ -651,13 +965,11 @@ function ShipmentsContent() {
                     <th className="table-header">Lot Number</th>
                     <th className="table-header">Linked PO</th>
                     <th className="table-header">Supplier / Mill</th>
-                    <th className="table-header">Steel Grade</th>
-                    <th className="table-header">Dimensions (W x T x L)</th>
+                    <th className="table-header text-center">Status</th>
                     <th className="table-header text-right">Weight (KG)</th>
                     <th className="table-header">Discharge Port</th>
                     <th className="table-header">Shipment Date</th>
                     <th className="table-header">Port ETA & Countdown</th>
-                    <th className="table-header">Heat / SIMS</th>
                     <th className="table-header">Terms</th>
                     <th className="table-header text-right">Action</th>
                   </tr>
@@ -665,16 +977,15 @@ function ShipmentsContent() {
                 <tbody className="divide-y divide-slate-100">
                   {filteredShipments.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="py-12 text-center text-slate-400">
+                      <td colSpan={10} className="py-12 text-center text-slate-400">
                         <Ship className="h-8 w-8 mx-auto text-slate-300 mb-2" />
-                        <p className="font-semibold text-slate-600">No active shipments matching your filters.</p>
-                        <p className="text-[11px] text-slate-400 mt-1">Try resetting filters or mark a purchase order item as Shipped.</p>
+                        <p className="font-semibold text-slate-600">No shipments matching your filters.</p>
+                        <p className="text-[11px] text-slate-400 mt-1">Try resetting filters or adjusting search criteria.</p>
                       </td>
                     </tr>
                   ) : (
                     filteredShipments.map((item) => {
                       const etaInfo = getEtaStatus(item.eta_seaport);
-                      const dimStr = [item.dia_w ? `DIA ${item.dia_w}` : '', item.t ? `T${item.t}` : '', item.l ? `L${item.l}` : ''].filter(Boolean).join(' x ');
 
                       return (
                         <tr 
@@ -683,7 +994,7 @@ function ShipmentsContent() {
                           className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
                         >
                           <td className="table-cell">
-                            <span className="font-mono font-bold text-xs bg-slate-900 text-white px-2 py-0.5 rounded shadow-sm">
+                            <span className="font-mono font-bold text-xs bg-slate-900 text-white px-2 py-0.5 rounded shadow-2xs">
                               {item.lot_number}
                             </span>
                           </td>
@@ -706,8 +1017,9 @@ function ShipmentsContent() {
                               <span className="text-[10px] text-slate-400 block truncate max-w-[150px]">Mill: {item.make}</span>
                             )}
                           </td>
-                          <td className="table-cell font-bold text-slate-900">{item.grade}</td>
-                          <td className="table-cell font-mono text-slate-700">{dimStr || '—'}</td>
+                          <td className="table-cell text-center" onClick={(e) => e.stopPropagation()}>
+                            {renderShipmentStatusBadge(item.status)}
+                          </td>
                           <td className="table-cell text-right font-mono font-bold text-blue-700">
                             {formatWeight(item.weight)}
                           </td>
@@ -721,19 +1033,16 @@ function ShipmentsContent() {
                             {formatDate(item.date_of_shipment)}
                           </td>
                           <td className="table-cell">
-                            <div className="space-y-0.5">
-                              <span className="font-semibold text-slate-800 block">{formatDate(item.eta_seaport)}</span>
-                              <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] border ${etaInfo.color}`}>
-                                {etaInfo.text}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="table-cell">
-                            <div className="font-mono text-[11px]">
-                              {item.heat_no && <span className="block font-semibold text-slate-700">HT: {item.heat_no}</span>}
-                              {item.sims && <span className="text-[10px] text-slate-400 block">SIMS: {item.sims}</span>}
-                              {!item.heat_no && !item.sims && <span className="text-slate-400">—</span>}
-                            </div>
+                            {item.eta_seaport ? (
+                              <div className="space-y-0.5">
+                                <span className="font-semibold text-slate-800 block">{formatDate(item.eta_seaport)}</span>
+                                <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] border ${etaInfo.color}`}>
+                                  {etaInfo.text}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
                           </td>
                           <td className="table-cell">
                             <span className="font-semibold text-slate-800 block">{item.delivery_terms || 'FOB'}</span>
@@ -742,17 +1051,44 @@ function ShipmentsContent() {
                             )}
                           </td>
                           <td className="table-cell text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => {
-                                setReceivingItem(item);
-                                setWarehouseLocation(item.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
-                              }}
-                              className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1 ml-auto"
-                              title="Receive cargo arrival into warehouse inventory"
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                              <span>Receive</span>
-                            </button>
+                            {item.status === 'In Transit' && (
+                              <button
+                                onClick={() => {
+                                  setReceivingItem(item);
+                                  setWarehouseLocation(item.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                                }}
+                                className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1 ml-auto"
+                                title="Receive cargo arrival into warehouse inventory"
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                <span>Receive</span>
+                              </button>
+                            )}
+                            {item.status === 'Ready' && (
+                              <Link
+                                href={item.linked_po_number ? `/purchasing/purchase-orders/${item.linked_po_number}` : `/purchasing/purchase-orders`}
+                                className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] shadow-sm transition-colors inline-flex items-center gap-1 ml-auto"
+                                title="Open PO to record shipment details"
+                              >
+                                <Ship className="h-3.5 w-3.5" />
+                                <span>Ship Item →</span>
+                              </Link>
+                            )}
+                            {item.status === 'Pending' && (
+                              <Link
+                                href={item.linked_po_number ? `/purchasing/purchase-orders/${item.linked_po_number}` : `/purchasing/purchase-orders`}
+                                className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 border border-blue-200 font-bold text-[11px] shadow-2xs transition-colors inline-flex items-center gap-1 ml-auto"
+                                title="Open PO to mark item ready"
+                              >
+                                <PackagePlus className="h-3.5 w-3.5" />
+                                <span>Ready →</span>
+                              </Link>
+                            )}
+                            {item.status === 'Received' && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Received ✓
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -870,19 +1206,18 @@ function ShipmentsContent() {
                     <th className="table-header">Lot Number</th>
                     <th className="table-header">PO Number</th>
                     <th className="table-header">Supplier</th>
-                    <th className="table-header">Steel Grade</th>
+                    <th className="table-header text-center">Status</th>
                     <th className="table-header text-right">Weight (KG)</th>
                     <th className="table-header">Date of Shipment</th>
                     <th className="table-header">Sea Port ETA</th>
                     <th className="table-header">Arrival Status</th>
-                    <th className="table-header">Heat / SIMS</th>
                     <th className="table-header text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredShipments.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-8 text-center text-slate-400">
+                      <td colSpan={9} className="py-8 text-center text-slate-400">
                         No shipments found for port {selectedPort}.
                       </td>
                     </tr>
@@ -890,7 +1225,7 @@ function ShipmentsContent() {
                     filteredShipments.map((item) => {
                       const etaInfo = getEtaStatus(item.eta_seaport);
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50">
+                        <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                           <td className="table-cell font-mono font-bold text-slate-900">{item.lot_number}</td>
                           <td className="table-cell">
                             {item.linked_po_number ? (
@@ -905,7 +1240,9 @@ function ShipmentsContent() {
                             )}
                           </td>
                           <td className="table-cell font-medium text-slate-800">{item.supplier}</td>
-                          <td className="table-cell font-bold text-slate-900">{item.grade}</td>
+                          <td className="table-cell text-center">
+                            {renderShipmentStatusBadge(item.status)}
+                          </td>
                           <td className="table-cell text-right font-mono font-bold text-blue-700">
                             {formatWeight(item.weight)}
                           </td>
@@ -916,20 +1253,42 @@ function ShipmentsContent() {
                               {etaInfo.text}
                             </span>
                           </td>
-                          <td className="table-cell font-mono text-[11px] text-slate-600">
-                            {item.heat_no ? `HT: ${item.heat_no}` : item.sims ? `SIMS: ${item.sims}` : '—'}
-                          </td>
-                          <td className="table-cell text-right">
-                            <button
-                              onClick={() => {
-                                setReceivingItem(item);
-                                setWarehouseLocation(item.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
-                              }}
-                              className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors ml-auto flex items-center gap-1"
-                            >
-                              <CheckCircle2 className="h-3 w-3" />
-                              <span>Receive</span>
-                            </button>
+                          <td className="table-cell text-right whitespace-nowrap">
+                            {item.status === 'In Transit' && (
+                              <button
+                                onClick={() => {
+                                  setReceivingItem(item);
+                                  setWarehouseLocation(item.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                                }}
+                                className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors ml-auto flex items-center gap-1"
+                              >
+                                <CheckCircle2 className="h-3 w-3" />
+                                <span>Receive</span>
+                              </button>
+                            )}
+                            {item.status === 'Ready' && (
+                              <Link
+                                href={item.linked_po_number ? `/purchasing/purchase-orders/${item.linked_po_number}` : `/purchasing/purchase-orders`}
+                                className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] transition-colors ml-auto inline-flex items-center gap-1"
+                              >
+                                <Ship className="h-3 w-3" />
+                                <span>Ship</span>
+                              </Link>
+                            )}
+                            {item.status === 'Pending' && (
+                              <Link
+                                href={item.linked_po_number ? `/purchasing/purchase-orders/${item.linked_po_number}` : `/purchasing/purchase-orders`}
+                                className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200 font-bold text-[11px] transition-colors ml-auto inline-flex items-center gap-1"
+                              >
+                                <PackagePlus className="h-3 w-3" />
+                                <span>Ready</span>
+                              </Link>
+                            )}
+                            {item.status === 'Received' && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                <CheckCircle2 className="h-3 w-3" /> Received ✓
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -1081,13 +1440,10 @@ function ShipmentsContent() {
                       <th className="table-header">Lot Number</th>
                       <th className="table-header">PO Number</th>
                       <th className="table-header">Supplier</th>
-                      <th className="table-header">Steel Grade & Section</th>
-                      <th className="table-header">Dimensions</th>
+                      <th className="table-header text-center">Status</th>
                       <th className="table-header text-right">Weight (KG)</th>
-                      <th className="table-header text-center">Shipment Status</th>
                       <th className="table-header">Date of Shipment</th>
                       <th className="table-header">Port ETA & Countdown</th>
-                      <th className="table-header">Heat / SIMS</th>
                       <th className="table-header">Port & Terms</th>
                       <th className="table-header text-right">Action</th>
                     </tr>
@@ -1095,7 +1451,7 @@ function ShipmentsContent() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredPoLots.length === 0 ? (
                       <tr>
-                        <td colSpan={12} className="py-12 text-center text-slate-400">
+                        <td colSpan={9} className="py-12 text-center text-slate-400">
                           <Package className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                           <p className="font-semibold text-slate-600">No lots found matching your filters.</p>
                           <p className="text-[11px] text-slate-400 mt-1">Try clearing filters or search criteria.</p>
@@ -1129,12 +1485,8 @@ function ShipmentsContent() {
                                 {lot.supplierName}
                               </span>
                             </td>
-                            <td className="table-cell">
-                              <strong className="text-slate-900 block font-bold">{lot.gradeCode}</strong>
-                              <span className="text-[10px] text-slate-500 font-medium">{lot.sectionName}</span>
-                            </td>
-                            <td className="table-cell font-mono text-slate-700 text-[11px]">
-                              {lot.dimensions}
+                            <td className="table-cell text-center">
+                              {renderShipmentStatusBadge(lot.status)}
                             </td>
                             <td className="table-cell text-right">
                               <span className="font-mono font-bold text-blue-700 block">
@@ -1143,18 +1495,6 @@ function ShipmentsContent() {
                               {lot.readyQty > 0 && lot.readyQty !== lot.orderedQty && (
                                 <span className="text-[10px] text-slate-400 block">Ord: {formatWeight(lot.orderedQty)}</span>
                               )}
-                            </td>
-                            <td className="table-cell text-center">
-                              <span className={cn(
-                                "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border tracking-wide uppercase",
-                                getStatusBadgeClass(lot.status)
-                              )}>
-                                {lot.status === 'In Transit' && <Ship className="h-3 w-3 text-indigo-600" />}
-                                {lot.status === 'Ready to Ship' && <PackageCheck className="h-3 w-3 text-amber-600" />}
-                                {lot.status === 'Open' && <Clock className="h-3 w-3 text-slate-500" />}
-                                {lot.status === 'Received' && <CheckCircle2 className="h-3 w-3 text-emerald-600" />}
-                                <span>{lot.status}</span>
-                              </span>
                             </td>
                             <td className="table-cell text-slate-600">
                               {formatDate(lot.dateOfShipment)}
@@ -1170,11 +1510,6 @@ function ShipmentsContent() {
                               ) : (
                                 <span className="text-slate-400">—</span>
                               )}
-                            </td>
-                            <td className="table-cell font-mono text-[11px]">
-                              {lot.heatNo && <span className="block font-semibold text-slate-700">HT: {lot.heatNo}</span>}
-                              {lot.sims && <span className="text-[10px] text-slate-400 block">SIMS: {lot.sims}</span>}
-                              {!lot.heatNo && !lot.sims && <span className="text-slate-400">—</span>}
                             </td>
                             <td className="table-cell">
                               <span className="inline-flex items-center gap-1 font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[11px]">
@@ -1364,13 +1699,10 @@ function ShipmentsContent() {
                                     <thead>
                                       <tr className="border-b border-slate-100 text-[10px] text-slate-500 uppercase">
                                         <th className="py-1.5">Line / Lot</th>
-                                        <th className="py-1.5">Steel Grade</th>
-                                        <th className="py-1.5">Dimensions</th>
+                                        <th className="py-1.5 text-center">Status</th>
                                         <th className="py-1.5 text-right">Cargo Weight</th>
-                                        <th className="py-1.5 text-center">Lot Status</th>
                                         <th className="py-1.5">Shipment Date</th>
                                         <th className="py-1.5">Sea Port ETA</th>
-                                        <th className="py-1.5">Heat / SIMS</th>
                                         <th className="py-1.5 text-right">Action</th>
                                       </tr>
                                     </thead>
@@ -1382,24 +1714,14 @@ function ShipmentsContent() {
                                               {lot.lotNumber}
                                             </span>
                                           </td>
-                                          <td className="py-2 font-bold text-slate-900">{lot.gradeCode}</td>
-                                          <td className="py-2 font-mono text-[11px] text-slate-600">{lot.dimensions}</td>
+                                          <td className="py-2 text-center">
+                                            {renderShipmentStatusBadge(lot.status)}
+                                          </td>
                                           <td className="py-2 text-right font-mono font-bold text-blue-700">
                                             {formatWeight(lot.readyQty > 0 ? lot.readyQty : lot.orderedQty)}
                                           </td>
-                                          <td className="py-2 text-center">
-                                            <span className={cn(
-                                              "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase",
-                                              getStatusBadgeClass(lot.status)
-                                            )}>
-                                              {lot.status}
-                                            </span>
-                                          </td>
                                           <td className="py-2 text-slate-600">{formatDate(lot.dateOfShipment)}</td>
                                           <td className="py-2 font-semibold text-slate-800">{formatDate(lot.etaSeaport)}</td>
-                                          <td className="py-2 font-mono text-[11px] text-slate-600">
-                                            {lot.heatNo ? `HT: ${lot.heatNo}` : lot.sims ? `SIMS: ${lot.sims}` : '—'}
-                                          </td>
                                           <td className="py-2 text-right">
                                             {lot.status === 'In Transit' ? (
                                               <button
@@ -1457,11 +1779,14 @@ function ShipmentsContent() {
                   <Ship className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    Shipment Item: Lot {inspectingItem.lot_number}
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-slate-900">
+                      Shipment Item: Lot {inspectingItem.lot_number}
+                    </h2>
+                    {renderShipmentStatusBadge(inspectingItem.status)}
+                  </div>
                   <p className="text-xs text-slate-500">
-                    {inspectingItem.grade} • {inspectingItem.supplier}
+                    {inspectingItem.supplier} • Port {inspectingItem.port || 'N.S.'}
                   </p>
                 </div>
               </div>
@@ -1472,28 +1797,28 @@ function ShipmentsContent() {
 
             <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
               <div>
-                <span className="text-slate-400 block text-[10px] font-semibold">Make / Mill</span>
-                <span className="font-bold text-slate-800">{inspectingItem.make || 'Standard'}</span>
+                <span className="text-slate-400 block text-[10px] font-semibold">Shipment Status</span>
+                <span className="font-bold text-slate-800">{inspectingItem.status}</span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] font-semibold">Cargo Weight</span>
                 <span className="font-mono font-bold text-blue-700 text-sm">{formatWeight(inspectingItem.weight)}</span>
               </div>
               <div>
+                <span className="text-slate-400 block text-[10px] font-semibold">Linked PO</span>
+                <span className="font-bold text-blue-600">{inspectingItem.linked_po_number ? `PO ${inspectingItem.linked_po_number}` : 'Direct Cargo'}</span>
+              </div>
+              <div>
                 <span className="text-slate-400 block text-[10px] font-semibold">Port of Discharge</span>
                 <span className="font-semibold text-slate-800">{inspectingItem.port || 'N.S.'}</span>
               </div>
               <div>
+                <span className="text-slate-400 block text-[10px] font-semibold">Date of Shipment</span>
+                <span className="font-semibold text-slate-800">{formatDate(inspectingItem.date_of_shipment)}</span>
+              </div>
+              <div>
                 <span className="text-slate-400 block text-[10px] font-semibold">Vessel ETA</span>
                 <span className="font-semibold text-slate-800">{formatDate(inspectingItem.eta_seaport)}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[10px] font-semibold">Heat Number</span>
-                <span className="font-mono font-bold text-slate-800">{inspectingItem.heat_no || '—'}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[10px] font-semibold">SIMS Registration</span>
-                <span className="font-mono text-slate-700">{inspectingItem.sims || '—'}</span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] font-semibold">Delivery Terms</span>
@@ -1503,6 +1828,12 @@ function ShipmentsContent() {
                 <span className="text-slate-400 block text-[10px] font-semibold">Payment Terms</span>
                 <span className="font-semibold text-slate-800">{inspectingItem.payment_terms || '—'}</span>
               </div>
+              {inspectingItem.make && (
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-semibold">Make / Mill</span>
+                  <span className="font-bold text-slate-800">{inspectingItem.make}</span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -1513,18 +1844,36 @@ function ShipmentsContent() {
               >
                 Close
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const it = inspectingItem;
-                  setInspectingItem(null);
-                  setReceivingItem(it);
-                  setWarehouseLocation(it.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
-                }}
-                className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm"
-              >
-                Receive into Yard
-              </button>
+              {inspectingItem.status === 'In Transit' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const it = inspectingItem;
+                    setInspectingItem(null);
+                    setReceivingItem(it);
+                    setWarehouseLocation(it.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm"
+                >
+                  Receive into Yard
+                </button>
+              )}
+              {inspectingItem.status === 'Ready' && inspectingItem.linked_po_number && (
+                <Link
+                  href={`/purchasing/purchase-orders/${inspectingItem.linked_po_number}`}
+                  className="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm"
+                >
+                  Ship Item →
+                </Link>
+              )}
+              {inspectingItem.status === 'Pending' && inspectingItem.linked_po_number && (
+                <Link
+                  href={`/purchasing/purchase-orders/${inspectingItem.linked_po_number}`}
+                  className="px-4 py-2 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-600 hover:text-white border border-blue-200 rounded-lg shadow-2xs"
+                >
+                  Ready →
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -1534,7 +1883,7 @@ function ShipmentsContent() {
       {(receivingItem || receivingPoLot) && (() => {
         const activeRec = receivingItem ? {
           lotNumber: receivingItem.lot_number,
-          grade: receivingItem.grade,
+          grade: receivingItem.grade || 'Standard Steel',
           weight: receivingItem.weight,
           supplier: receivingItem.supplier,
           port: receivingItem.port || 'N.S.',

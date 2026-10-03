@@ -31,9 +31,11 @@ export function formatDate(val?: string | null): string {
 export function getStatusBadgeClass(status?: string): string {
   switch (status?.toLowerCase()) {
     case "open":
-      return "bg-blue-50 text-blue-700 border-blue-200";
+    case "pending":
+      return "bg-slate-100 text-slate-700 border-slate-300 font-semibold";
+    case "ready":
     case "ready to ship":
-      return "bg-amber-50 text-amber-700 border-amber-200 font-semibold";
+      return "bg-blue-50 text-blue-700 border-blue-200 font-semibold";
     case "in transit":
       return "bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold";
     case "partially received":
