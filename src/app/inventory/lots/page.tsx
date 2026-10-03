@@ -18,11 +18,16 @@ import {
   MapPin,
   ExternalLink,
   ArrowUpDown,
-  Filter
+  Filter,
+  Package,
+  Boxes,
+  CheckCircle2,
+  Clock,
+  FileSpreadsheet
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { Lot, InventoryTransaction } from '@/types';
-import { formatWeight, formatDate, getStatusBadgeClass } from '@/lib/utils';
+import { formatWeight, formatDate, getStatusBadgeClass, cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
 function LotsContent() {
@@ -48,6 +53,8 @@ function LotsContent() {
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [selectedLot, setSelectedLot] = useState<Lot | null>(null);
   const [lotHistory, setLotHistory] = useState<InventoryTransaction[]>([]);
+  const [modalTab, setModalTab] = useState<'items' | 'ledger' | 'shipping'>('items');
+  const [lotItemSearch, setLotItemSearch] = useState('');
 
   useEffect(() => {
     const handleUpdate = () => setDataVersion(v => v + 1);
@@ -268,8 +275,162 @@ function LotsContent() {
 
   const handleInspectLot = (lot: Lot) => {
     setSelectedLot(lot);
+    setModalTab('items');
+    setLotItemSearch('');
     const history = dataStore.getLotHistory(lot.id);
     setLotHistory(history);
+  };
+
+  // Items contained in the currently selected lot
+  const selectedLotItems = useMemo(() => {
+    if (!selectedLot) return [];
+
+    const incItems = dataStore.getIncomingStockByLot(selectedLot.lot_number);
+    const allPOs = dataStore.getPurchaseOrders();
+    const poItems: Array<{
+      id: string;
+      source: 'INCOMING' | 'PO';
+      grade: string;
+      condition?: string | null;
+      dimensions: string;
+      pieces: number;
+      weight: number;
+      status: string;
+      eta?: string | null;
+      heat_no?: string | null;
+      sims?: string | null;
+      port?: string | null;
+      make?: string | null;
+      supplier?: string | null;
+      poNumber?: string | null;
+    }> = [];
+
+    if (incItems.length > 0) {
+      incItems.forEach((inc, idx) => {
+        const dimParts = [
+          inc.dia_w ? `DIA ${inc.dia_w}` : '',
+          inc.t ? `T${inc.t}` : '',
+          inc.l ? `L${inc.l}` : ''
+        ].filter(Boolean);
+
+        const dimStr = dimParts.join(' × ');
+
+        poItems.push({
+          id: inc.id || `inc-${idx}`,
+          source: 'INCOMING',
+          grade: inc.grade,
+          condition: inc.condition,
+          dimensions: dimStr || (selectedLot.dimensions_display || 'Standard Spec'),
+          pieces: Number(inc.pieces) || 1,
+          weight: Number(inc.weight) || 0,
+          status: inc.received_status === 'RECEIVED' ? 'Received at Yard' : 'In Transit',
+          eta: inc.eta_seaport || inc.date_of_shipment,
+          heat_no: inc.heat_no,
+          sims: inc.sims,
+          port: inc.port || 'N.S.',
+          make: inc.make || 'Standard',
+          supplier: inc.supplier || selectedLot.supplier_name,
+          poNumber: inc.linked_po_number || selectedLot.po_number
+        });
+      });
+    } else {
+      // Look up matching items in purchase orders
+      for (const po of allPOs) {
+        if (!po.items) continue;
+        for (const it of po.items) {
+          if (
+            (it.lot_number && String(it.lot_number).trim() === String(selectedLot.lot_number).trim()) ||
+            it.id === selectedLot.purchase_order_item_id
+          ) {
+            const dimParts = [
+              it.diameter_width ? `DIA ${it.diameter_width}` : '',
+              it.thickness ? `T${it.thickness}` : '',
+              it.length ? `L${it.length}` : ''
+            ].filter(Boolean);
+            const dimStr = dimParts.join(' × ');
+
+            poItems.push({
+              id: it.id,
+              source: 'PO',
+              grade: it.grade_code,
+              condition: it.condition_name || it.treatment || it.section_name,
+              dimensions: dimStr || (selectedLot.dimensions_display || 'Standard Spec'),
+              pieces: it.receipt_count || 1,
+              weight: Number(it.ready_quantity ?? it.received_quantity ?? it.ordered_quantity) || 0,
+              status: it.status === 'Received' ? 'Received at Yard' : (it.status || selectedLot.status || 'Available'),
+              eta: it.eta_seaport || it.date_of_shipment || po.expected_delivery_date,
+              heat_no: it.heat_no,
+              sims: it.sims,
+              port: it.destination_port || po.destination || 'N.S.',
+              make: po.origin || po.origin_make_name || 'Standard',
+              supplier: po.supplier_name || selectedLot.supplier_name,
+              poNumber: po.po_number
+            });
+          }
+        }
+      }
+
+      // If still empty, display the lot record itself as a primary item
+      if (poItems.length === 0) {
+        poItems.push({
+          id: `lot-manifest-${selectedLot.id}`,
+          source: 'PO',
+          grade: selectedLot.grade_code || 'Standard Grade',
+          condition: selectedLot.section_name,
+          dimensions: selectedLot.dimensions_display || 'Standard Spec',
+          pieces: 1,
+          weight: selectedLot.total_received_qty || selectedLot.available_qty,
+          status: selectedLot.status === 'Available' ? 'Received at Yard' : (selectedLot.status || 'Available'),
+          eta: lotMetaMap[selectedLot.id]?.arrivingDate,
+          heat_no: null,
+          sims: null,
+          port: 'N.S.',
+          make: 'Standard',
+          supplier: selectedLot.supplier_name,
+          poNumber: selectedLot.po_number
+        });
+      }
+    }
+
+    return poItems;
+  }, [selectedLot, dataVersion, lotMetaMap]);
+
+  const filteredLotItems = useMemo(() => {
+    if (!lotItemSearch.trim()) return selectedLotItems;
+    const q = lotItemSearch.toLowerCase().trim();
+    return selectedLotItems.filter(item => 
+      item.grade.toLowerCase().includes(q) ||
+      item.dimensions.toLowerCase().includes(q) ||
+      (item.condition && item.condition.toLowerCase().includes(q)) ||
+      (item.heat_no && item.heat_no.toLowerCase().includes(q)) ||
+      (item.make && item.make.toLowerCase().includes(q)) ||
+      (item.status && item.status.toLowerCase().includes(q))
+    );
+  }, [selectedLotItems, lotItemSearch]);
+
+  const handleExportLotItems = () => {
+    if (!selectedLot || selectedLotItems.length === 0) return;
+    const exportRows = selectedLotItems.map((item, idx) => ({
+      '#': idx + 1,
+      'Lot Number': selectedLot.lot_number,
+      'PO Number': item.poNumber ? `PO ${item.poNumber}` : '—',
+      'Supplier': item.supplier || selectedLot.supplier_name || '—',
+      'Steel Grade': item.grade,
+      'Condition / Section': item.condition || '—',
+      'Dimensions': item.dimensions,
+      'Pieces': item.pieces || 1,
+      'Item Weight (KG)': item.weight,
+      'Status': item.status,
+      'Arriving Date / ETA': item.eta ? formatDate(item.eta) : '—',
+      'Heat Number': item.heat_no || '—',
+      'SIMS': item.sims || '—',
+      'Discharge Port': item.port || '—',
+      'Make / Mill': item.make || '—'
+    }));
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `Lot_${selectedLot.lot_number}_Items`);
+    XLSX.writeFile(wb, `Lot_${selectedLot.lot_number}_Items_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleExport = () => {
@@ -569,147 +730,418 @@ function LotsContent() {
         </div>
       </div>
 
-      {/* Lot Movement Ledger Modal */}
+      {/* Specific Lot Manifest, Material Items & Traceability Modal */}
       {selectedLot && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full overflow-hidden my-4 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+            
             {/* Modal Header */}
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-emerald-600 text-white">
-                  <Truck className="h-5 w-5" />
+                <div className="p-2 rounded-lg bg-blue-600 text-white shadow-md shadow-blue-500/20">
+                  <Package className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold">Lot Movement History: {selectedLot.lot_number}</h2>
-                  <p className="text-xs text-slate-400">Inventory transactions and material traceability</p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-white tracking-tight">
+                      Lot Manifest & Items: <span className="font-mono text-amber-300">Lot {selectedLot.lot_number}</span>
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-white border border-white/20">
+                      {selectedLotItems.length} {selectedLotItems.length === 1 ? 'Item' : 'Items'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {selectedLot.grade_code} • {selectedLot.supplier_name || 'Direct Import'} • PO {selectedLot.po_number || 'Direct'} • {selectedLot.warehouse_location || 'Main Yard'}
+                  </p>
                 </div>
               </div>
-              <button onClick={() => setSelectedLot(null)} className="text-slate-400 hover:text-white">
+
+              <button
+                onClick={() => setSelectedLot(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                title="Close modal"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-5 text-xs text-slate-700">
-              {/* Lot Summary Card */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Steel Spec</span>
-                  <span className="font-bold text-slate-900">{selectedLot.grade_code} ({selectedLot.section_name})</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Source PO</span>
-                  <span className="font-bold text-blue-600">PO {selectedLot.po_number || 'Direct'}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Total Landed</span>
-                  <span className="font-bold text-slate-900">{formatWeight(selectedLot.total_received_qty)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Current Balance</span>
-                  <span className="font-bold text-emerald-600">{formatWeight(selectedLot.available_qty)}</span>
-                </div>
+            {/* Quick KPIs Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-6 py-3 bg-slate-50 border-b border-slate-200 text-xs">
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Items / Pieces</span>
+                <strong className="text-sm font-extrabold text-slate-900">
+                  {selectedLotItems.reduce((acc, it) => acc + (Number(it.pieces) || 1), 0)} PCS
+                </strong>
+                <span className="text-[10px] text-slate-500 block">({selectedLotItems.length} line items)</span>
               </div>
 
-              {/* Linked Incoming Stock / Logistics Details */}
-              {(() => {
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Total Cargo Weight</span>
+                <strong className="text-sm font-extrabold text-blue-700">
+                  {formatWeight(selectedLotItems.reduce((acc, it) => acc + (Number(it.weight) || 0), 0) || selectedLot.total_received_qty)}
+                </strong>
+                <span className="text-[10px] text-slate-500 block">Landed at yard</span>
+              </div>
+
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Available In Stock</span>
+                <strong className="text-sm font-extrabold text-emerald-600">
+                  {formatWeight(selectedLot.available_qty)}
+                </strong>
+                <span className="text-[10px] text-slate-500 block">Unallocated balance</span>
+              </div>
+
+              <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Lot Status & Location</span>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeClass(selectedLot.status)}`}>
+                    {selectedLot.status}
+                  </span>
+                  <span className="text-[10px] font-semibold text-slate-600 truncate max-w-[100px]" title={selectedLot.warehouse_location || 'Main Yard'}>
+                    {selectedLot.warehouse_location || 'Main Yard'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Navigation Tabs */}
+            <div className="flex items-center justify-between px-6 pt-3 border-b border-slate-200 bg-white">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalTab('items')}
+                  className={cn(
+                    "px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5",
+                    modalTab === 'items'
+                      ? "border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-lg font-extrabold"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  <Boxes className="h-3.5 w-3.5" />
+                  <span>Items in this Lot ({selectedLotItems.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalTab('ledger')}
+                  className={cn(
+                    "px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5",
+                    modalTab === 'ledger'
+                      ? "border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-lg font-extrabold"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  <History className="h-3.5 w-3.5" />
+                  <span>Movement Ledger ({lotHistory.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalTab('shipping')}
+                  className={cn(
+                    "px-4 py-2 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5",
+                    modalTab === 'shipping'
+                      ? "border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-lg font-extrabold"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                  )}
+                >
+                  <Ship className="h-3.5 w-3.5" />
+                  <span>Shipping & Customs Logistics</span>
+                </button>
+              </div>
+
+              {modalTab === 'items' && selectedLotItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleExportLotItems}
+                  className="mb-1 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs transition-colors"
+                  title="Export items packing list to Excel"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Export Packing List</span>
+                </button>
+              )}
+            </div>
+
+            {/* Modal Body Content */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs text-slate-700">
+              
+              {/* TAB 1: ITEMS IN THIS LOT */}
+              {modalTab === 'items' && (
+                <div className="space-y-3">
+                  {/* Search within lot items */}
+                  {selectedLotItems.length > 3 && (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="relative flex-1 max-w-sm">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          type="text"
+                          value={lotItemSearch}
+                          onChange={(e) => setLotItemSearch(e.target.value)}
+                          placeholder="Search items by grade, dimensions, heat #, mill..."
+                          className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20"
+                        />
+                        {lotItemSearch && (
+                          <button
+                            onClick={() => setLotItemSearch('')}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-slate-500">
+                        Showing <strong>{filteredLotItems.length}</strong> of <strong>{selectedLotItems.length}</strong> items
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Items Table */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="overflow-x-auto max-h-[380px]">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead className="sticky top-0 z-10 bg-slate-100 shadow-2xs">
+                          <tr>
+                            <th className="table-header w-10 text-center">#</th>
+                            <th className="table-header">Steel Grade & Spec</th>
+                            <th className="table-header">Dimensions (W × T × L)</th>
+                            <th className="table-header text-center">Pieces</th>
+                            <th className="table-header text-right">Weight (KG)</th>
+                            <th className="table-header text-center">Status</th>
+                            <th className="table-header">Arriving Date / ETA</th>
+                            <th className="table-header">Heat Number</th>
+                            <th className="table-header">Mill / Source</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredLotItems.length === 0 ? (
+                            <tr>
+                              <td colSpan={9} className="py-8 text-center text-slate-400">
+                                No items found matching &quot;{lotItemSearch}&quot;.
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredLotItems.map((item, idx) => (
+                              <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
+                                <td className="table-cell text-center font-mono text-slate-400 font-semibold">
+                                  #{idx + 1}
+                                </td>
+                                <td className="table-cell">
+                                  <strong className="text-slate-900 block font-bold">{item.grade}</strong>
+                                  {item.condition && (
+                                    <span className="text-[10px] text-slate-500 font-medium block">
+                                      {item.condition}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="table-cell font-mono text-slate-800 font-semibold text-[11px]">
+                                  {item.dimensions}
+                                </td>
+                                <td className="table-cell text-center font-mono font-bold text-slate-700">
+                                  {item.pieces || 1} PC
+                                </td>
+                                <td className="table-cell text-right font-mono font-bold text-blue-700 text-xs">
+                                  {formatWeight(item.weight)}
+                                </td>
+                                <td className="table-cell text-center">
+                                  <span className={cn(
+                                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                                    item.status.includes('Received')
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      : item.status.includes('Transit')
+                                      ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                      : "bg-blue-50 text-blue-700 border-blue-200"
+                                  )}>
+                                    {item.status.includes('Received') ? <CheckCircle2 className="h-3 w-3 text-emerald-600" /> : <Ship className="h-3 w-3 text-indigo-600" />}
+                                    <span>{item.status}</span>
+                                  </span>
+                                </td>
+                                <td className="table-cell text-slate-700 font-medium">
+                                  {item.eta ? formatDate(item.eta) : '—'}
+                                </td>
+                                <td className="table-cell font-mono text-slate-700 text-[11px]">
+                                  {item.heat_no ? (
+                                    <span className="font-semibold text-slate-800">{item.heat_no}</span>
+                                  ) : item.sims ? (
+                                    <span className="text-slate-500">SIMS: {item.sims}</span>
+                                  ) : (
+                                    <span className="text-slate-400">—</span>
+                                  )}
+                                </td>
+                                <td className="table-cell text-slate-600">
+                                  <span className="block truncate max-w-[120px]" title={item.make || item.supplier || ''}>
+                                    {item.make || item.supplier || 'Standard'}
+                                  </span>
+                                  {item.poNumber && (
+                                    <span className="text-[10px] text-blue-600 font-semibold block">
+                                      PO {item.poNumber}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                        <tfoot className="bg-slate-50 border-t border-slate-200 font-bold text-slate-800">
+                          <tr>
+                            <td colSpan={3} className="table-cell font-bold text-slate-700">
+                              Total Manifest ({filteredLotItems.length} items)
+                            </td>
+                            <td className="table-cell text-center font-mono font-bold text-slate-800">
+                              {filteredLotItems.reduce((acc, it) => acc + (Number(it.pieces) || 1), 0)} PCS
+                            </td>
+                            <td className="table-cell text-right font-mono font-extrabold text-blue-700 text-sm">
+                              {formatWeight(filteredLotItems.reduce((acc, it) => acc + (Number(it.weight) || 0), 0))}
+                            </td>
+                            <td colSpan={4} className="table-cell text-right text-[11px] text-slate-500 font-normal">
+                              Net cargo weight in Lot {selectedLot.lot_number}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: AUDIT MOVEMENT LEDGER */}
+              {modalTab === 'ledger' && (
+                <div>
+                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr>
+                          <th className="table-header">Date</th>
+                          <th className="table-header">Transaction Type</th>
+                          <th className="table-header">Reference / Remarks</th>
+                          <th className="table-header text-right">Quantity</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {lotHistory.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="py-8 text-center text-slate-400">
+                              No ledger transactions recorded for this lot yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          lotHistory.map((tx) => (
+                            <tr key={tx.id} className="hover:bg-slate-50">
+                              <td className="table-cell text-slate-600">{formatDate(tx.transaction_date)}</td>
+                              <td className="table-cell">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                  {tx.transaction_type}
+                                </span>
+                              </td>
+                              <td className="table-cell font-medium text-slate-700">{tx.reference_display || tx.remarks}</td>
+                              <td className={`table-cell text-right font-bold text-sm ${tx.quantity >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {tx.quantity >= 0 ? `+${formatWeight(tx.quantity)}` : formatWeight(tx.quantity)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: SHIPPING & CUSTOMS LOGISTICS */}
+              {modalTab === 'shipping' && (() => {
                 const incItems = dataStore.getIncomingStockByLot(selectedLot.lot_number);
-                if (incItems.length === 0) return null;
                 const first = incItems[0];
                 return (
-                  <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-blue-900 font-bold text-xs">
-                        <Ship className="h-4 w-4 text-blue-600" />
-                        <span>Port Logistics & Sea Transit Specs (INCOMING STOCK.xlsx)</span>
-                      </div>
-                      <Link 
-                        href="/purchasing/incoming-stock"
-                        className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                      >
-                        <span>View In-Transit Board</span>
-                        <ExternalLink className="h-3 w-3" />
-                      </Link>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px] pt-1">
+                  <div className="space-y-4">
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                       <div>
-                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Port & Terms</span>
-                        <span className="font-semibold text-slate-800">{first.port || 'N.S.'} ({first.delivery_terms || 'FOB'})</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Sea Port ETA</span>
-                        <span className="font-semibold text-slate-800">{formatDate(first.eta_seaport)}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Payment Terms</span>
-                        <span className="font-semibold text-slate-800">{first.payment_terms || (selectedLot ? lotMetaMap[selectedLot.id]?.paymentTerms : '') || 'DP at sight'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Transit Status</span>
-                        <span className={`inline-block px-1.5 py-0.2 rounded font-bold text-[10px] ${first.received_status === 'RECEIVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}`}>
-                          {first.received_status === 'RECEIVED' ? 'Received at Yard' : 'In-Transit'}
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Discharge Port</span>
+                        <span className="font-bold text-slate-800 flex items-center gap-1 mt-0.5">
+                          <MapPin className="h-3.5 w-3.5 text-red-500" />
+                          {first?.port || 'N.S.'}
                         </span>
                       </div>
+
+                      <div>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Delivery Terms</span>
+                        <span className="font-bold text-slate-800 block mt-0.5">{first?.delivery_terms || 'FOB'}</span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Payment Terms</span>
+                        <span className="font-bold text-slate-800 block mt-0.5">
+                          {first?.payment_terms || lotMetaMap[selectedLot.id]?.paymentTerms || 'DP at sight'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Vessel Sea Port ETA</span>
+                        <span className="font-bold text-slate-800 block mt-0.5">
+                          {first?.eta_seaport ? formatDate(first.eta_seaport) : formatDate(lotMetaMap[selectedLot.id]?.arrivingDate)}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Shipment Date</span>
+                        <span className="font-bold text-slate-800 block mt-0.5">
+                          {first?.date_of_shipment ? formatDate(first.date_of_shipment) : '—'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Mill / Country of Origin</span>
+                        <span className="font-bold text-slate-800 block mt-0.5">{first?.make || 'Standard'}</span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Customs Clearance</span>
+                        <span className="font-bold text-slate-800 block mt-0.5">
+                          {first?.received_status === 'RECEIVED' ? 'Cleared & Landed' : 'Pending Port Arrival'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Linked Purchase Order</span>
+                        <span className="font-bold text-blue-600 block mt-0.5">
+                          {selectedLot.po_number ? (
+                            <Link href={`/purchasing/purchase-orders/${selectedLot.po_number}`} className="hover:underline">
+                              PO {selectedLot.po_number}
+                            </Link>
+                          ) : 'Direct Import'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl">
+                      <div className="flex items-center gap-2 text-xs text-blue-900">
+                        <Ship className="h-4 w-4 text-blue-600" />
+                        <span>This lot is tracked across Maritime In-Transit and Port Logistics hubs.</span>
+                      </div>
+                      <Link
+                        href={`/purchasing/shipments?tab=orders&search=${encodeURIComponent(selectedLot.lot_number)}`}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs shadow-2xs inline-flex items-center gap-1 transition-colors"
+                      >
+                        <span>Open in Shipments Hub</span>
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Link>
                     </div>
                   </div>
                 );
               })()}
+            </div>
 
-              {/* Ledger Table */}
-              <div>
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <History className="h-4 w-4 text-blue-600" />
-                  <span>Audit Movement Ledger</span>
-                </h3>
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500">
+                Lot Number: <strong className="font-mono text-slate-900">{selectedLot.lot_number}</strong>
+              </span>
 
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr>
-                        <th className="table-header">Date</th>
-                        <th className="table-header">Type</th>
-                        <th className="table-header">Reference</th>
-                        <th className="table-header text-right">Quantity</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
-                      {lotHistory.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} className="py-6 text-center text-slate-400">
-                            No ledger movements recorded for this lot yet.
-                          </td>
-                        </tr>
-                      ) : (
-                        lotHistory.map((tx) => (
-                          <tr key={tx.id} className="hover:bg-slate-50">
-                            <td className="table-cell text-slate-600">{formatDate(tx.transaction_date)}</td>
-                            <td className="table-cell">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                                {tx.transaction_type}
-                              </span>
-                            </td>
-                            <td className="table-cell font-medium text-slate-700">{tx.reference_display || tx.remarks}</td>
-                            <td className={`table-cell text-right font-bold text-sm ${tx.quantity >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                              {tx.quantity >= 0 ? `+${formatWeight(tx.quantity)}` : formatWeight(tx.quantity)}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Close Button */}
-              <div className="pt-3 border-t flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setSelectedLot(null)}
-                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200"
-                >
-                  Close
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedLot(null)}
+                className="px-5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-2xs transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
