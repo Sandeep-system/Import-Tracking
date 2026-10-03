@@ -29,7 +29,8 @@ import {
   PackageCheck,
   PackagePlus,
   Ship,
-  ExternalLink
+  ExternalLink,
+  Anchor
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { PurchaseOrder, PurchaseOrderItem, Receipt, BalanceResolution } from '@/types';
@@ -781,13 +782,24 @@ const STANDARD_ORIGINS = [
                   </div>
                 </div>
 
-                <Link
-                  href="/purchasing/incoming-stock"
-                  className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 bg-white px-2.5 py-1 rounded-md border border-blue-200 shadow-2xs self-start sm:self-auto"
-                >
-                  <span>Open Transit Tracker</span>
-                  <ExternalLink className="h-3 w-3" />
-                </Link>
+                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                  <Link
+                    href={`/purchasing/shipments?tab=ports&search=${encodeURIComponent(po.po_number)}`}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-white px-2.5 py-1 rounded-md border border-indigo-200 shadow-2xs"
+                    title="Track Port ETA & Maritime Hub for this PO"
+                  >
+                    <Anchor className="h-3 w-3 text-indigo-600" />
+                    <span>Port ETA Hub</span>
+                  </Link>
+
+                  <Link
+                    href="/purchasing/incoming-stock"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 bg-white px-2.5 py-1 rounded-md border border-blue-200 shadow-2xs"
+                  >
+                    <span>Open Transit Tracker</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 text-xs">
@@ -1001,16 +1013,26 @@ const STANDARD_ORIGINS = [
                           </button>
                         )}
 
-                        {/* 3. Status is In Transit -> Received button */}
+                        {/* 3. Status is In Transit -> Received button & Port ETA link */}
                         {item.status === 'In Transit' && (
-                          <button
-                            onClick={() => handleOpenReceiveModal(item)}
-                            className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1"
-                            title="Confirm physical arrival into warehouse/yard"
-                          >
-                            <CheckCircle2 className="h-3 w-3" />
-                            <span>Received</span>
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleOpenReceiveModal(item)}
+                              className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1"
+                              title="Confirm physical arrival into warehouse/yard"
+                            >
+                              <CheckCircle2 className="h-3 w-3" />
+                              <span>Received</span>
+                            </button>
+                            <Link
+                              href={`/purchasing/shipments?tab=ports&search=${encodeURIComponent(item.lot_number || po.po_number)}`}
+                              className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold text-[11px] transition-colors flex items-center gap-1"
+                              title="Track Port ETA and sea shipment details"
+                            >
+                              <Anchor className="h-3 w-3" />
+                              <span>Port ETA</span>
+                            </Link>
+                          </div>
                         )}
 
                         {/* 4. Status is Received -> Received badge */}

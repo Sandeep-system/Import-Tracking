@@ -64,3 +64,49 @@ export function getStatusBadgeClass(status?: string): string {
       return "bg-slate-50 text-slate-600 border-slate-200";
   }
 }
+
+export function getEtaStatus(etaStr?: string | null): { text: string; color: string; daysDiff: number | null } {
+  if (!etaStr) return { text: 'ETA Unspecified', color: 'bg-slate-100 text-slate-600 border-slate-200', daysDiff: null };
+  const eta = new Date(etaStr);
+  if (isNaN(eta.getTime())) return { text: etaStr, color: 'bg-slate-100 text-slate-600 border-slate-200', daysDiff: null };
+  
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const etaDate = new Date(eta);
+  etaDate.setHours(0, 0, 0, 0);
+
+  const diffMs = etaDate.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { 
+      text: `Port Arrival Overdue (${Math.abs(diffDays)}d ago)`, 
+      color: 'bg-rose-50 text-rose-700 border-rose-200 font-bold',
+      daysDiff: diffDays
+    };
+  } else if (diffDays === 0) {
+    return { 
+      text: 'Arriving Today at Port', 
+      color: 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse font-bold',
+      daysDiff: 0
+    };
+  } else if (diffDays <= 7) {
+    return { 
+      text: `Arriving in ${diffDays} days`, 
+      color: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold',
+      daysDiff: diffDays
+    };
+  } else if (diffDays <= 20) {
+    return { 
+      text: `At Sea (${diffDays} days)`, 
+      color: 'bg-blue-50 text-blue-700 border-blue-200',
+      daysDiff: diffDays
+    };
+  } else {
+    return { 
+      text: `En Route (${diffDays} days)`, 
+      color: 'bg-slate-50 text-slate-600 border-slate-200',
+      daysDiff: diffDays
+    };
+  }
+}

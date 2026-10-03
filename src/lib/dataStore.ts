@@ -1826,12 +1826,26 @@ class Store {
     }
 
     // Port breakdown
-    const portMap: Record<string, { count: number; weight: number }> = {};
+    const portMap: Record<string, { count: number; weight: number; lots: Set<string>; imminentCount: number; overdueCount: number }> = {};
     for (const item of inTransit) {
       const port = item.port || 'Unassigned';
-      if (!portMap[port]) portMap[port] = { count: 0, weight: 0 };
+      if (!portMap[port]) {
+        portMap[port] = { count: 0, weight: 0, lots: new Set<string>(), imminentCount: 0, overdueCount: 0 };
+      }
       portMap[port].count++;
       portMap[port].weight += Number(item.weight) || 0;
+      if (item.lot_number) portMap[port].lots.add(item.lot_number);
+
+      if (item.eta_seaport) {
+        const etaDate = new Date(item.eta_seaport);
+        if (!isNaN(etaDate.getTime())) {
+          if (etaDate < now) {
+            portMap[port].overdueCount++;
+          } else if (etaDate <= imminentThreshold) {
+            portMap[port].imminentCount++;
+          }
+        }
+      }
     }
 
     return {
@@ -1843,7 +1857,14 @@ class Store {
       uniqueReceivedLots: receivedLots.length,
       imminentArrivals: imminentCount,
       overdueTransitCount,
-      portStats: Object.entries(portMap).map(([port, data]) => ({ port, ...data })).sort((a, b) => b.weight - a.weight)
+      portStats: Object.entries(portMap).map(([port, data]) => ({
+        port,
+        count: data.count,
+        weight: data.weight,
+        uniqueLots: data.lots.size,
+        imminentCount: data.imminentCount,
+        overdueCount: data.overdueCount
+      })).sort((a, b) => b.weight - a.weight)
     };
   }
 

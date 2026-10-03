@@ -23,7 +23,8 @@ import {
   Check, 
   RefreshCw,
   FileSpreadsheet,
-  Info
+  Info,
+  Anchor
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { dataStore } from '@/lib/dataStore';
@@ -32,7 +33,7 @@ import { formatWeight, formatDate, cn } from '@/lib/utils';
 
 export default function IncomingStockPage() {
   const [dataVersion, setDataVersion] = useState(0);
-  const [activeTab, setActiveTab] = useState<'IN_TRANSIT' | 'RECEIVED'>('IN_TRANSIT');
+  const [activeTab, setActiveTab] = useState<'IN_TRANSIT' | 'RECEIVED' | 'PORTS'>('IN_TRANSIT');
   
   // Filters
   const [search, setSearch] = useState('');
@@ -64,7 +65,7 @@ export default function IncomingStockPage() {
   // Fetch items based on tab & filters
   const items = useMemo(() => {
     return dataStore.getIncomingStock({
-      status: activeTab,
+      status: activeTab === 'PORTS' ? 'IN_TRANSIT' : activeTab,
       search,
       port: selectedPort,
       supplier: selectedSupplier,
@@ -151,6 +152,22 @@ export default function IncomingStockPage() {
 
   // Export to Excel
   const handleExport = () => {
+    if (activeTab === 'PORTS') {
+      const portRows = summary.portStats.map(p => ({
+        'Sea Port': p.port,
+        'Active Shipments': p.count,
+        'Unique Lots': p.uniqueLots || p.count,
+        'Total Cargo Weight (KG)': p.weight,
+        'Arrivals Next 14 Days': p.imminentCount || 0,
+        'Overdue Arrivals': p.overdueCount || 0
+      }));
+      const ws = XLSX.utils.json_to_sheet(portRows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Port Logistics');
+      XLSX.writeFile(wb, `Port_Logistics_${new Date().toISOString().split('T')[0]}.xlsx`);
+      return;
+    }
+
     const exportRows = filteredItems.map(i => ({
       'Lot Number': i.lot_number,
       'Linked PO': i.linked_po_number || 'Direct Cargo',
@@ -282,6 +299,15 @@ export default function IncomingStockPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link
+            href="/purchasing/shipments?tab=ports"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 card-shadow transition-colors"
+            title="Open Shipments & Port Logistics Tracking Hub"
+          >
+            <Anchor className="h-3.5 w-3.5 text-indigo-600" />
+            <span>Shipments & Port Hub</span>
+          </Link>
+
           <button
             onClick={() => setIsUploadModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 card-shadow transition-colors"
@@ -401,6 +427,22 @@ export default function IncomingStockPage() {
                 {summary.totalReceivedItems}
               </span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('PORTS')}
+              className={cn(
+                "px-4 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-2",
+                activeTab === 'PORTS'
+                  ? "border-indigo-600 text-indigo-700 bg-white shadow-sm"
+                  : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60"
+              )}
+            >
+              <Anchor className="h-3.5 w-3.5" />
+              <span>Port Terminals & Sea Cargo</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-100 text-indigo-800 font-extrabold">
+                {summary.portStats.length} Ports
+              </span>
+            </button>
           </div>
 
           <div className="text-[11px] text-slate-500 pb-2 sm:pb-0 flex items-center gap-1.5">
@@ -409,7 +451,189 @@ export default function IncomingStockPage() {
           </div>
         </div>
 
-        {/* Filter Toolbar */}
+        {/* Tab Content */}
+        {activeTab === 'PORTS' ? (
+          <div className="p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Anchor className="h-4 w-4 text-indigo-600" />
+                  <span>Sea Port Terminals & Maritime Cargo Tracking</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Real-time cargo tracking linked to sea port terminals, customs discharge, and arrival countdowns.
+                </p>
+              </div>
+
+              <Link
+                href="/purchasing/shipments?tab=ports"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors self-start sm:self-auto"
+              >
+                <span>Open Full Shipments & Port Hub</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+
+            {/* Ports Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {summary.portStats.map((portData) => (
+                <div
+                  key={portData.port}
+                  className="p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 card-shadow flex flex-col justify-between space-y-3 transition-all"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100">
+                        <Anchor className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-xs">{portData.port}</h3>
+                        <span className="text-[10px] text-slate-400 font-medium">Maritime Discharge Terminal</span>
+                      </div>
+                    </div>
+
+                    <Link
+                      href={`/purchasing/shipments?tab=ports&port=${encodeURIComponent(portData.port)}`}
+                      className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors"
+                      title="Open port view in hub"
+                    >
+                      Port Hub ↗
+                    </Link>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-semibold">Total Cargo Weight</span>
+                      <strong className="text-blue-700 text-sm">{formatWeight(portData.weight)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-semibold">Cargo Line Items</span>
+                      <strong className="text-slate-800">{portData.count} items ({portData.uniqueLots || portData.count} lots)</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] pt-1 text-slate-500">
+                    {portData.imminentCount ? (
+                      <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> {portData.imminentCount} arriving &lt; 14d
+                      </span>
+                    ) : (
+                      <span>No arrivals &lt; 14d</span>
+                    )}
+
+                    {portData.overdueCount ? (
+                      <span className="text-rose-600 font-bold flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" /> {portData.overdueCount} overdue
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">On Schedule ✓</span>
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedPort(portData.port);
+                        setActiveTab('IN_TRANSIT');
+                      }}
+                      className="flex-1 py-1 px-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] text-center transition-colors"
+                    >
+                      View In-Transit Cargo
+                    </button>
+                    <Link
+                      href={`/purchasing/shipments?tab=ports&port=${encodeURIComponent(portData.port)}`}
+                      className="py-1 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] text-center transition-colors"
+                    >
+                      Hub
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Port Cargo Overview Table */}
+            <div className="mt-4">
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
+                Port Volume & Discharge Logistics Comparison
+              </h3>
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr>
+                      <th className="table-header">Discharge Terminal</th>
+                      <th className="table-header text-right">In-Transit Weight</th>
+                      <th className="table-header text-center">Active Shipments</th>
+                      <th className="table-header text-center">Cargo Lots</th>
+                      <th className="table-header text-center">Next 14 Days</th>
+                      <th className="table-header text-center">Overdue Status</th>
+                      <th className="table-header text-right">Quick Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {summary.portStats.map((portData) => (
+                      <tr key={portData.port} className="hover:bg-slate-50 transition-colors">
+                        <td className="table-cell">
+                          <div className="flex items-center gap-2 font-bold text-slate-900">
+                            <Anchor className="h-4 w-4 text-indigo-600 shrink-0" />
+                            <span>{portData.port}</span>
+                          </div>
+                        </td>
+                        <td className="table-cell text-right font-extrabold text-blue-700">
+                          {formatWeight(portData.weight)}
+                        </td>
+                        <td className="table-cell text-center font-semibold text-slate-800">
+                          {portData.count} items
+                        </td>
+                        <td className="table-cell text-center font-mono font-bold text-slate-700">
+                          {portData.uniqueLots || portData.count} lots
+                        </td>
+                        <td className="table-cell text-center">
+                          {portData.imminentCount ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                              {portData.imminentCount} arriving soon
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="table-cell text-center">
+                          {portData.overdueCount ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                              {portData.overdueCount} overdue
+                            </span>
+                          ) : (
+                            <span className="text-emerald-600 font-semibold text-[11px]">Normal ✓</span>
+                          )}
+                        </td>
+                        <td className="table-cell text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => {
+                                setSelectedPort(portData.port);
+                                setActiveTab('IN_TRANSIT');
+                              }}
+                              className="px-2.5 py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+                            >
+                              Filter Tracking
+                            </button>
+                            <Link
+                              href={`/purchasing/shipments?tab=ports&port=${encodeURIComponent(portData.port)}`}
+                              className="px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-colors"
+                            >
+                              Port Hub ↗
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Filter Toolbar */}
         <div className="p-3.5 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
             {/* Search */}
@@ -580,11 +804,15 @@ export default function IncomingStockPage() {
                       </td>
 
                       {/* Port & Terms */}
-                      <td className="table-cell">
-                        <div className="flex items-center gap-1 font-semibold text-slate-800">
-                          <MapPin className="h-3 w-3 text-red-500 shrink-0" />
-                          <span>{item.port || 'N.S.'}</span>
-                        </div>
+                      <td className="table-cell" onClick={(e) => e.stopPropagation()}>
+                        <Link
+                          href={`/purchasing/shipments?tab=ports&port=${encodeURIComponent(item.port || '')}`}
+                          className="flex items-center gap-1 font-semibold text-slate-800 hover:text-blue-600 transition-colors group/port"
+                          title={`Track sea port arrivals at ${item.port || 'terminal'}`}
+                        >
+                          <MapPin className="h-3 w-3 text-red-500 shrink-0 group-hover/port:scale-110 transition-transform" />
+                          <span className="group-hover/port:underline">{item.port || 'N.S.'}</span>
+                        </Link>
                         {item.delivery_terms && (
                           <div className="text-[10px] font-mono text-slate-500 uppercase">
                             {item.delivery_terms}
@@ -639,12 +867,22 @@ export default function IncomingStockPage() {
                       {/* Action */}
                       <td className="table-cell text-center" onClick={(e) => e.stopPropagation()}>
                         {isTransit ? (
-                          <button
-                            onClick={() => setReceivingItem(item)}
-                            className="px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 transition-colors shadow-2xs"
-                          >
-                            Receive
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => setReceivingItem(item)}
+                              className="px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 transition-colors shadow-2xs"
+                              title="Confirm physical arrival into warehouse/yard"
+                            >
+                              Receive
+                            </button>
+                            <Link
+                              href={`/purchasing/shipments?tab=ports&search=${encodeURIComponent(item.lot_number)}`}
+                              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                              title="Track in Shipments & Port Hub"
+                            >
+                              <Anchor className="h-3.5 w-3.5" />
+                            </Link>
+                          </div>
                         ) : (
                           <button
                             onClick={() => setInspectingItem(item)}
@@ -661,6 +899,8 @@ export default function IncomingStockPage() {
             </tbody>
           </table>
         </div>
+          </>
+        )}
       </div>
 
       {/* INSPECTION DRAWER / MODAL */}
@@ -797,6 +1037,14 @@ export default function IncomingStockPage() {
             <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
               <span className="text-[11px] text-slate-400">Supplier: {inspectingItem.supplier}</span>
               <div className="flex items-center gap-2">
+                <Link
+                  href={`/purchasing/shipments?tab=ports&search=${encodeURIComponent(inspectingItem.lot_number)}`}
+                  className="px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1"
+                  title="Track in Shipments & Port Hub"
+                >
+                  <Anchor className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Port Hub</span>
+                </Link>
                 <button
                   onClick={() => setInspectingItem(null)}
                   className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
