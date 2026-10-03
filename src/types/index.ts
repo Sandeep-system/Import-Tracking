@@ -67,6 +67,8 @@ export interface Supplier {
   supplier_name: string;
   country?: string | null;
   contact_person?: string | null;
+  reference?: string | null;
+  reference_person?: string | null;
   email?: string | null;
   phone?: string | null;
   address?: string | null;

@@ -17,7 +17,8 @@ import {
   Calendar,
   Building2,
   Package,
-  Trash2
+  Trash2,
+  Sparkles
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { PurchaseOrder } from '@/types';
@@ -208,6 +209,11 @@ const STANDARD_ORIGINS = [
     setDataVersion(v => v + 1);
   };
 
+  const handleOpenNewPO = () => {
+    setNewPoNumber(dataStore.getNextPONumber());
+    setIsNewPoOpen(true);
+  };
+
   useEffect(() => {
     const urlSup = searchParams.get('supplier');
     if (urlSup) {
@@ -215,7 +221,7 @@ const STANDARD_ORIGINS = [
       setCurrentPage(1);
     }
     if (searchParams.get('new') === 'true') {
-      setIsNewPoOpen(true);
+      handleOpenNewPO();
     }
   }, [searchParams]);
 
@@ -423,7 +429,7 @@ const STANDARD_ORIGINS = [
           </button>
 
           <button
-            onClick={() => setIsNewPoOpen(true)}
+            onClick={handleOpenNewPO}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -730,15 +736,29 @@ const STANDARD_ORIGINS = [
               {/* Contract General Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div>
-                  <label className="block font-semibold mb-1 text-slate-800">PO Number *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-800">PO Number *</label>
+                    <button
+                      type="button"
+                      onClick={() => setNewPoNumber(dataStore.getNextPONumber())}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5"
+                      title="Automatically calculate and fill next sequential PO number"
+                    >
+                      <Sparkles className="h-3 w-3 text-amber-500" />
+                      <span>Auto-Generate</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     required
                     value={newPoNumber}
                     onChange={(e) => setNewPoNumber(e.target.value)}
-                    placeholder="e.g. 1122"
-                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
+                    placeholder="e.g. 1137"
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono font-bold text-slate-900"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Next sequential: #{dataStore.getNextPONumber()}
+                  </span>
                 </div>
                 <div>
                   <label className="block font-semibold mb-1 text-slate-800">Order Date *</label>

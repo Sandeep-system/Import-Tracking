@@ -309,6 +309,19 @@ class Store {
     return this.state.purchaseOrders.find(po => po.id === id || po.po_number === id);
   }
 
+  public getNextPONumber(): string {
+    const pos = this.state.purchaseOrders || [];
+    let max = 1000;
+    for (const po of pos) {
+      const clean = (po.po_number || '').replace(/[^0-9]/g, '');
+      const num = parseInt(clean, 10);
+      if (!isNaN(num) && num > max) {
+        max = num;
+      }
+    }
+    return String(max + 1);
+  }
+
   public createPurchaseOrder(po: Omit<Partial<PurchaseOrder>, 'items'> & { items: Partial<PurchaseOrderItem>[] }): PurchaseOrder {
     const id = `po-${po.po_number}`;
     const newItems: PurchaseOrderItem[] = (po.items || []).map((item, idx) => ({
@@ -1465,6 +1478,8 @@ class Store {
       supplier_name: name,
       country: supplierData.country?.trim() || 'Overseas',
       contact_person: supplierData.contact_person?.trim() || null,
+      reference: supplierData.reference?.trim() || supplierData.reference_person?.trim() || null,
+      reference_person: supplierData.reference_person?.trim() || supplierData.reference?.trim() || null,
       email: supplierData.email?.trim() || null,
       phone: supplierData.phone?.trim() || null,
       address: supplierData.address?.trim() || null,

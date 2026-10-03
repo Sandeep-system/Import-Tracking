@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Building2, Search, Plus, MapPin, Globe, Phone, Mail, ShoppingBag, X } from 'lucide-react';
+import { Building2, Search, Plus, MapPin, Globe, Phone, Mail, ShoppingBag, X, UserCheck } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { formatWeight } from '@/lib/utils';
 
@@ -17,6 +17,7 @@ export default function SuppliersPage() {
   const [country, setCountry] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [terms, setTerms] = useState('DP at sight');
+  const [reference, setReference] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -34,7 +35,9 @@ export default function SuppliersPage() {
   const filtered = suppliers.filter(s => 
     s.supplier_name.toLowerCase().includes(search.toLowerCase()) ||
     s.country?.toLowerCase().includes(search.toLowerCase()) ||
-    s.supplier_code?.toLowerCase().includes(search.toLowerCase())
+    s.supplier_code?.toLowerCase().includes(search.toLowerCase()) ||
+    s.reference?.toLowerCase().includes(search.toLowerCase()) ||
+    s.reference_person?.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleCreateSupplier = (e: React.FormEvent) => {
@@ -47,6 +50,8 @@ export default function SuppliersPage() {
       country: country.trim() || 'Overseas',
       default_currency: currency,
       payment_terms: terms.trim() || undefined,
+      reference: reference.trim() || undefined,
+      reference_person: reference.trim() || undefined,
       contact_person: contactPerson.trim() || undefined,
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
@@ -58,6 +63,8 @@ export default function SuppliersPage() {
     setCode('');
     setCountry('');
     setCurrency('USD');
+    setTerms('DP at sight');
+    setReference('');
     setTerms('DP at sight');
     setContactPerson('');
     setEmail('');
@@ -145,6 +152,17 @@ export default function SuppliersPage() {
                     {s.phone && <div className="text-slate-600">{s.phone}</div>}
                   </div>
                 )}
+
+                {/* Reference Person / Mill Agent */}
+                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-500 font-medium flex items-center gap-1">
+                    <UserCheck className="h-3.5 w-3.5 text-blue-600" />
+                    <span>Reference:</span>
+                  </span>
+                  <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                    {s.reference || s.reference_person || supplierPOs.find(p => p.reference_person || p.reference)?.reference_person || 'Direct'}
+                  </span>
+                </div>
 
                 <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
                   <div>
@@ -246,6 +264,17 @@ export default function SuppliersPage() {
                     placeholder="e.g. DP at sight, LC 90 days"
                     value={terms}
                     onChange={(e) => setTerms(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-700">Reference Person / Agent</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Ramesh Kumar / Direct Mill"
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>

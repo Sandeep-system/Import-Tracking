@@ -42,6 +42,8 @@ function LotsContent() {
   const [selectedSection, setSelectedSection] = useState(initialSection);
   const [selectedSupplier, setSelectedSupplier] = useState(initialSupplier);
   const [selectedStatus, setSelectedStatus] = useState(initialStatus);
+  const [dateFilter, setDateFilter] = useState('ALL');
+  const [customDate, setCustomDate] = useState('');
 
   const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc');
   const [selectedLot, setSelectedLot] = useState<Lot | null>(null);
@@ -69,6 +71,70 @@ function LotsContent() {
 
   const allLots = useMemo(() => dataStore.getLots(), [dataVersion]);
 
+  // Derived metadata map for each lot: Material, Arriving Date, and Payment Terms
+  const lotMetaMap = useMemo(() => {
+    const map: Record<string, { material: string; arrivingDate: string; paymentTerms: string }> = {};
+    const allPOs = dataStore.getPurchaseOrders();
+    const allIncoming = dataStore.getIncomingStock();
+    const allReceipts = dataStore.getReceipts();
+
+    for (const lot of allLots) {
+      let material = lot.section_name ? `${lot.section_name} Tool Steel` : 'Tool & Die Steel';
+      let arrivingDate = '';
+      let paymentTerms = 'DP at sight';
+
+      // 1. Look up from incoming stock
+      const inc = allIncoming.find(i => i.lot_number === lot.lot_number);
+      if (inc) {
+        if (inc.eta_seaport) arrivingDate = inc.eta_seaport;
+        else if (inc.date_of_shipment) arrivingDate = inc.date_of_shipment;
+
+        if (inc.payment_terms) paymentTerms = inc.payment_terms;
+        if (inc.condition || inc.make) {
+          material = [inc.make, inc.condition].filter(Boolean).join(' • ') || inc.grade || material;
+        }
+      }
+
+      // 2. Look up from PO and items
+      if (lot.po_number) {
+        const po = allPOs.find(p => p.po_number === lot.po_number);
+        if (po) {
+          if (po.payment_terms && (!paymentTerms || paymentTerms === 'DP at sight')) {
+            paymentTerms = po.payment_terms;
+          }
+          if (!arrivingDate && po.expected_delivery_date) {
+            arrivingDate = po.expected_delivery_date;
+          }
+          const item = po.items?.find(it => it.lot_number === lot.lot_number || it.id === lot.purchase_order_item_id);
+          if (item) {
+            if (item.eta_seaport) arrivingDate = item.eta_seaport;
+            else if (item.date_of_shipment && !arrivingDate) arrivingDate = item.date_of_shipment;
+            else if (item.expected_delivery_date && !arrivingDate) arrivingDate = item.expected_delivery_date;
+
+            if (item.payment_terms) paymentTerms = item.payment_terms;
+            const matParts = [item.condition_name, item.treatment].filter(Boolean);
+            if (matParts.length > 0) {
+              material = matParts.join(' • ');
+            }
+          }
+        }
+      }
+
+      if (!arrivingDate) {
+        const rc = allReceipts.find(r => r.lot_number === lot.lot_number || r.lot_id === lot.id);
+        if (rc?.receipt_date) arrivingDate = rc.receipt_date;
+        else if (lot.created_at) arrivingDate = lot.created_at.split('T')[0];
+      }
+
+      map[lot.id] = {
+        material,
+        arrivingDate,
+        paymentTerms
+      };
+    }
+    return map;
+  }, [allLots, dataVersion]);
+
   // Dropdown Options
   const uniqueGrades = useMemo(() => {
     const set = new Set(allLots.map(l => l.grade_code).filter(Boolean) as string[]);
@@ -89,6 +155,8 @@ function LotsContent() {
   const filteredLots = useMemo(() => {
     return allLots
       .filter(l => {
+        const meta = lotMetaMap[l.id];
+
         // Text search
         if (search) {
           const q = search.toLowerCase();
@@ -98,7 +166,9 @@ function LotsContent() {
           const matchesPO = (l.po_number || '').toLowerCase().includes(q);
           const matchesDim = (l.dimensions_display || '').toLowerCase().includes(q);
           const matchesLoc = (l.warehouse_location || '').toLowerCase().includes(q);
-          if (!matchesLot && !matchesGrade && !matchesSupplier && !matchesPO && !matchesDim && !matchesLoc) {
+          const matchesMat = (meta?.material || '').toLowerCase().includes(q);
+          const matchesTerms = (meta?.paymentTerms || '').toLowerCase().includes(q);
+          if (!matchesLot && !matchesGrade && !matchesSupplier && !matchesPO && !matchesDim && !matchesLoc && !matchesMat && !matchesTerms) {
             return false;
           }
         }
@@ -127,6 +197,28 @@ function LotsContent() {
           }
         }
 
+        // Date filter
+        if (dateFilter !== 'ALL' || customDate) {
+          const arrDateStr = meta?.arrivingDate;
+          if (!arrDateStr) return false;
+
+          if (customDate && !arrDateStr.includes(customDate)) {
+            return false;
+          }
+
+          if (dateFilter !== 'ALL') {
+            const arrDate = new Date(arrDateStr);
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((arrDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+            if (dateFilter === 'NEXT_7_DAYS' && (diffDays < 0 || diffDays > 7)) return false;
+            if (dateFilter === 'NEXT_14_DAYS' && (diffDays < 0 || diffDays > 14)) return false;
+            if (dateFilter === 'NEXT_30_DAYS' && (diffDays < 0 || diffDays > 30)) return false;
+            if (dateFilter === 'OVERDUE' && diffDays >= 0) return false;
+          }
+        }
+
         return true;
       })
       .sort((a, b) => {
@@ -142,7 +234,7 @@ function LotsContent() {
         }
         return sortDir === 'desc' ? diff : -diff;
       });
-  }, [allLots, search, selectedGrade, selectedSection, selectedSupplier, selectedStatus, sortDir]);
+  }, [allLots, search, selectedGrade, selectedSection, selectedSupplier, selectedStatus, dateFilter, customDate, sortDir, lotMetaMap]);
 
   // Auto-inspect lot if lot parameter was passed and matching lot exists
   useEffect(() => {
@@ -155,7 +247,14 @@ function LotsContent() {
     }
   }, [searchParams, allLots]);
 
-  const hasActiveFilters = search !== '' || selectedGrade !== 'ALL' || selectedSection !== 'ALL' || selectedSupplier !== 'ALL' || selectedStatus !== 'ALL';
+  const hasActiveFilters = 
+    search !== '' || 
+    selectedGrade !== 'ALL' || 
+    selectedSection !== 'ALL' || 
+    selectedSupplier !== 'ALL' || 
+    selectedStatus !== 'ALL' ||
+    dateFilter !== 'ALL' ||
+    customDate !== '';
 
   const handleResetFilters = () => {
     setSearch('');
@@ -163,6 +262,8 @@ function LotsContent() {
     setSelectedSection('ALL');
     setSelectedSupplier('ALL');
     setSelectedStatus('ALL');
+    setDateFilter('ALL');
+    setCustomDate('');
   };
 
   const handleInspectLot = (lot: Lot) => {
@@ -172,19 +273,24 @@ function LotsContent() {
   };
 
   const handleExport = () => {
-    const exportData = filteredLots.map(l => ({
-      'Lot Number': l.lot_number,
-      'PO Number': l.po_number,
-      'Supplier': l.supplier_name,
-      'Grade': l.grade_code,
-      'Section': l.section_name,
-      'Dimensions': l.dimensions_display,
-      'Total Received (KG)': l.total_received_qty,
-      'Allocated / Sold (KG)': l.total_allocated_sold_qty,
-      'Available Qty (KG)': l.available_qty,
-      'Location': l.warehouse_location,
-      'Status': l.status
-    }));
+    const exportData = filteredLots.map(l => {
+      const meta = lotMetaMap[l.id];
+      return {
+        'Lot Number': l.lot_number,
+        'Material': meta?.material || l.section_name || 'Tool Steel',
+        'Steel Grade': l.grade_code,
+        'Section': l.section_name,
+        'Dimensions': l.dimensions_display,
+        'Landed Weight (KG)': l.total_received_qty,
+        'Available Weight (KG)': l.available_qty,
+        'Arriving Date': meta?.arrivingDate || '',
+        'Payment Terms': meta?.paymentTerms || 'DP at sight',
+        'PO Number': l.po_number || 'Direct',
+        'Supplier': l.supplier_name,
+        'Warehouse Location': l.warehouse_location,
+        'Status': l.status
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
@@ -290,6 +396,28 @@ function LotsContent() {
             <option value="LOW_STOCK">Low Stock</option>
           </select>
 
+          {/* Arriving Date Filter */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="py-1 px-2 bg-transparent text-xs font-medium text-slate-700 focus:outline-none"
+            >
+              <option value="ALL">All Arrival Dates</option>
+              <option value="NEXT_7_DAYS">Arriving &le; 7 Days</option>
+              <option value="NEXT_14_DAYS">Arriving &le; 14 Days</option>
+              <option value="NEXT_30_DAYS">Arriving &le; 30 Days</option>
+              <option value="OVERDUE">Arrival Overdue</option>
+            </select>
+            <input
+              type="date"
+              value={customDate}
+              onChange={(e) => setCustomDate(e.target.value)}
+              className="py-1 px-1.5 bg-white border border-slate-200 rounded text-[11px] text-slate-700 focus:outline-none"
+              title="Filter by specific arrival date"
+            />
+          </div>
+
           {/* Reset button */}
           {hasActiveFilters && (
             <button
@@ -340,14 +468,14 @@ function LotsContent() {
                     </span>
                   </div>
                 </th>
-                <th className="table-header">Purchase Order</th>
-                <th className="table-header">Supplier</th>
-                <th className="table-header">Steel Grade</th>
+                <th className="table-header">Material</th>
+                <th className="table-header">Grade</th>
                 <th className="table-header">Section</th>
                 <th className="table-header">Dimensions</th>
-                <th className="table-header text-right">Received Qty</th>
-                <th className="table-header text-right">Allocated / Sold</th>
-                <th className="table-header text-right">Available Qty</th>
+                <th className="table-header text-right">Available / Landed Qty</th>
+                <th className="table-header">Arriving Date</th>
+                <th className="table-header">Payment Terms</th>
+                <th className="table-header">PO & Supplier</th>
                 <th className="table-header">Warehouse Location</th>
                 <th className="table-header text-center">Status</th>
                 <th className="table-header text-right">Ledger</th>
@@ -363,61 +491,78 @@ function LotsContent() {
                   </td>
                 </tr>
               ) : (
-                filteredLots.map((lot) => (
-                  <tr 
-                    key={lot.id} 
-                    onClick={() => handleInspectLot(lot)}
-                    className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
-                  >
-                    <td className="table-cell">
-                      <span className="px-2.5 py-1 rounded font-mono font-bold text-xs bg-slate-900 text-white shadow-sm">
-                        {lot.lot_number}
-                      </span>
-                    </td>
-                    <td className="table-cell">
-                      {lot.po_number ? (
-                        <Link 
-                          href={`/purchasing/purchase-orders/${lot.po_number}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="font-bold text-blue-600 hover:underline"
+                filteredLots.map((lot) => {
+                  const meta = lotMetaMap[lot.id];
+                  return (
+                    <tr 
+                      key={lot.id} 
+                      onClick={() => handleInspectLot(lot)}
+                      className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
+                    >
+                      <td className="table-cell">
+                        <span className="px-2.5 py-1 rounded font-mono font-bold text-xs bg-slate-900 text-white shadow-sm">
+                          {lot.lot_number}
+                        </span>
+                      </td>
+                      <td className="table-cell">
+                        <span className="font-semibold text-slate-800 block text-xs truncate max-w-[130px]" title={meta?.material}>
+                          {meta?.material || 'Tool Steel'}
+                        </span>
+                      </td>
+                      <td className="table-cell font-bold text-slate-900">{lot.grade_code}</td>
+                      <td className="table-cell text-slate-600">{lot.section_name}</td>
+                      <td className="table-cell font-mono text-slate-600 text-[11px]">{lot.dimensions_display || '—'}</td>
+                      <td className="table-cell text-right">
+                        <strong className="text-emerald-600 block font-mono text-xs">{formatWeight(lot.available_qty)}</strong>
+                        <span className="text-[10px] text-slate-400 font-medium">Recd: {formatWeight(lot.total_received_qty)}</span>
+                      </td>
+                      <td className="table-cell">
+                        <span className="font-medium text-slate-800 text-xs block whitespace-nowrap">
+                          {formatDate(meta?.arrivingDate)}
+                        </span>
+                      </td>
+                      <td className="table-cell">
+                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold text-[10px] border border-blue-200/60 whitespace-nowrap">
+                          {meta?.paymentTerms || 'DP at sight'}
+                        </span>
+                      </td>
+                      <td className="table-cell">
+                        {lot.po_number ? (
+                          <Link 
+                            href={`/purchasing/purchase-orders/${lot.po_number}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-bold text-blue-600 hover:underline block"
+                          >
+                            PO {lot.po_number}
+                          </Link>
+                        ) : (
+                          <span className="text-slate-400 block">—</span>
+                        )}
+                        <span className="text-[10px] text-slate-500 block truncate max-w-[120px]" title={lot.supplier_name || ''}>
+                          {lot.supplier_name || 'Overseas Supplier'}
+                        </span>
+                      </td>
+                      <td className="table-cell text-slate-600">{lot.warehouse_location || 'Main Yard'}</td>
+                      <td className="table-cell text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeClass(lot.status)}`}>
+                          {lot.status}
+                        </span>
+                      </td>
+                      <td className="table-cell text-right">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleInspectLot(lot);
+                          }}
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 ml-auto"
                         >
-                          PO {lot.po_number}
-                        </Link>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
-                    </td>
-                    <td className="table-cell font-medium text-slate-700 truncate max-w-[150px]" title={lot.supplier_name || ''}>
-                      {lot.supplier_name || 'Standard Supplier'}
-                    </td>
-                    <td className="table-cell font-bold text-slate-800">{lot.grade_code}</td>
-                    <td className="table-cell text-slate-600">{lot.section_name}</td>
-                    <td className="table-cell font-mono text-slate-600">{lot.dimensions_display || '—'}</td>
-                    <td className="table-cell text-right font-medium text-slate-700">{formatWeight(lot.total_received_qty)}</td>
-                    <td className="table-cell text-right font-medium text-slate-500">{formatWeight(lot.total_allocated_sold_qty || 0)}</td>
-                    <td className="table-cell text-right font-bold text-emerald-600 text-sm">
-                      {formatWeight(lot.available_qty)}
-                    </td>
-                    <td className="table-cell text-slate-600">{lot.warehouse_location || 'Main Yard'}</td>
-                    <td className="table-cell text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeClass(lot.status)}`}>
-                        {lot.status}
-                      </span>
-                    </td>
-                    <td className="table-cell text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleInspectLot(lot);
-                        }}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 ml-auto"
-                      >
-                        <History className="h-3.5 w-3.5" />
-                        <span>Ledger</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                          <History className="h-3.5 w-3.5" />
+                          <span>Ledger</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -496,8 +641,8 @@ function LotsContent() {
                         <span className="font-semibold text-slate-800">{formatDate(first.eta_seaport)}</span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Heat Number</span>
-                        <span className="font-semibold text-slate-800 font-mono">{first.heat_no || '—'}</span>
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Payment Terms</span>
+                        <span className="font-semibold text-slate-800">{first.payment_terms || (selectedLot ? lotMetaMap[selectedLot.id]?.paymentTerms : '') || 'DP at sight'}</span>
                       </div>
                       <div>
                         <span className="text-slate-400 block text-[10px] uppercase font-bold">Transit Status</span>
