@@ -388,6 +388,37 @@ class Store {
       updated_at: new Date().toISOString()
     };
 
+    // Register lots for any items with assigned lot number
+    for (const item of newItems) {
+      if (item.lot_number && item.lot_number.trim()) {
+        const lotNo = item.lot_number.trim();
+        let lot = this.state.lots.find(l => l.lot_number.toLowerCase() === lotNo.toLowerCase());
+        if (!lot) {
+          lot = {
+            id: `lot-${lotNo}`,
+            lot_number: lotNo,
+            purchase_order_item_id: item.id,
+            po_number: newPO.po_number,
+            supplier_name: newPO.supplier_name,
+            grade_code: item.grade_code,
+            section_name: item.section_name,
+            dimensions_display: [
+              item.diameter_width ? `DIA ${item.diameter_width}` : '',
+              item.thickness ? `T${item.thickness}` : '',
+              item.length ? `L${item.length}` : ''
+            ].filter(Boolean).join(' × ') || 'Standard Spec',
+            total_received_qty: 0,
+            total_allocated_sold_qty: 0,
+            available_qty: 0,
+            warehouse_location: 'Nhava Sheva Yard',
+            status: 'Available',
+            created_at: new Date().toISOString()
+          };
+          this.state.lots.unshift(lot);
+        }
+      }
+    }
+
     this.state.purchaseOrders.unshift(newPO);
     this.addAuditLog('PO_CREATE', 'purchase_orders', newPO.id, `Created PO ${newPO.po_number}`);
     this.save();
@@ -671,7 +702,7 @@ class Store {
     );
 
     const cargoWeight = item.ready_quantity || item.received_quantity || item.ordered_quantity;
-    const lotNo = item.lot_number || `LOT-${po.po_number}`;
+    const lotNo = item.lot_number?.trim() || '';
 
     if (incomingItem) {
       incomingItem.date_of_shipment = params.dateOfShipment;
@@ -1433,7 +1464,39 @@ class Store {
 
   // --- Lots & Inventory ---
   public getLots(search?: string) {
-    let list = [...this.state.lots];
+    // Ensure all PO items with an assigned lot number are reflected in lots
+    for (const po of this.state.purchaseOrders) {
+      if (!po.items) continue;
+      for (const item of po.items) {
+        if (item.lot_number && item.lot_number.trim()) {
+          const lotNo = item.lot_number.trim();
+          if (!this.state.lots.some(l => l.lot_number.toLowerCase() === lotNo.toLowerCase())) {
+            this.state.lots.unshift({
+              id: `lot-${lotNo}`,
+              lot_number: lotNo,
+              purchase_order_item_id: item.id,
+              po_number: po.po_number,
+              supplier_name: po.supplier_name,
+              grade_code: item.grade_code,
+              section_name: item.section_name,
+              dimensions_display: [
+                item.diameter_width ? `DIA ${item.diameter_width}` : '',
+                item.thickness ? `T${item.thickness}` : '',
+                item.length ? `L${item.length}` : ''
+              ].filter(Boolean).join(' × ') || 'Standard Spec',
+              total_received_qty: Number(item.ready_quantity ?? item.received_quantity ?? 0),
+              total_allocated_sold_qty: 0,
+              available_qty: Number(item.ready_quantity ?? item.received_quantity ?? 0),
+              warehouse_location: 'Nhava Sheva Yard',
+              status: (item.ready_quantity || item.received_quantity) ? 'Available' : 'Allocated',
+              created_at: new Date().toISOString()
+            });
+          }
+        }
+      }
+    }
+
+    let list = this.state.lots.filter(l => Boolean(l.lot_number && l.lot_number.trim() && !l.lot_number.startsWith('LOT-undefined')));
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(l => 

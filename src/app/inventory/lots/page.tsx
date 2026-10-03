@@ -76,7 +76,9 @@ function LotsContent() {
     if (q) setSearch(q);
   }, [searchParams]);
 
-  const allLots = useMemo(() => dataStore.getLots(), [dataVersion]);
+  const allLots = useMemo(() => {
+    return dataStore.getLots().filter(l => Boolean(l.lot_number && l.lot_number.trim() && !l.lot_number.startsWith('LOT-undefined')));
+  }, [dataVersion]);
 
   // Derived metadata map for each lot: Material, Arriving Date, and Payment Terms
   const lotMetaMap = useMemo(() => {

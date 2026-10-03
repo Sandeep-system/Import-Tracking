@@ -145,8 +145,9 @@ function ShipmentsContent() {
     const matchedPoItemIds = new Set<string>();
     const matchedPoLotKeys = new Set<string>();
 
-    // 1. Process all incomingStock items
+    // 1. Process all incomingStock items with an assigned lot number
     for (const inc of allIncoming) {
+      if (!inc.lot_number || !inc.lot_number.trim()) continue;
       let matchedPo: PurchaseOrder | undefined;
       let matchedItem: PurchaseOrderItem | undefined;
 
@@ -199,7 +200,7 @@ function ShipmentsContent() {
 
       list.push({
         id: inc.id,
-        lot_number: inc.lot_number || `LOT-${inc.linked_po_number || 'TR'}`,
+        lot_number: inc.lot_number.trim(),
         linked_po_number: inc.linked_po_number || matchedPo?.po_number || null,
         supplier: inc.supplier || matchedPo?.supplier_name || 'Standard Supplier',
         make: inc.make || matchedPo?.origin || matchedPo?.origin_make_name || null,
@@ -221,12 +222,14 @@ function ShipmentsContent() {
       });
     }
 
-    // 2. Process active PO items not yet present in incomingStock
+    // 2. Process active PO items that have been assigned a lot number from the PO tab
     for (const po of activePOs) {
       if (!po.items) continue;
       for (const item of po.items) {
         if (matchedPoItemIds.has(item.id)) continue;
-        const lotNo = item.lot_number?.trim() || `LOT-${po.po_number}-${item.line_number}`;
+        // Items will only go to the shipment after assigning lot no. from PO tab
+        if (!item.lot_number || !item.lot_number.trim()) continue;
+        const lotNo = item.lot_number.trim();
         if (matchedPoLotKeys.has(lotNo)) continue;
         if (matchedPoLotKeys.has(`${po.po_number}-${item.line_number}`)) continue;
 
@@ -414,13 +417,16 @@ function ShipmentsContent() {
     for (const po of activePOs) {
       if (!po.items || po.items.length === 0) continue;
       for (const item of po.items) {
+        // Items will only go to shipment after assigning lot no. from PO tab
+        if (!item.lot_number || !item.lot_number.trim()) continue;
+
         const dimStr = [
           item.diameter_width ? `DIA ${item.diameter_width}` : '',
           item.thickness ? `T${item.thickness}` : '',
           item.length ? `L${item.length}` : ''
         ].filter(Boolean).join(' × ');
 
-        const lotNo = item.lot_number?.trim() || `LOT-${po.po_number}-${item.line_number}`;
+        const lotNo = item.lot_number.trim();
 
         list.push({
           id: `${po.id}-${item.id || item.line_number}`,
@@ -429,7 +435,7 @@ function ShipmentsContent() {
           supplierName: po.supplier_name || 'Standard Supplier',
           lineNumber: item.line_number,
           lotNumber: lotNo,
-          hasExplicitLot: Boolean(item.lot_number?.trim()),
+          hasExplicitLot: true,
           gradeCode: item.grade_code,
           gradeDoc: item.grade_doc,
           sectionName: item.section_name || 'Steel Section',
@@ -1474,8 +1480,10 @@ function ShipmentsContent() {
                       <tr>
                         <td colSpan={9} className="py-12 text-center text-slate-400">
                           <Package className="h-8 w-8 mx-auto text-slate-300 mb-2" />
-                          <p className="font-semibold text-slate-600">No lots found matching your filters.</p>
-                          <p className="text-[11px] text-slate-400 mt-1">Try clearing filters or search criteria.</p>
+                          <p className="font-semibold text-slate-600">No lots found.</p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            Items will only go to shipments after assigning a lot number from the Purchase Order tab (e.g. via &quot;Ready&quot; action).
+                          </p>
                         </td>
                       </tr>
                     ) : (
@@ -1655,25 +1663,31 @@ function ShipmentsContent() {
                             <td className="table-cell font-mono text-slate-600">{po.delivery_terms || 'FOB'}</td>
                             <td className="table-cell">
                               <div className="flex flex-wrap items-center gap-1">
-                                {inTransitLots.length > 0 && (
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                    {inTransitLots.length} In Transit
-                                  </span>
-                                )}
-                                {readyLots.length > 0 && (
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                    {readyLots.length} Ready
-                                  </span>
-                                )}
-                                {openLots.length > 0 && (
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                                    {openLots.length} Open
-                                  </span>
-                                )}
-                                {receivedLots.length > 0 && (
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    {receivedLots.length} Recd
-                                  </span>
+                                {poLots.length === 0 ? (
+                                  <span className="text-[10px] text-slate-400 italic">No lots assigned yet</span>
+                                ) : (
+                                  <>
+                                    {inTransitLots.length > 0 && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                        {inTransitLots.length} In Transit
+                                      </span>
+                                    )}
+                                    {readyLots.length > 0 && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                        {readyLots.length} Ready
+                                      </span>
+                                    )}
+                                    {openLots.length > 0 && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                        {openLots.length} Open
+                                      </span>
+                                    )}
+                                    {receivedLots.length > 0 && (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        {receivedLots.length} Recd
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -1691,7 +1705,7 @@ function ShipmentsContent() {
                                   onClick={() => togglePoExpanded(po.id)}
                                   className="text-xs font-bold text-slate-600 hover:text-slate-900"
                                 >
-                                  {isExpanded ? 'Hide Lots' : `View ${poLots.length} Lots`}
+                                  {isExpanded ? 'Hide Lots' : (poLots.length > 0 ? `View ${poLots.length} Lots` : 'Details')}
                                 </button>
                                 <Link
                                   href={`/purchasing/purchase-orders/${po.po_number}`}
@@ -1711,7 +1725,7 @@ function ShipmentsContent() {
                                   <div className="text-[11px] font-bold text-slate-700 pb-2 border-b border-slate-100 flex items-center justify-between">
                                     <span className="flex items-center gap-1.5">
                                       <Layers className="h-3.5 w-3.5 text-blue-600" />
-                                      <span>Contract Lots Breakdown for PO {po.po_number} ({poLots.length} items)</span>
+                                      <span>Contract Lots Breakdown for PO {po.po_number} ({poLots.length} {poLots.length === 1 ? 'lot' : 'lots'})</span>
                                     </span>
                                     <span className="text-slate-400 font-normal">Individual shipment details per lot</span>
                                   </div>
@@ -1728,7 +1742,14 @@ function ShipmentsContent() {
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                      {poLots.map(lot => (
+                                      {poLots.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={6} className="py-4 text-center text-slate-400 text-xs">
+                                            No lots assigned to this PO yet. Assign lots by marking items Ready in the PO.
+                                          </td>
+                                        </tr>
+                                      ) : (
+                                        poLots.map(lot => (
                                         <tr key={lot.id} className="hover:bg-slate-50/80">
                                           <td className="py-2">
                                             <span className="font-mono font-bold text-[11px] bg-slate-900 text-white px-2 py-0.5 rounded">
@@ -1772,7 +1793,7 @@ function ShipmentsContent() {
                                             )}
                                           </td>
                                         </tr>
-                                      ))}
+                                      )))}
                                     </tbody>
                                   </table>
                                 </div>
