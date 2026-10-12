@@ -6,11 +6,13 @@ const STORAGE_KEY_ACCESS_LIST = 'import_tracking_access_list';
 
 // Master default admin configured for the system
 export const DEFAULT_ADMIN_EMAIL = 'tech2@sandeepedgetech.com';
+export const DEFAULT_ADMIN_PASSWORD = 'Sandeep123@';
 
 const INITIAL_USERS: AppUser[] = [
   {
     email: DEFAULT_ADMIN_EMAIL,
     name: 'Tech Admin',
+    password: DEFAULT_ADMIN_PASSWORD,
     role: 'admin',
     status: 'active',
     added_by: 'system',
@@ -70,6 +72,9 @@ export const authService = {
         } else {
           users[adminIdx].role = 'admin';
           users[adminIdx].status = 'active';
+          if (!users[adminIdx].password) {
+            users[adminIdx].password = DEFAULT_ADMIN_PASSWORD;
+          }
         }
         this.setLocalUsers(users);
         return users;
@@ -135,11 +140,16 @@ export const authService = {
     return null;
   },
 
-  // Log in user by email
-  async login(emailRaw: string): Promise<{ success: boolean; message: string; user?: AppUser }> {
+  // Log in user by email & password
+  async login(emailRaw: string, passwordRaw?: string): Promise<{ success: boolean; message: string; user?: AppUser }> {
     const email = emailRaw.trim().toLowerCase();
+    const password = (passwordRaw || '').trim();
+
     if (!email) {
-      return { success: false, message: 'Please enter a valid email address.' };
+      return { success: false, message: 'Please enter your work email address.' };
+    }
+    if (!password) {
+      return { success: false, message: 'Please enter your password.' };
     }
 
     // Refresh access list from cloud
@@ -157,6 +167,15 @@ export const authService = {
       return {
         success: false,
         message: `Account Suspended: "${email}" has been temporarily deactivated. Please contact an Administrator.`
+      };
+    }
+
+    // Verify Password
+    const expectedPassword = foundUser.password || (foundUser.email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase() ? DEFAULT_ADMIN_PASSWORD : '');
+    if (!expectedPassword || password !== expectedPassword) {
+      return {
+        success: false,
+        message: 'Invalid Password: The password you entered is incorrect.'
       };
     }
 
@@ -187,6 +206,7 @@ export const authService = {
   async addUser(
     currentUser: AppUser,
     emailRaw: string,
+    passwordRaw: string,
     role: UserRole,
     name?: string
   ): Promise<{ success: boolean; message: string }> {
@@ -195,18 +215,25 @@ export const authService = {
     }
 
     const email = emailRaw.trim().toLowerCase();
+    const password = (passwordRaw || '').trim();
+
     if (!email || !email.includes('@')) {
       return { success: false, message: 'Please enter a valid email address.' };
     }
 
+    if (!password || password.length < 4) {
+      return { success: false, message: 'Password is required (minimum 4 characters).' };
+    }
+
     const users = await this.fetchCloudUsers();
     if (users.some(u => u.email.toLowerCase() === email)) {
-      return { success: false, message: `User "${email}" is already registered. You can update their role instead.` };
+      return { success: false, message: `User "${email}" is already registered. You can update their role or password instead.` };
     }
 
     const newUser: AppUser = {
       email,
       name: name?.trim() || email.split('@')[0],
+      password,
       role,
       status: 'active',
       added_by: currentUser.email,
@@ -220,6 +247,37 @@ export const authService = {
     }
 
     return { success: true, message: `User "${email}" successfully added with ${role.toUpperCase()} access!` };
+  },
+
+  // Update user password (Admin only)
+  async updateUserPassword(
+    currentUser: AppUser,
+    targetEmail: string,
+    newPasswordRaw: string
+  ): Promise<{ success: boolean; message: string }> {
+    if (currentUser.role !== 'admin') {
+      return { success: false, message: 'Permission Denied: Only Admins can update passwords.' };
+    }
+
+    const email = targetEmail.trim().toLowerCase();
+    const newPassword = (newPasswordRaw || '').trim();
+    if (!newPassword || newPassword.length < 4) {
+      return { success: false, message: 'Password must be at least 4 characters.' };
+    }
+
+    const users = await this.fetchCloudUsers();
+    const user = users.find(u => u.email.toLowerCase() === email);
+    if (!user) {
+      return { success: false, message: `User "${email}" not found.` };
+    }
+
+    user.password = newPassword;
+    const saved = await this.saveCloudUsers(users);
+    if (!saved) {
+      return { success: false, message: 'Failed to update user password in cloud database.' };
+    }
+
+    return { success: true, message: `Password for "${email}" updated successfully.` };
   },
 
   // Update existing user role (Admin only)

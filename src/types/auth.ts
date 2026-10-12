@@ -3,6 +3,7 @@ export type UserRole = 'admin' | 'editor' | 'viewer';
 export interface AppUser {
   email: string;
   name?: string;
+  password?: string;
   role: UserRole;
   status: 'active' | 'suspended';
   added_by?: string;
@@ -14,10 +15,11 @@ export interface AuthContextType {
   user: AppUser | null;
   users: AppUser[];
   isLoading: boolean;
-  login: (email: string) => Promise<{ success: boolean; message: string; role?: UserRole }>;
+  login: (email: string, password?: string) => Promise<{ success: boolean; message: string; role?: UserRole }>;
   logout: () => void;
-  addUser: (email: string, role: UserRole, name?: string) => Promise<{ success: boolean; message: string }>;
+  addUser: (email: string, password: string, role: UserRole, name?: string) => Promise<{ success: boolean; message: string }>;
   updateUserRole: (email: string, role: UserRole) => Promise<{ success: boolean; message: string }>;
+  updateUserPassword: (email: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   removeUser: (email: string) => Promise<{ success: boolean; message: string }>;
   isAdmin: boolean;
   isEditor: boolean;

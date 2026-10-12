@@ -38,9 +38,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const login = async (email: string) => {
+  const login = async (email: string, password?: string) => {
     setIsLoading(true);
-    const res = await authService.login(email);
+    const res = await authService.login(email, password);
     if (res.success && res.user) {
       setUser(res.user);
       const updatedUsers = await authService.fetchCloudUsers();
@@ -55,9 +55,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(null);
   };
 
-  const addUser = async (email: string, role: UserRole, name?: string) => {
+  const addUser = async (email: string, password: string, role: UserRole, name?: string) => {
     if (!user) return { success: false, message: 'You must be signed in.' };
-    const res = await authService.addUser(user, email, role, name);
+    const res = await authService.addUser(user, email, password, role, name);
     if (res.success) {
       const updatedUsers = await authService.fetchCloudUsers();
       setUsers(updatedUsers);
@@ -75,6 +75,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (user.email.toLowerCase() === email.toLowerCase()) {
         setUser({ ...user, role });
       }
+    }
+    return res;
+  };
+
+  const updateUserPassword = async (email: string, newPassword: string) => {
+    if (!user) return { success: false, message: 'You must be signed in.' };
+    const res = await authService.updateUserPassword(user, email, newPassword);
+    if (res.success) {
+      const updatedUsers = await authService.fetchCloudUsers();
+      setUsers(updatedUsers);
     }
     return res;
   };
@@ -104,6 +114,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         logout,
         addUser,
         updateUserRole,
+        updateUserPassword,
         removeUser,
         isAdmin,
         isEditor,
