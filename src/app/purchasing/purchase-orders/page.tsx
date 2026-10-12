@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { 
@@ -17,20 +17,25 @@ import {
   Calendar,
   Building2,
   Package,
-  Trash2
+  Trash2,
+  Sparkles,
+  Database
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { PurchaseOrder } from '@/types';
 import { formatWeight, formatDate, getStatusBadgeClass } from '@/lib/utils';
-import { googleSync } from '@/lib/googleSync';
 import * as XLSX from 'xlsx';
+import { useAuth } from '@/context/AuthContext';
 
 function PurchaseOrdersContent() {
+  const { isViewer } = useAuth();
   const searchParams = useSearchParams();
+  const [mounted, setMounted] = useState(false);
   const [dataVersion, setDataVersion] = useState(0);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [supplierFilter, setSupplierFilter] = useState('all');
+  const initialSupplier = searchParams.get('supplier') || 'all';
+  const [supplierFilter, setSupplierFilter] = useState(initialSupplier);
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [sortBy, setSortBy] = useState<'date' | 'po' | 'pending'>('po');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -118,11 +123,7 @@ const STANDARD_ORIGINS = [
   const [quickSupName, setQuickSupName] = useState('');
   const [quickSupCountry, setQuickSupCountry] = useState('');
   const [quickSupCurrency, setQuickSupCurrency] = useState('USD');
-
-  // Google Sheets Sync state
-  const [syncStatus, setSyncStatus] = useState(googleSync.getSyncStatus());
-  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
-  const [syncToast, setSyncToast] = useState<string | null>(null);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
   const [quickSupTerms, setQuickSupTerms] = useState('DP at sight');
 
   // Dynamic Item rows for new PO
@@ -207,23 +208,28 @@ const STANDARD_ORIGINS = [
     setDataVersion(v => v + 1);
   };
 
+  const handleOpenNewPO = () => {
+    setNewPoNumber(dataStore.getNextPONumber());
+    setIsNewPoOpen(true);
+  };
+
   useEffect(() => {
+    const urlSup = searchParams.get('supplier');
+    if (urlSup) {
+      setSupplierFilter(urlSup);
+      setCurrentPage(1);
+    }
     if (searchParams.get('new') === 'true') {
-      setIsNewPoOpen(true);
+      handleOpenNewPO();
     }
   }, [searchParams]);
 
   useEffect(() => {
+    setMounted(true);
     const handleUpdate = () => setDataVersion((v) => v + 1);
-    const handleSyncStatus = (e: any) => {
-      if (e.detail) setSyncStatus(e.detail);
-      else setSyncStatus(googleSync.getSyncStatus());
-    };
     window.addEventListener('app:data-updated', handleUpdate);
-    window.addEventListener('app:sheets-sync-status', handleSyncStatus);
     return () => {
       window.removeEventListener('app:data-updated', handleUpdate);
-      window.removeEventListener('app:sheets-sync-status', handleSyncStatus);
     };
   }, []);
 
@@ -236,8 +242,19 @@ const STANDARD_ORIGINS = [
     overdueOnly
   });
 
+  // Deduplicate POs defensively to prevent any duplicate key errors
+  const uniquePOs = useMemo(() => {
+    const seen = new Set<string>();
+    return allPOs.filter((po) => {
+      const key = `${po.id || ''}:::${po.po_number || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [allPOs]);
+
   // Sorting
-  const sortedPOs = [...allPOs].sort((a, b) => {
+  const sortedPOs = [...uniquePOs].sort((a, b) => {
     let diff = 0;
     if (sortBy === 'po') {
       diff = a.po_number.localeCompare(b.po_number, undefined, { numeric: true });
@@ -265,7 +282,7 @@ const STANDARD_ORIGINS = [
       'Status': po.status,
       'Total Items': po.total_items,
       'Ordered Qty (KG)': po.total_ordered_qty,
-      'Received Qty (KG)': po.total_received_qty,
+      'Recd / Ready Qty (KG)': po.total_ready_qty ?? po.total_received_qty,
       'Physical Short (KG)': po.total_physical_short_qty || 0,
       'Carried Forward (KG)': po.total_carried_forward_qty || 0,
       'Waived (KG)': po.total_waived_qty || 0,
@@ -325,11 +342,6 @@ const STANDARD_ORIGINS = [
       items: mappedItems
     });
 
-    // Background sync newly created PO to Google Sheets
-    if (createdPO) {
-      googleSync.syncCreatePO(createdPO);
-    }
-
     setIsNewPoOpen(false);
     setNewPoNumber('');
     setNewCustomer('Sandeep Edgetech (Self)');
@@ -363,25 +375,32 @@ const STANDARD_ORIGINS = [
     }
   };
 
-  const handleSyncToGoogleSheets = async () => {
+  const handleSyncCloudDB = async () => {
     try {
-      setIsSyncingSheets(true);
-      const res = await googleSync.syncAllPOs(dataStore.getOperationalPurchaseOrders());
-      setIsSyncingSheets(false);
-      if (res.success) {
-        setSyncToast(`Successfully synced ${res.count} purchase orders to your Google Sheet!`);
-        setTimeout(() => setSyncToast(null), 5000);
-      } else {
-        alert(`Google Sheets Sync Notice: ${res.error}`);
+      setIsSyncingCloud(true);
+      const res = await dataStore.pushToCloud();
+      setIsSyncingCloud(false);
+      if (res?.message) {
+        alert(res.message);
       }
     } catch (err: any) {
-      setIsSyncingSheets(false);
-      alert(`Sync error: ${err.message}`);
+      setIsSyncingCloud(false);
+      alert(`Cloud sync error: ${err.message}`);
     }
   };
 
+  if (!mounted) {
+    return (
+      <div className="space-y-5 p-4 animate-pulse" suppressHydrationWarning>
+        <div className="h-10 bg-slate-100 rounded-lg w-1/3" />
+        <div className="h-14 bg-slate-100 rounded-xl" />
+        <div className="h-96 bg-slate-100 rounded-xl" />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" suppressHydrationWarning>
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -391,21 +410,13 @@ const STANDARD_ORIGINS = [
 
         <div className="flex items-center gap-2.5">
           <button
-            onClick={handleSyncToGoogleSheets}
-            disabled={isSyncingSheets || syncStatus.state === 'syncing'}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors disabled:opacity-50"
-            title="Auto-sync is enabled. Changes save and sync automatically. Click to force immediate sync."
+            onClick={handleSyncCloudDB}
+            disabled={isSyncingCloud}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors disabled:opacity-50"
+            title="Upload and synchronize all purchase orders to the cloud database"
           >
-            <span className={`h-2 w-2 rounded-full ${syncStatus.state === 'syncing' || isSyncingSheets ? 'bg-blue-500 animate-spin' : syncStatus.state === 'error' ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'}`} />
-            <span>
-              {isSyncingSheets || syncStatus.state === 'syncing' 
-                ? 'Syncing to Sheet...' 
-                : syncStatus.state === 'synced'
-                ? `Auto-Synced ✓ (${syncStatus.lastSyncedAt || 'Active'})`
-                : syncStatus.state === 'error'
-                ? 'Sync Retry'
-                : 'Sync to Google Sheet'}
-            </span>
+            <Database className="h-3.5 w-3.5 text-blue-600" />
+            <span>{isSyncingCloud ? 'Syncing Cloud DB...' : 'Sync Cloud DB'}</span>
           </button>
 
           <button
@@ -416,27 +427,18 @@ const STANDARD_ORIGINS = [
             <span>Export Excel</span>
           </button>
 
-          <button
-            onClick={() => setIsNewPoOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Create Purchase Order</span>
-          </button>
+          {!isViewer && (
+            <button
+              onClick={handleOpenNewPO}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Create Purchase Order</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Sync Toast Notification */}
-      {syncToast && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center justify-between shadow-sm animate-in fade-in duration-200">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold">{syncToast}</span>
-          </div>
-          <button onClick={() => setSyncToast(null)} className="text-emerald-600 hover:text-emerald-800 font-bold px-1">
-            ✕
-          </button>
-        </div>
-      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-3.5 rounded-xl border border-slate-200 card-shadow flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -467,8 +469,10 @@ const STANDARD_ORIGINS = [
           >
             <option value="all">All Statuses</option>
             <option value="Open">Open</option>
-            <option value="Partially Received">Partially Received</option>
+            <option value="Ready to Ship">Ready to Ship</option>
+            <option value="In Transit">In Transit</option>
             <option value="Received">Received</option>
+            <option value="Partially Received">Partially Received</option>
             <option value="Closed">Closed</option>
           </select>
 
@@ -482,10 +486,31 @@ const STANDARD_ORIGINS = [
             className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 max-w-[200px]"
           >
             <option value="all">All Suppliers</option>
-            {suppliers.map(s => (
-              <option key={s.id} value={s.supplier_name}>{s.supplier_name}</option>
+            {supplierFilter !== 'all' && !suppliers.some(s => s.supplier_name.toLowerCase() === supplierFilter.toLowerCase()) && (
+              <option value={supplierFilter}>{supplierFilter}</option>
+            )}
+            {suppliers.map((s, idx) => (
+              <option key={`${s.id || s.supplier_name}-${idx}`} value={s.supplier_name}>{s.supplier_name}</option>
             ))}
           </select>
+
+          {supplierFilter !== 'all' && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-xs font-medium animate-in fade-in duration-150">
+              <Building2 className="h-3 w-3 text-blue-600" />
+              <span>Supplier: <strong>{supplierFilter}</strong></span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSupplierFilter('all');
+                  setCurrentPage(1);
+                }}
+                className="ml-1 text-slate-400 hover:text-slate-700 p-0.5"
+                title="Clear supplier filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
 
           {/* Overdue Toggle */}
           <label className="flex items-center gap-1.5 text-slate-700 font-medium cursor-pointer select-none">
@@ -526,9 +551,9 @@ const STANDARD_ORIGINS = [
 
       {/* PO Table */}
       <div className="bg-white rounded-xl border border-slate-200 card-shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
+        <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
+          <table className="w-full text-left border-separate border-spacing-0">
+            <thead className="sticky top-0 z-10 bg-slate-50">
               <tr>
                 <th className="table-header">PO Number</th>
                 <th className="table-header">Order Date</th>
@@ -536,7 +561,7 @@ const STANDARD_ORIGINS = [
                 <th className="table-header">Port / Terms</th>
                 <th className="table-header text-center">Items</th>
                 <th className="table-header text-right">Ordered Qty</th>
-                <th className="table-header text-right">Received Qty</th>
+                <th className="table-header text-right">Recd / Ready Qty</th>
                 <th className="table-header text-right">Pending Qty</th>
                 <th className="table-header">Expected</th>
                 <th className="table-header text-center">Status</th>
@@ -551,8 +576,8 @@ const STANDARD_ORIGINS = [
                   </td>
                 </tr>
               ) : (
-                paginatedPOs.map((po) => (
-                  <tr key={po.id} className="hover:bg-slate-50/80 transition-colors group">
+                paginatedPOs.map((po, idx) => (
+                  <tr key={`${po.id}-${po.po_number || idx}`} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="table-cell">
                       <Link 
                         href={`/purchasing/purchase-orders/${po.po_number}`}
@@ -595,19 +620,21 @@ const STANDARD_ORIGINS = [
                       {formatWeight(po.total_ordered_qty)}
                     </td>
                     <td className="table-cell text-right font-semibold text-emerald-600">
-                      {formatWeight(po.total_received_qty)}
+                      {formatWeight(po.total_ready_qty ?? po.total_received_qty)}
                     </td>
                     {(() => {
-                      const bal = po.total_actionable_pending_qty ?? po.total_balance_qty ?? 0;
+                      const isSettled = po.is_closed || Math.abs((po.total_ordered_qty || 0) - (po.total_received_qty || 0)) < 0.001;
+                      const bal = isSettled ? 0 : (po.total_actionable_pending_qty ?? po.total_balance_qty ?? 0);
+                      const physShort = isSettled ? 0 : (po.total_physical_short_qty ?? 0);
                       return (
-                        <td className={`table-cell text-right font-bold ${bal < 0 ? 'text-purple-700' : 'text-blue-700'}`}>
+                        <td className={`table-cell text-right font-bold ${!isSettled && bal < 0 ? 'text-purple-700' : isSettled ? 'text-slate-400' : 'text-blue-700'}`}>
                           <div>{formatWeight(bal)}</div>
-                          {bal >= 0 && (po.total_physical_short_qty ?? 0) > bal && (
+                          {!isSettled && bal >= 0 && physShort > bal && (
                             <span className="block text-[10px] font-normal text-slate-400">
-                              Short: {formatWeight(po.total_physical_short_qty ?? 0)}
+                              Short: {formatWeight(physShort)}
                             </span>
                           )}
-                          {bal < 0 && (
+                          {!isSettled && bal < 0 && (
                             <span className="block text-[10px] font-normal text-purple-600">
                               Over: {formatWeight(Math.abs(bal))}
                             </span>
@@ -685,9 +712,9 @@ const STANDARD_ORIGINS = [
 
       {/* New Purchase Order Modal */}
       {isNewPoOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-4xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-6">
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <ShoppingBag className="h-5 w-5 text-blue-400" />
                 <h2 className="text-base font-bold">Create New Import Purchase Order</h2>
@@ -697,19 +724,34 @@ const STANDARD_ORIGINS = [
               </button>
             </div>
 
-            <form onSubmit={handleCreatePO} className="p-6 space-y-5 text-xs text-slate-700 max-h-[80vh] overflow-y-auto">
+            <form onSubmit={handleCreatePO} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="p-6 space-y-5 text-xs text-slate-700 overflow-y-auto flex-1">
               {/* Contract General Details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div>
-                  <label className="block font-semibold mb-1 text-slate-800">PO Number *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-800">PO Number *</label>
+                    <button
+                      type="button"
+                      onClick={() => setNewPoNumber(dataStore.getNextPONumber())}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-bold hover:underline flex items-center gap-0.5"
+                      title="Automatically calculate and fill next sequential PO number"
+                    >
+                      <Sparkles className="h-3 w-3 text-amber-500" />
+                      <span>Auto-Generate</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     required
                     value={newPoNumber}
                     onChange={(e) => setNewPoNumber(e.target.value)}
-                    placeholder="e.g. 1122"
-                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
+                    placeholder="e.g. 1137"
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono font-bold text-slate-900"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Next sequential: #{dataStore.getNextPONumber()}
+                  </span>
                 </div>
                 <div>
                   <label className="block font-semibold mb-1 text-slate-800">Order Date *</label>
@@ -737,8 +779,8 @@ const STANDARD_ORIGINS = [
                     onChange={(e) => setNewSupplierName(e.target.value)}
                     className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.supplier_name}>{s.supplier_name} ({s.country || 'Overseas'})</option>
+                    {suppliers.map((s, idx) => (
+                      <option key={`${s.id || s.supplier_name}-${idx}`} value={s.supplier_name}>{s.supplier_name} ({s.country || 'Overseas'})</option>
                     ))}
                   </select>
                 </div>
@@ -750,8 +792,8 @@ const STANDARD_ORIGINS = [
                     onChange={(e) => setNewCustomer(e.target.value)}
                     className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
-                    {customers.map(c => (
-                      <option key={c.id} value={c.customer_name}>{c.customer_name}</option>
+                    {customers.map((c, idx) => (
+                      <option key={`${c.id || c.customer_name}-${idx}`} value={c.customer_name}>{c.customer_name}</option>
                     ))}
                     <option value="__custom__">+ Enter Custom Customer...</option>
                   </select>
@@ -1055,41 +1097,29 @@ const STANDARD_ORIGINS = [
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 border-t border-slate-200/60">
-                        <div>
-                          <label className="block font-semibold mb-1 text-slate-700">Surface Condition</label>
-                          <div className="flex gap-1.5">
-                            <select
-                              value={STANDARD_SURFACE_CONDITIONS.includes(item.condition_name) ? item.condition_name : '__custom__'}
-                              onChange={(e) => {
-                                if (e.target.value !== '__custom__') {
-                                  handleUpdateDraftItem(idx, 'condition_name', e.target.value);
-                                }
-                              }}
-                              className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg text-xs"
-                            >
-                              {STANDARD_SURFACE_CONDITIONS.map(c => (
-                                <option key={c} value={c}>{c}</option>
-                              ))}
-                              <option value="__custom__">Custom / Other...</option>
-                            </select>
-                            <input
-                              type="text"
-                              value={item.condition_name}
-                              onChange={(e) => handleUpdateDraftItem(idx, 'condition_name', e.target.value)}
-                              placeholder="e.g. BLACK ROLLED"
-                              className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block font-semibold mb-1 text-slate-700">Lot No. (Batch / Heat #)</label>
+                      <div className="pt-1 border-t border-slate-200/60">
+                        <label className="block font-semibold mb-1 text-slate-700">Surface Condition</label>
+                        <div className="flex gap-1.5 max-w-md">
+                          <select
+                            value={STANDARD_SURFACE_CONDITIONS.includes(item.condition_name) ? item.condition_name : '__custom__'}
+                            onChange={(e) => {
+                              if (e.target.value !== '__custom__') {
+                                handleUpdateDraftItem(idx, 'condition_name', e.target.value);
+                              }
+                            }}
+                            className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                          >
+                            {STANDARD_SURFACE_CONDITIONS.map(c => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                            <option value="__custom__">Custom / Other...</option>
+                          </select>
                           <input
                             type="text"
-                            value={item.lot_number || ''}
-                            onChange={(e) => handleUpdateDraftItem(idx, 'lot_number', e.target.value)}
-                            placeholder="e.g. LOT-1093-01 / Heat #4412"
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                            value={item.condition_name}
+                            onChange={(e) => handleUpdateDraftItem(idx, 'condition_name', e.target.value)}
+                            placeholder="e.g. BLACK ROLLED"
+                            className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg"
                           />
                         </div>
                       </div>
@@ -1125,8 +1155,10 @@ const STANDARD_ORIGINS = [
                   );
                 })()}
               </div>
+              </div>
 
-              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-200">
+              {/* Pinned Desktop-Friendly Footer */}
+              <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsNewPoOpen(false)}

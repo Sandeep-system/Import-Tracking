@@ -12,65 +12,71 @@ import {
   MigrationSummary,
   BalanceResolution,
   ResolutionType,
-  ResolutionStatus
+  ResolutionStatus,
+  IncomingStockItem,
+  DataState
 } from '@/types';
 import initialDataRaw from './initialData.json';
-import { googleSync } from './googleSync';
+import incomingStockRaw from './incomingStockData.json';
+import { supabaseSync } from './supabaseSync';
+import { canonicalSupplierKey } from './utils';
 
-const STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V7';
-const PREV_STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V6';
+const STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V8';
+const PREV_STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V7';
 
-export interface DataState {
-  purchaseOrders: PurchaseOrder[];
-  suppliers: Supplier[];
-  customers: Customer[];
-  lots: Lot[];
-  receipts: Receipt[];
-  inventoryTransactions: InventoryTransaction[];
-  customerAllocations: CustomerAllocation[];
-  sales: Sale[];
-  auditLogs: AuditLog[];
-  balanceResolutions: BalanceResolution[];
-}
 
 function getInitialState(): DataState {
-  const defaultSuppliers: Supplier[] = initialDataRaw.suppliers as unknown as Supplier[];
-  const defaultPOs: PurchaseOrder[] = initialDataRaw.purchaseOrders as unknown as PurchaseOrder[];
-  const defaultLots: Lot[] = initialDataRaw.lots as unknown as Lot[];
-  const defaultReceipts: Receipt[] = initialDataRaw.receipts as unknown as Receipt[];
+  const rawSuppliers = (initialDataRaw.suppliers || []) as unknown as Supplier[];
+  const seenSup = new Set<string>();
+  const defaultSuppliers: Supplier[] = [];
+  for (const s of rawSuppliers) {
+    if (!s || !s.supplier_name) continue;
+    const key = canonicalSupplierKey(s.supplier_name) || (s.id || s.supplier_name).trim().toLowerCase();
+    if (!seenSup.has(key)) {
+      seenSup.add(key);
+      defaultSuppliers.push(s);
+    }
+  }
 
-  // Generate initial inventory transactions from existing receipts
-  const defaultTransactions: InventoryTransaction[] = defaultReceipts.map((rc, idx) => ({
-    id: `tx-${idx + 1}`,
-    lot_id: rc.lot_id || `lot-${rc.lot_number || 'default'}`,
-    lot_number: rc.lot_number || 'UNASSIGNED',
-    transaction_type: 'PURCHASE_RECEIPT',
-    quantity: rc.received_quantity,
-    reference_type: 'receipts',
-    reference_id: rc.id,
-    reference_display: `PO ${rc.po_number} Receipt ${rc.receipt_number}`,
-    transaction_date: rc.receipt_date,
-    remarks: `Initial import from invoice ${rc.supplier_invoice_number || 'N/A'}`,
-    created_at: new Date().toISOString()
-  }));
+  const rawPOs = (initialDataRaw.purchaseOrders || []) as unknown as PurchaseOrder[];
+  const seenPO = new Set<string>();
+  const defaultPOs: PurchaseOrder[] = [];
+  for (const po of rawPOs) {
+    if (!po) continue;
+    const key = po.id || po.po_number;
+    if (!seenPO.has(key)) {
+      seenPO.add(key);
+      defaultPOs.push(po);
+    }
+  }
+  const defaultLots: Lot[] = (initialDataRaw.lots || []) as unknown as Lot[];
+  const defaultReceipts: Receipt[] = (initialDataRaw.receipts || []) as unknown as Receipt[];
 
-  // Initial customers based on Excel analysis
   const defaultCustomers: Customer[] = [
     { id: 'cust-1', customer_code: 'SE', customer_name: 'Sandeep Edgetech (Self)', contact_person: 'Head Office / Self', phone: '+91 98200 11111', status: 'active' },
     { id: 'cust-2', customer_code: 'BM', customer_name: 'BM Trading Division', contact_person: 'Procurement Lead', phone: '+91 98200 22222', status: 'active' },
     { id: 'cust-3', customer_code: 'CUST-003', customer_name: 'Omkara Steels Pvt Ltd', contact_person: 'Mr. Sharma', phone: '+91 98200 33333', status: 'active' },
-    { id: 'cust-4', customer_code: 'CUST-004', customer_name: 'Global Aluminium Ltd', contact_person: 'Mr. Patel', phone: '+91 98200 44444', status: 'active' },
-    { id: 'cust-5', customer_code: 'CUST-005', customer_name: 'Interplast Industries', contact_person: 'Director Operations', phone: '+91 98200 55555', status: 'active' },
   ];
+
+  const defaultIncomingTransit = (incomingStockRaw.inTransit || []) as unknown as IncomingStockItem[];
+  const defaultIncomingReceived = (incomingStockRaw.received || []) as unknown as IncomingStockItem[];
+  const initMap = new Map<string, IncomingStockItem>();
+  for (const item of [...defaultIncomingTransit, ...defaultIncomingReceived]) {
+    const key = item.id || `inc-${Math.random()}`;
+    if (!initMap.has(key)) {
+      initMap.set(key, item);
+    }
+  }
+  const defaultIncomingStock = Array.from(initMap.values());
 
   const defaultAuditLogs: AuditLog[] = [
     {
-      id: 'log-1',
-      action: 'SYSTEM_INIT',
+      id: 'log-ingest-1',
+      action: 'SYSTEM_INGEST',
       entity_type: 'SYSTEM',
-      entity_id: 'init',
+      entity_id: 'excel-ingest',
       entity_display: 'Import Tracking System',
-      remarks: 'Initialized system with 394 POs (376 Closed + 18 Active) and 7,208 verified receipts from workbook.',
+      remarks: 'Ingested 22 active POs, 372 closed POs, 7,709 receipts, and 126 in-transit lots according to exact status coloring rules.',
       created_at: new Date().toISOString()
     }
   ];
@@ -81,64 +87,193 @@ function getInitialState(): DataState {
     customers: defaultCustomers,
     lots: defaultLots,
     receipts: defaultReceipts,
-    inventoryTransactions: defaultTransactions,
+    inventoryTransactions: [],
     customerAllocations: [],
     sales: [],
     auditLogs: defaultAuditLogs,
-    balanceResolutions: []
+    balanceResolutions: [],
+    incomingStock: defaultIncomingStock
   };
 }
 
 class Store {
   private state: DataState;
+  private deletedPoIds: Set<string> = new Set();
+  private deletedReceiptIds: Set<string> = new Set();
 
   constructor() {
     this.state = getInitialState();
-    for (const po of this.state.purchaseOrders) {
-      this.recomputePOAggregates(po);
-    }
+
     if (typeof window !== 'undefined') {
+      // Purge legacy browser localStorage keys to prevent old caches from polluting the server database
       try {
-        const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(PREV_STORAGE_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          // Ensure we have the full dataset including historical closed orders
-          if (
-            parsed && 
-            Array.isArray(parsed.purchaseOrders) && 
-            parsed.purchaseOrders.length >= initialDataRaw.purchaseOrders.length
-          ) {
-            this.state = parsed;
-            if (!Array.isArray(this.state.balanceResolutions)) {
-              this.state.balanceResolutions = [];
-            }
-            // Ensure customer "SE" is always Sandeep Edgetech (Self)
-            const seCust = this.state.customers?.find(c => 
-              c.id === 'cust-1' || 
-              c.customer_code === 'SE' || 
-              c.customer_code === 'CUST-001' || 
-              c.customer_name?.includes('Special Enterprises') ||
-              c.customer_name?.includes('SE')
-            );
-            if (seCust) {
-              seCust.customer_name = 'Sandeep Edgetech (Self)';
-              seCust.customer_code = 'SE';
-              seCust.contact_person = 'Head Office / Self';
-            }
-          } else {
-            // Outdated cache with fewer POs, re-populate full dataset
-            this.state = getInitialState();
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(PREV_STORAGE_KEY);
+        localStorage.removeItem('sandeep_user_pos');
+        localStorage.removeItem('sandeep_user_receipts');
+      } catch (e) {}
+
+      // Link incoming stock to purchase orders on initial state
+      this.linkIncomingStockWithPOs();
+      for (const po of this.state.purchaseOrders) {
+        this.recomputePOAggregates(po);
+      }
+
+      // Initialize Cloud Database Synchronization (authoritative server database)
+      supabaseSync.init((remoteData) => {
+        this.mergeRemoteState(remoteData);
+      });
+    }
+  }
+
+  public getDeletedPoIds(): string[] {
+    return Array.from(this.deletedPoIds);
+  }
+
+  public getDeletedReceiptIds(): string[] {
+    return Array.from(this.deletedReceiptIds);
+  }
+
+  public mergeRemoteState(remote: any) {
+    if (!remote) return;
+    try {
+      const baselineIds = new Set((initialDataRaw.purchaseOrders || []).map((p: any) => p.id));
+
+      // 1. Process deleted POs
+      if (Array.isArray(remote.deletedPoIds)) {
+        for (const id of remote.deletedPoIds) {
+          this.deletedPoIds.add(id);
+        }
+        this.state.purchaseOrders = this.state.purchaseOrders.filter(
+          p => !this.deletedPoIds.has(p.id) && !this.deletedPoIds.has(p.po_number)
+        );
+      }
+
+      // 2. Process deleted Receipts
+      if (Array.isArray(remote.deletedReceiptIds)) {
+        for (const id of remote.deletedReceiptIds) {
+          this.deletedReceiptIds.add(id);
+        }
+        this.state.receipts = this.state.receipts.filter(r => !this.deletedReceiptIds.has(r.id));
+      }
+
+      // 3. Purchase Orders
+      if (Array.isArray(remote.purchaseOrders) || Array.isArray(remote.userPurchaseOrders)) {
+        const rawPos: PurchaseOrder[] = Array.isArray(remote.purchaseOrders) 
+          ? remote.purchaseOrders 
+          : (Array.isArray(remote.userPurchaseOrders) ? remote.userPurchaseOrders : []);
+        const poMap = new Map<string, PurchaseOrder>();
+        for (const basePo of (initialDataRaw.purchaseOrders || [])) {
+          if (!this.deletedPoIds.has(basePo.id) && !this.deletedPoIds.has(basePo.po_number)) {
+            poMap.set(basePo.id || `po-${basePo.po_number}`, basePo as unknown as PurchaseOrder);
           }
         }
-        // Initialize balance and resolution aggregates across all loaded POs
-        for (const po of this.state.purchaseOrders) {
-          this.recomputePOAggregates(po);
+        for (const po of rawPos) {
+          if (!this.deletedPoIds.has(po.id) && !this.deletedPoIds.has(po.po_number)) {
+            poMap.set(po.id || `po-${po.po_number}`, po);
+          }
         }
-        this.save({ skipAutoSync: true });
-      } catch (e) {
-        console.error('Failed to load local storage:', e);
+        this.state.purchaseOrders = Array.from(poMap.values());
       }
+
+      // 4. Receipts
+      if (Array.isArray(remote.receipts) || Array.isArray(remote.userReceipts)) {
+        const rawReceipts: Receipt[] = Array.isArray(remote.receipts) 
+          ? remote.receipts 
+          : (Array.isArray(remote.userReceipts) ? remote.userReceipts : []);
+        const rcMap = new Map<string, Receipt>();
+        for (const baseRc of (initialDataRaw.receipts || [])) {
+          if (!this.deletedReceiptIds.has(baseRc.id)) {
+            rcMap.set(baseRc.id, baseRc as unknown as Receipt);
+          }
+        }
+        for (const rc of rawReceipts) {
+          if (!this.deletedReceiptIds.has(rc.id)) {
+            rcMap.set(rc.id, rc);
+          }
+        }
+        this.state.receipts = Array.from(rcMap.values());
+      }
+
+      // 6. Process inventory transactions
+      if (Array.isArray(remote.inventoryTransactions) && remote.inventoryTransactions.length > 0) {
+        const txMap = new Map(this.state.inventoryTransactions.map(t => [t.id, t]));
+        for (const tx of remote.inventoryTransactions) {
+          txMap.set(tx.id, tx);
+        }
+        this.state.inventoryTransactions = Array.from(txMap.values());
+      }
+
+      // 7. Process lots, suppliers, customers
+      if (Array.isArray(remote.lots) && remote.lots.length > 0) {
+        const lotMap = new Map(this.state.lots.map(l => [l.id, l]));
+        for (const rLot of remote.lots) {
+          lotMap.set(rLot.id, rLot);
+        }
+        this.state.lots = Array.from(lotMap.values());
+      }
+      if (Array.isArray(remote.suppliers) && remote.suppliers.length > 0) {
+        const seenSup = new Set<string>();
+        const uniqueSup: Supplier[] = [];
+        for (const s of remote.suppliers) {
+          if (!s || !s.supplier_name) continue;
+          const key = canonicalSupplierKey(s.supplier_name) || (s.id || s.supplier_name).trim().toLowerCase();
+          if (!seenSup.has(key)) {
+            seenSup.add(key);
+            uniqueSup.push(s);
+          }
+        }
+        this.state.suppliers = uniqueSup;
+      }
+      if (Array.isArray(remote.customers) && remote.customers.length > 0) {
+        this.state.customers = remote.customers;
+      }
+      if (Array.isArray(remote.incomingStock) && remote.incomingStock.length > 0) {
+        const incMap = new Map<string, IncomingStockItem>();
+        for (const i of (this.state.incomingStock || [])) {
+          if (i.id) incMap.set(i.id, i);
+        }
+        for (const savedInc of remote.incomingStock) {
+          if (savedInc.id) {
+            const existing = incMap.get(savedInc.id);
+            incMap.set(savedInc.id, existing ? { ...existing, ...savedInc } : savedInc);
+          }
+        }
+        this.state.incomingStock = Array.from(incMap.values());
+      }
+
+      // Ensure customer "SE" is always Sandeep Edgetech (Self)
+      const seCust = this.state.customers?.find(c => 
+        c.id === 'cust-1' || 
+        c.customer_code === 'SE' || 
+        c.customer_code === 'CUST-001' || 
+        c.customer_name?.includes('Special Enterprises') ||
+        c.customer_name?.includes('SE')
+      );
+      if (seCust) {
+        seCust.customer_name = 'Sandeep Edgetech (Self)';
+        seCust.customer_code = 'SE';
+        seCust.contact_person = 'Head Office / Self';
+      }
+
+      this.linkIncomingStockWithPOs();
+      for (const po of this.state.purchaseOrders) {
+        this.recomputePOAggregates(po);
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:data-updated'));
+      }
+    } catch (err) {
+      console.warn('Failed to merge remote cloud database state:', err);
     }
+  }
+
+  public async pushToCloud() {
+    return supabaseSync.pushAll(this.state, {
+      deletedPoIds: Array.from(this.deletedPoIds),
+      deletedReceiptIds: Array.from(this.deletedReceiptIds)
+    });
   }
 
   public getOperationalPurchaseOrders(): PurchaseOrder[] {
@@ -147,16 +282,23 @@ class Store {
     );
   }
 
-  private save(options: { skipAutoSync?: boolean } = {}) {
+  public getUserPurchaseOrders(): PurchaseOrder[] {
+    const baselineIds = new Set((initialDataRaw.purchaseOrders || []).map((p: any) => p.id));
+    return this.state.purchaseOrders.filter(p => !baselineIds.has(p.id));
+  }
+
+  public save(options: { skipAutoSync?: boolean } = {}) {
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
         window.dispatchEvent(new CustomEvent('app:data-updated'));
         if (!options.skipAutoSync) {
-          googleSync.queueAutoSync(this.getOperationalPurchaseOrders());
+          supabaseSync.queueSync(this.state, {
+            deletedPoIds: Array.from(this.deletedPoIds),
+            deletedReceiptIds: Array.from(this.deletedReceiptIds)
+          });
         }
-      } catch (e) {
-        console.error('Failed to save to local storage:', e);
+      } catch (err) {
+        console.error('Error dispatching update event:', err);
       }
     }
   }
@@ -169,13 +311,44 @@ class Store {
 
   // --- Purchase Orders ---
   public getPurchaseOrders(filter?: { status?: string; supplier?: string; search?: string; overdueOnly?: boolean }) {
-    let list = [...this.state.purchaseOrders];
+    // Ensure all POs in state are strictly deduplicated by both ID and PO number
+    const seenIds = new Set<string>();
+    const seenPoNumbers = new Set<string>();
+    const uniquePOs: PurchaseOrder[] = [];
+
+    for (const po of this.state.purchaseOrders) {
+      const idKey = po.id || `po-${po.po_number}`;
+      const numKey = po.po_number ? String(po.po_number).trim() : '';
+
+      if (seenIds.has(idKey) || (numKey && seenPoNumbers.has(numKey))) {
+        continue;
+      }
+      seenIds.add(idKey);
+      if (numKey) seenPoNumbers.add(numKey);
+      uniquePOs.push(po);
+    }
+    this.state.purchaseOrders = uniquePOs;
+    let list = [...uniquePOs];
     if (filter) {
       if (filter.status && filter.status !== 'all') {
         list = list.filter(po => po.status.toLowerCase() === filter.status?.toLowerCase());
       }
       if (filter.supplier && filter.supplier !== 'all') {
-        list = list.filter(po => po.supplier_name?.toLowerCase().includes(filter.supplier!.toLowerCase()));
+        const supKey = filter.supplier.toLowerCase().trim();
+        const exactMatches = list.filter(po => {
+          const poSup = (po.supplier_name || '').toLowerCase().trim();
+          const poSupId = (po.supplier_id || '').toLowerCase().trim();
+          return poSup === supKey || poSupId === supKey;
+        });
+
+        if (exactMatches.length > 0) {
+          list = exactMatches;
+        } else {
+          list = list.filter(po => {
+            const poSup = (po.supplier_name || '').toLowerCase().trim();
+            return poSup.includes(supKey);
+          });
+        }
       }
       if (filter.overdueOnly) {
         list = list.filter(po => po.is_overdue);
@@ -198,6 +371,19 @@ class Store {
     return this.state.purchaseOrders.find(po => po.id === id || po.po_number === id);
   }
 
+  public getNextPONumber(): string {
+    const pos = this.state.purchaseOrders || [];
+    let max = 1000;
+    for (const po of pos) {
+      const clean = (po.po_number || '').replace(/[^0-9]/g, '');
+      const num = parseInt(clean, 10);
+      if (!isNaN(num) && num > max) {
+        max = num;
+      }
+    }
+    return String(max + 1);
+  }
+
   public createPurchaseOrder(po: Omit<Partial<PurchaseOrder>, 'items'> & { items: Partial<PurchaseOrderItem>[] }): PurchaseOrder {
     const id = `po-${po.po_number}`;
     const newItems: PurchaseOrderItem[] = (po.items || []).map((item, idx) => ({
@@ -214,6 +400,8 @@ class Store {
       treatment: item.treatment || 'Annealed',
       condition_name: item.condition_name || 'BLACK ROLLED',
       lot_number: item.lot_number || null,
+      container_no: item.container_no || null,
+      port_of_loading: item.port_of_loading || null,
       ordered_quantity: Number(item.ordered_quantity) || 0,
       received_quantity: 0,
       balance_quantity: Number(item.ordered_quantity) || 0,
@@ -264,6 +452,42 @@ class Store {
       updated_at: new Date().toISOString()
     };
 
+    // Register lots for any items with assigned lot number
+    for (const item of newItems) {
+      if (item.lot_number && item.lot_number.trim()) {
+        const lotNo = item.lot_number.trim();
+        let lot = this.state.lots.find(l => l.lot_number.toLowerCase() === lotNo.toLowerCase());
+        if (!lot) {
+          lot = {
+            id: `lot-${lotNo}`,
+            lot_number: lotNo,
+            purchase_order_item_id: item.id,
+            po_number: newPO.po_number,
+            supplier_name: newPO.supplier_name,
+            grade_code: item.grade_code,
+            section_name: item.section_name,
+            dimensions_display: [
+              item.diameter_width ? `DIA ${item.diameter_width}` : '',
+              item.thickness ? `T${item.thickness}` : '',
+              item.length ? `L${item.length}` : ''
+            ].filter(Boolean).join(' × ') || 'Standard Spec',
+            total_received_qty: 0,
+            total_allocated_sold_qty: 0,
+            available_qty: 0,
+            warehouse_location: 'Nhava Sheva Yard',
+            status: 'Available',
+            created_at: new Date().toISOString()
+          };
+          this.state.lots.unshift(lot);
+        }
+      }
+    }
+
+    this.deletedPoIds.delete(newPO.id);
+    this.deletedPoIds.delete(newPO.po_number);
+    this.state.purchaseOrders = this.state.purchaseOrders.filter(
+      p => p.id !== newPO.id && p.po_number !== newPO.po_number
+    );
     this.state.purchaseOrders.unshift(newPO);
     this.addAuditLog('PO_CREATE', 'purchase_orders', newPO.id, `Created PO ${newPO.po_number}`);
     this.save();
@@ -341,6 +565,8 @@ class Store {
     );
 
     // Remove the PO
+    this.deletedPoIds.add(po.id);
+    this.deletedPoIds.add(poNumber);
     this.state.purchaseOrders.splice(poIndex, 1);
 
     // Add audit log
@@ -418,6 +644,8 @@ class Store {
     supplierInvoiceDate?: string;
     lotNumber: string;
     shipmentDetails?: string;
+    containerNo?: string;
+    portOfLoading?: string;
     remarks?: string;
   }): { receipt: Receipt; updatedItem: PurchaseOrderItem; updatedPO: PurchaseOrder } {
     const po = this.state.purchaseOrders.find(p => p.id === params.poId || p.po_number === params.poId);
@@ -468,12 +696,15 @@ class Store {
       unit: item.unit || 'KG',
       supplier_invoice_number: params.supplierInvoice,
       supplier_invoice_date: params.supplierInvoiceDate,
+      container_no: params.containerNo?.trim() || null,
+      port_of_loading: params.portOfLoading?.trim() || null,
       remarks: params.remarks,
       created_at: new Date().toISOString()
     };
 
     if (!item.receipts) item.receipts = [];
     item.receipts.push(newReceipt);
+    this.deletedReceiptIds.delete(newReceipt.id);
     this.state.receipts.push(newReceipt);
 
     // Create Inventory Transaction Ledger Entry
@@ -492,21 +723,219 @@ class Store {
     };
     this.state.inventoryTransactions.unshift(tx);
 
+    // Set item status to Ready to Ship and assign ready quantity, container, and port of loading
+    item.status = 'Ready to Ship';
+    item.ready_quantity = (item.ready_quantity || 0) + qty;
+    item.lot_number = lot.lot_number;
+    if (params.containerNo !== undefined) item.container_no = params.containerNo.trim() || null;
+    if (params.portOfLoading !== undefined) item.port_of_loading = params.portOfLoading.trim() || null;
+
     // Recompute Item & PO Quantities, Physical Shortage, and Statuses
     this.recomputePOAggregates(po);
 
     this.addAuditLog(
-      'RECEIPT_ENTRY', 
+      'READY_TO_SHIP_ENTRY', 
       'receipts', 
       newReceipt.id, 
-      `Received ${qty} KG for PO ${po.po_number} (Item #${item.line_number}) into Lot ${lot.lot_number}`
+      `Marked ${qty} KG Ready to Ship for PO ${po.po_number} (Item #${item.line_number}) into Lot ${lot.lot_number}`
     );
     this.save();
 
     return { receipt: newReceipt, updatedItem: item, updatedPO: po };
   }
 
-  // --- Bulk Receipts & Multi-Item Edit Workflow ---
+  // --- Mark Item Shipped & Set In-Transit ---
+  public markItemShipped(params: {
+    poIdOrNumber: string;
+    itemId: string;
+    dateOfShipment: string;
+    etaSeaport: string;
+    lotNumber?: string;
+    heatNo?: string;
+    sims?: string;
+    deliveryTerms?: string;
+    paymentTerms?: string;
+    port?: string;
+    containerNo?: string;
+    portOfLoading?: string;
+  }): { updatedItem: PurchaseOrderItem; updatedPO: PurchaseOrder; incomingItem: IncomingStockItem } {
+    const po = this.state.purchaseOrders.find(
+      p => p.id === params.poIdOrNumber || p.po_number === params.poIdOrNumber
+    );
+    if (!po) throw new Error(`Purchase order ${params.poIdOrNumber} not found`);
+
+    const item = po.items?.find(i => i.id === params.itemId);
+    if (!item) throw new Error(`PO Line Item ${params.itemId} not found`);
+
+    item.status = 'In Transit';
+    item.date_of_shipment = params.dateOfShipment;
+    item.eta_seaport = params.etaSeaport;
+    item.heat_no = params.heatNo || item.heat_no || null;
+    item.sims = params.sims || item.sims || null;
+    item.delivery_terms = params.deliveryTerms || po.delivery_terms || 'FOB';
+    item.payment_terms = params.paymentTerms || po.payment_terms || null;
+    item.destination_port = params.port || po.destination || 'N.S.';
+    if (params.containerNo !== undefined) item.container_no = params.containerNo?.trim() || null;
+    if (params.portOfLoading !== undefined) item.port_of_loading = params.portOfLoading?.trim() || null;
+
+    if (params.lotNumber?.trim()) {
+      item.lot_number = params.lotNumber.trim();
+    } else if (!item.lot_number?.trim()) {
+      const recLot = item.receipts?.find(r => r.lot_number?.trim())?.lot_number?.trim();
+      item.lot_number = recLot || `LOT-${po.po_number}-${item.line_number}`;
+    }
+
+    const cargoWeight = item.ready_quantity || item.received_quantity || item.ordered_quantity;
+    const lotNo = item.lot_number.trim();
+
+    // Create or update incoming stock item linked to this PO Item
+    const incId = `inc-po-${po.po_number}-${item.id}`;
+    let incomingItem = (this.state.incomingStock || []).find(
+      i => i.id === incId || (i.linked_po_number === po.po_number && (i.lot_number === lotNo || i.id.includes(item.id)))
+    );
+
+    if (incomingItem) {
+      incomingItem.lot_number = lotNo;
+      incomingItem.date_of_shipment = params.dateOfShipment;
+      incomingItem.eta_seaport = params.etaSeaport;
+      incomingItem.heat_no = params.heatNo || incomingItem.heat_no;
+      incomingItem.sims = params.sims || incomingItem.sims;
+      incomingItem.delivery_terms = params.deliveryTerms || incomingItem.delivery_terms;
+      incomingItem.payment_terms = params.paymentTerms || incomingItem.payment_terms;
+      incomingItem.port = params.port || incomingItem.port || 'N.S.';
+      incomingItem.container_no = params.containerNo?.trim() || incomingItem.container_no || item.container_no || null;
+      incomingItem.port_of_loading = params.portOfLoading?.trim() || incomingItem.port_of_loading || item.port_of_loading || null;
+      incomingItem.received_status = 'IN_TRANSIT';
+      incomingItem.source_sheet = 'INCOMING SE';
+      incomingItem.weight = cargoWeight;
+    } else {
+      incomingItem = {
+        id: incId,
+        make: po.origin || po.origin_make_name || 'Standard',
+        supplier: po.supplier_name || 'Unknown Supplier',
+        lot_number: lotNo,
+        grade: item.grade_code,
+        condition: item.condition_name || 'BLACK ROLLED',
+        dia_w: item.diameter_width,
+        t: item.thickness,
+        l: item.length,
+        pieces: item.receipts?.length || 1,
+        weight: cargoWeight,
+        customer: po.customer_name || 'SE',
+        port: params.port || po.destination || 'N.S.',
+        date_of_shipment: params.dateOfShipment,
+        eta_seaport: params.etaSeaport,
+        received_status: 'IN_TRANSIT',
+        heat_no: params.heatNo || null,
+        delivery_terms: params.deliveryTerms || po.delivery_terms || 'FOB',
+        price: item.purchase_price,
+        currency: item.currency || po.currency || 'USD',
+        sims: params.sims || null,
+        payment_terms: params.paymentTerms || po.payment_terms || null,
+        container_no: params.containerNo?.trim() || item.container_no || null,
+        port_of_loading: params.portOfLoading?.trim() || item.port_of_loading || null,
+        source_sheet: 'INCOMING SE',
+        linked_po_number: po.po_number,
+        linked_po_id: po.id
+      };
+      if (!this.state.incomingStock) this.state.incomingStock = [];
+      this.state.incomingStock.unshift(incomingItem);
+    }
+
+    // Ensure lot in inventory exists
+    let lot = this.state.lots.find(l => l.lot_number.toLowerCase() === lotNo.toLowerCase());
+    if (!lot) {
+      lot = {
+        id: `lot-${lotNo}-${Date.now()}`,
+        lot_number: lotNo,
+        purchase_order_item_id: item.id,
+        po_number: po.po_number,
+        supplier_name: po.supplier_name,
+        grade_code: item.grade_code || 'Steel Grade',
+        section_name: item.section_name || 'Steel Section',
+        dimensions_display: `${item.grade_code} ${item.diameter_width || ''}`,
+        total_received_qty: cargoWeight,
+        total_allocated_sold_qty: 0,
+        available_qty: cargoWeight,
+        warehouse_location: params.port || po.destination || 'Nhava Sheva Yard',
+        status: 'Available',
+        created_at: new Date().toISOString()
+      };
+      this.state.lots.unshift(lot);
+    }
+
+    this.recomputePOAggregates(po);
+
+    this.addAuditLog(
+      'SHIPMENT_DISPATCHED',
+      'purchase_orders',
+      po.id,
+      `Item #${item.line_number} (Lot ${lotNo}) marked as In Transit with ETA ${params.etaSeaport}`
+    );
+    this.save();
+
+    return { updatedItem: item, updatedPO: po, incomingItem };
+  }
+
+  // --- Mark Item Received (Both PO & Incoming Stock Synced) ---
+  public markItemReceived(params: {
+    poIdOrNumber: string;
+    itemId: string;
+    receiptDate?: string;
+    warehouseLocation?: string;
+  }): { updatedItem: PurchaseOrderItem; updatedPO: PurchaseOrder } {
+    const po = this.state.purchaseOrders.find(
+      p => p.id === params.poIdOrNumber || p.po_number === params.poIdOrNumber
+    );
+    if (!po) throw new Error(`Purchase order ${params.poIdOrNumber} not found`);
+
+    const item = po.items?.find(i => i.id === params.itemId);
+    if (!item) throw new Error(`PO Line Item ${params.itemId} not found`);
+
+    item.status = 'Received';
+    if (!item.received_quantity || item.received_quantity <= 0) {
+      item.received_quantity = item.ready_quantity || item.ordered_quantity;
+    }
+    if (params.warehouseLocation) {
+      item.destination_port = params.warehouseLocation.trim();
+    }
+
+    // Synchronize linked Incoming Stock items
+    if (this.state.incomingStock) {
+      for (const inc of this.state.incomingStock) {
+        if (
+          inc.linked_po_number === po.po_number &&
+          (inc.id === `inc-po-${po.po_number}-${item.id}` || (item.lot_number && inc.lot_number === item.lot_number) || inc.id.includes(item.id))
+        ) {
+          inc.received_status = 'RECEIVED';
+          inc.source_sheet = 'INCOMING CLOSE';
+          if (params.warehouseLocation) inc.port = params.warehouseLocation;
+        }
+      }
+    }
+
+    // Ensure lot in inventory is available
+    if (item.lot_number) {
+      const lot = this.state.lots.find(l => l.lot_number === item.lot_number);
+      if (lot && params.warehouseLocation) {
+        lot.warehouse_location = params.warehouseLocation;
+      }
+    }
+
+    this.recomputePOAggregates(po);
+
+    this.addAuditLog(
+      'ITEM_RECEIVED',
+      'purchase_orders',
+      po.id,
+      `Marked Item #${item.line_number} as RECEIVED at warehouse.`
+    );
+    this.save();
+
+    return { updatedItem: item, updatedPO: po };
+  }
+
+
   public addBulkReceipt(params: {
     poIdOrNumber: string;
     itemIds: string[];
@@ -515,6 +944,8 @@ class Store {
     supplierInvoiceDate?: string;
     receiptDate?: string;
     warehouseLocation?: string;
+    containerNo?: string;
+    portOfLoading?: string;
     remarks?: string;
     itemQuantities?: Record<string, number>;
   }): { receipts: Receipt[]; updatedPO: PurchaseOrder } {
@@ -573,6 +1004,14 @@ class Store {
       }
       if (qty <= 0) continue;
 
+      // Update item properties directly in the store PO
+      item.lot_number = lotNo;
+      item.status = 'Ready to Ship';
+      item.ready_quantity = qty;
+      if (params.containerNo !== undefined) item.container_no = params.containerNo.trim() || null;
+      if (params.portOfLoading !== undefined) item.port_of_loading = params.portOfLoading.trim() || null;
+      if (params.warehouseLocation) item.destination_port = item.destination_port || params.warehouseLocation.trim();
+
       lot.total_received_qty += qty;
       lot.available_qty += qty;
 
@@ -590,14 +1029,60 @@ class Store {
         unit: item.unit || 'KG',
         supplier_invoice_number: invoiceNo,
         supplier_invoice_date: invoiceDate,
+        container_no: params.containerNo?.trim() || null,
+        port_of_loading: params.portOfLoading?.trim() || null,
+        warehouse_location: params.warehouseLocation?.trim() || null,
         remarks: params.remarks,
         created_at: new Date().toISOString()
       };
 
       if (!item.receipts) item.receipts = [];
       item.receipts.push(newReceipt);
+      this.deletedReceiptIds.delete(newReceipt.id);
       this.state.receipts.push(newReceipt);
       createdReceipts.push(newReceipt);
+
+      // Create or update incoming stock item linked to this PO Item
+      const incId = `inc-po-${po.po_number}-${item.id}`;
+      let incomingItem = (this.state.incomingStock || []).find(
+        i => i.id === incId || (i.linked_po_number === po.po_number && (i.lot_number === lotNo || i.id.includes(item.id)))
+      );
+      if (incomingItem) {
+        incomingItem.lot_number = lotNo;
+        incomingItem.weight = qty;
+        incomingItem.received_status = 'READY';
+        if (params.containerNo) incomingItem.container_no = params.containerNo.trim();
+        if (params.portOfLoading) incomingItem.port_of_loading = params.portOfLoading.trim();
+      } else {
+        incomingItem = {
+          id: incId,
+          make: po.origin || po.origin_make_name || 'Standard',
+          supplier: po.supplier_name || 'Unknown Supplier',
+          lot_number: lotNo,
+          grade: item.grade_code,
+          condition: item.condition_name || 'BLACK ROLLED',
+          dia_w: item.diameter_width,
+          t: item.thickness,
+          l: item.length,
+          pieces: item.receipts?.length || 1,
+          weight: qty,
+          customer: po.customer_name || 'SE',
+          port: po.destination || 'N.S.',
+          date_of_shipment: '',
+          eta_seaport: po.expected_delivery_date || '',
+          received_status: 'READY',
+          delivery_terms: po.delivery_terms || 'FOB',
+          price: item.purchase_price,
+          currency: item.currency || po.currency || 'USD',
+          container_no: params.containerNo?.trim() || item.container_no || null,
+          port_of_loading: params.portOfLoading?.trim() || item.port_of_loading || null,
+          source_sheet: 'INCOMING SE',
+          linked_po_number: po.po_number,
+          linked_po_id: po.id
+        };
+        if (!this.state.incomingStock) this.state.incomingStock = [];
+        this.state.incomingStock.unshift(incomingItem);
+      }
 
       // Create Inventory Transaction Ledger Entry
       const tx: InventoryTransaction = {
@@ -648,26 +1133,41 @@ class Store {
     let updatedCount = 0;
     for (const itemId of params.itemIds) {
       const item = po.items?.find(i => i.id === itemId);
-      if (!item || !item.receipts) continue;
+      if (!item) continue;
 
-      for (const rec of item.receipts) {
-        if (lotNo) rec.lot_number = lotNo;
-        if (invoiceNo) rec.supplier_invoice_number = invoiceNo;
-        if (invoiceDate) {
-          rec.supplier_invoice_date = invoiceDate;
-          rec.receipt_date = invoiceDate;
-        }
+      if (lotNo) {
+        item.lot_number = lotNo;
+      }
 
-        const globalRec = this.state.receipts.find(r => r.id === rec.id);
-        if (globalRec) {
-          if (lotNo) globalRec.lot_number = lotNo;
-          if (invoiceNo) globalRec.supplier_invoice_number = invoiceNo;
+      if (item.receipts) {
+        for (const rec of item.receipts) {
+          if (lotNo) rec.lot_number = lotNo;
+          if (invoiceNo) rec.supplier_invoice_number = invoiceNo;
           if (invoiceDate) {
-            globalRec.supplier_invoice_date = invoiceDate;
-            globalRec.receipt_date = invoiceDate;
+            rec.supplier_invoice_date = invoiceDate;
+            rec.receipt_date = invoiceDate;
+          }
+
+          const globalRec = this.state.receipts.find(r => r.id === rec.id);
+          if (globalRec) {
+            if (lotNo) globalRec.lot_number = lotNo;
+            if (invoiceNo) globalRec.supplier_invoice_number = invoiceNo;
+            if (invoiceDate) {
+              globalRec.supplier_invoice_date = invoiceDate;
+              globalRec.receipt_date = invoiceDate;
+            }
+          }
+          updatedCount++;
+        }
+      }
+
+      // Also sync incoming stock item if lot changed
+      if (lotNo && this.state.incomingStock) {
+        for (const inc of this.state.incomingStock) {
+          if (inc.linked_po_number === po.po_number && inc.id.includes(item.id)) {
+            inc.lot_number = lotNo;
           }
         }
-        updatedCount++;
       }
     }
 
@@ -690,6 +1190,8 @@ class Store {
     lotNumber?: string;
     supplierInvoice?: string;
     supplierInvoiceDate?: string;
+    containerNo?: string;
+    portOfLoading?: string;
     remarks?: string;
     warehouseLocation?: string;
   }): { updatedReceipt: Receipt; updatedItem: PurchaseOrderItem; updatedPO: PurchaseOrder } {
@@ -776,6 +1278,16 @@ class Store {
       globalRec.remarks = updates.remarks.trim();
       itemRec.remarks = updates.remarks.trim();
     }
+    if (updates.containerNo !== undefined) {
+      globalRec.container_no = updates.containerNo.trim() || null;
+      itemRec.container_no = updates.containerNo.trim() || null;
+      item.container_no = updates.containerNo.trim() || null;
+    }
+    if (updates.portOfLoading !== undefined) {
+      globalRec.port_of_loading = updates.portOfLoading.trim() || null;
+      itemRec.port_of_loading = updates.portOfLoading.trim() || null;
+      item.port_of_loading = updates.portOfLoading.trim() || null;
+    }
 
     // Update Inventory Ledger Transaction
     const tx = this.state.inventoryTransactions.find(t => t.reference_id === receiptId);
@@ -837,6 +1349,7 @@ class Store {
 
     // Remove receipt from item and global state
     item.receipts!.splice(itemRecIndex, 1);
+    this.deletedReceiptIds.add(receiptId);
     this.state.receipts.splice(recIndex, 1);
 
     this.recomputePOAggregates(po);
@@ -859,58 +1372,74 @@ class Store {
       : (Number(item.received_quantity) || 0);
 
     item.received_quantity = totalRecd;
-    item.physical_short_qty = Math.max(0, item.ordered_quantity - totalRecd);
 
-    const activeRes = (this.state.balanceResolutions || []).filter(
-      r => r.po_item_id === item.id && r.status === 'ACTIVE'
-    );
-    item.resolutions = activeRes;
+    const ordQty = Number(item.ordered_quantity) || 0;
+    const isFullyMatched = (ordQty > 0 || totalRecd > 0) && Math.abs(ordQty - totalRecd) < 0.001;
 
-    const cfQty = activeRes
-      .filter(r => r.resolution_type === 'CARRY_FORWARD')
-      .reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
-    const wQty = activeRes
-      .filter(r => r.resolution_type === 'WAIVED')
-      .reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
-
-    item.carried_forward_qty = cfQty;
-    item.waived_qty = wQty;
-    const resolvedQty = cfQty + wQty;
-    const actionablePending = Math.max(0, item.physical_short_qty - resolvedQty);
-
-    // If over-received: show balance / pending qty in negative (don't make it zero)
-    if (totalRecd > item.ordered_quantity) {
-      const overBalance = item.ordered_quantity - totalRecd; // negative number (e.g. -200 KG)
-      item.actionable_pending_qty = overBalance;
-      item.balance_quantity = overBalance;
-      item.status = 'Over Received';
-    } else if (totalRecd === item.ordered_quantity) {
+    if (isFullyMatched) {
+      item.physical_short_qty = 0;
       item.actionable_pending_qty = 0;
       item.balance_quantity = 0;
-      item.status = 'Received';
+      item.carried_forward_qty = 0;
+      item.waived_qty = 0;
+    } else if (totalRecd > ordQty) {
+      item.physical_short_qty = 0;
+      const overBalance = ordQty - totalRecd; // negative number (e.g. -200 KG)
+      item.actionable_pending_qty = overBalance;
+      item.balance_quantity = overBalance;
     } else {
+      item.physical_short_qty = Math.max(0, ordQty - totalRecd);
+
+      const activeRes = (this.state.balanceResolutions || []).filter(
+        r => r.po_item_id === item.id && r.status === 'ACTIVE'
+      );
+      item.resolutions = activeRes;
+
+      const cfQty = activeRes
+        .filter(r => r.resolution_type === 'CARRY_FORWARD')
+        .reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
+      const wQty = activeRes
+        .filter(r => r.resolution_type === 'WAIVED')
+        .reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
+
+      item.carried_forward_qty = cfQty;
+      item.waived_qty = wQty;
+      const resolvedQty = cfQty + wQty;
+      const actionablePending = Math.max(0, item.physical_short_qty - resolvedQty);
+
       item.actionable_pending_qty = actionablePending;
       item.balance_quantity = actionablePending;
+    }
 
-      if (actionablePending === 0) {
-        if (cfQty > 0 && wQty > 0) {
-          item.status = 'Closed — Balance Resolved';
-        } else if (cfQty > 0) {
-          item.status = 'Closed — Balance Carried Forward';
-        } else if (wQty > 0) {
-          item.status = 'Closed — Short Received';
-        } else if (totalRecd === 0) {
-          item.status = 'Closed';
-        } else {
-          item.status = 'Closed — Fully Received';
-        }
-      } else if (resolvedQty > 0) {
-        item.status = 'Partially Resolved';
-      } else if (totalRecd > 0) {
-        item.status = 'Partially Received';
-      } else {
-        item.status = 'Open';
+    // Preserve lifecycle statuses if already set to Ready to Ship, In Transit, Received, or Closed
+    if (item.status === 'In Transit' || item.status === 'Received' || item.status?.startsWith('Closed')) {
+      return;
+    }
+    if (item.status === 'Ready to Ship' && (totalRecd > 0 || (item.ready_quantity || 0) > 0)) {
+      return;
+    }
+
+    if (isFullyMatched) {
+      if (totalRecd > 0) {
+        item.status = 'Received';
       }
+      return;
+    }
+
+    if (totalRecd > ordQty) {
+      item.status = 'Over Received';
+    } else if (item.actionable_pending_qty === 0 && ((item.carried_forward_qty || 0) + (item.waived_qty || 0) > 0)) {
+      if ((item.carried_forward_qty || 0) > 0 && (item.waived_qty || 0) > 0) {
+        item.status = 'Closed — Balance Resolved';
+      } else if ((item.carried_forward_qty || 0) > 0) {
+        item.status = 'Closed — Balance Carried Forward';
+      } else if ((item.waived_qty || 0) > 0) {
+        item.status = 'Closed — Short Received';
+      }
+    } else if (totalRecd > 0 || (item.ready_quantity || 0) > 0) {
+      item.status = 'Ready to Ship';
+    } else {
+      item.status = 'Open';
     }
   }
 
@@ -923,6 +1452,7 @@ class Store {
     po.total_items = po.items.length;
     po.total_ordered_qty = po.items.reduce((acc, i) => acc + (i.ordered_quantity || 0), 0);
     po.total_received_qty = po.items.reduce((acc, i) => acc + (i.received_quantity || 0), 0);
+    po.total_ready_qty = po.items.reduce((acc, i) => acc + (i.ready_quantity || i.received_quantity || 0), 0);
     po.total_physical_short_qty = po.items.reduce((acc, i) => acc + (i.physical_short_qty || 0), 0);
     po.total_carried_forward_qty = po.items.reduce((acc, i) => acc + (i.carried_forward_qty || 0), 0);
     po.total_waived_qty = po.items.reduce((acc, i) => acc + (i.waived_qty || 0), 0);
@@ -931,27 +1461,32 @@ class Store {
     po.total_order_value = po.items.reduce((acc, i) => acc + ((i.ordered_quantity || 0) * (i.purchase_price || 0)), 0);
     po.total_pending_value = po.items.reduce((acc, i) => acc + (Math.max(0, i.actionable_pending_qty || 0) * (i.purchase_price || 0)), 0);
 
+    const isPOFullyMatched = (po.total_ordered_qty > 0 || po.total_received_qty > 0) &&
+      Math.abs(po.total_ordered_qty - po.total_received_qty) < 0.001;
+    if (isPOFullyMatched || po.is_closed) {
+      po.total_physical_short_qty = 0;
+      po.total_actionable_pending_qty = 0;
+      po.total_balance_qty = 0;
+      po.total_pending_value = 0;
+    }
+
     const hasShortage = po.items.some(i => (i.physical_short_qty || 0) > 0 && ((i.actionable_pending_qty || 0) > 0));
     const hasOverReceived = po.items.some(i => i.status === 'Over Received' || (i.balance_quantity || 0) < 0);
 
     if (po.is_closed) {
       po.status = 'Closed';
-    } else if (!hasShortage) {
-      if (po.total_waived_qty > 0 && po.total_carried_forward_qty > 0) {
-        po.status = 'Closed — Balance Resolved';
-      } else if (po.total_carried_forward_qty > 0) {
-        po.status = 'Closed — Balance Carried Forward';
-      } else if (po.total_waived_qty > 0) {
-        po.status = 'Closed — Short Received';
-      } else if (hasOverReceived) {
-        po.status = 'Over Received';
-      } else {
-        po.status = 'Received';
-      }
+    } else if (po.items.length > 0 && po.items.every(i => i.status === 'Received' || i.status?.startsWith('Closed'))) {
+      po.status = 'Received';
+    } else if (po.items.some(i => i.status === 'In Transit')) {
+      po.status = 'In Transit';
+    } else if (po.items.some(i => i.status === 'Ready to Ship')) {
+      po.status = 'Ready to Ship';
+    } else if (!hasShortage && po.total_received_qty > 0) {
+      po.status = 'Received';
     } else if (po.items.some(i => (i.carried_forward_qty || 0) > 0 || (i.waived_qty || 0) > 0)) {
       po.status = 'Partially Resolved';
     } else if (po.total_received_qty > 0) {
-      po.status = 'Partially Received';
+      po.status = 'Ready to Ship';
     } else {
       po.status = 'Open';
     }
@@ -1162,7 +1697,39 @@ class Store {
 
   // --- Lots & Inventory ---
   public getLots(search?: string) {
-    let list = [...this.state.lots];
+    // Ensure all PO items with an assigned lot number are reflected in lots
+    for (const po of this.state.purchaseOrders) {
+      if (!po.items) continue;
+      for (const item of po.items) {
+        if (item.lot_number && item.lot_number.trim()) {
+          const lotNo = item.lot_number.trim();
+          if (!this.state.lots.some(l => l.lot_number.toLowerCase() === lotNo.toLowerCase())) {
+            this.state.lots.unshift({
+              id: `lot-${lotNo}`,
+              lot_number: lotNo,
+              purchase_order_item_id: item.id,
+              po_number: po.po_number,
+              supplier_name: po.supplier_name,
+              grade_code: item.grade_code,
+              section_name: item.section_name,
+              dimensions_display: [
+                item.diameter_width ? `DIA ${item.diameter_width}` : '',
+                item.thickness ? `T${item.thickness}` : '',
+                item.length ? `L${item.length}` : ''
+              ].filter(Boolean).join(' × ') || 'Standard Spec',
+              total_received_qty: Number(item.ready_quantity ?? item.received_quantity ?? 0),
+              total_allocated_sold_qty: 0,
+              available_qty: Number(item.ready_quantity ?? item.received_quantity ?? 0),
+              warehouse_location: 'Nhava Sheva Yard',
+              status: (item.ready_quantity || item.received_quantity) ? 'Available' : 'Allocated',
+              created_at: new Date().toISOString()
+            });
+          }
+        }
+      }
+    }
+
+    let list = this.state.lots.filter(l => Boolean(l.lot_number && l.lot_number.trim() && !l.lot_number.startsWith('LOT-undefined')));
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(l => 
@@ -1172,6 +1739,16 @@ class Store {
         l.supplier_name?.toLowerCase().includes(q)
       );
     }
+    list.sort((a, b) => {
+      const lotA = (a.lot_number || '').trim();
+      const lotB = (b.lot_number || '').trim();
+      const numA = parseFloat(lotA);
+      const numB = parseFloat(lotB);
+      if (!isNaN(numA) && !isNaN(numB) && String(numA) === lotA && String(numB) === lotB) {
+        return numB - numA;
+      }
+      return lotB.localeCompare(lotA, undefined, { numeric: true, sensitivity: 'base' });
+    });
     return list;
   }
 
@@ -1180,8 +1757,18 @@ class Store {
   }
 
   // --- Suppliers & Customers ---
-  public getSuppliers() {
-    return this.state.suppliers;
+  public getSuppliers(): Supplier[] {
+    const seen = new Set<string>();
+    const unique: Supplier[] = [];
+    for (const s of (this.state.suppliers || [])) {
+      if (!s || !s.supplier_name) continue;
+      const key = canonicalSupplierKey(s.supplier_name) || (s.id || s.supplier_name).trim().toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(s);
+      }
+    }
+    return unique;
   }
 
   public createSupplier(supplierData: Partial<Supplier>): Supplier {
@@ -1197,6 +1784,8 @@ class Store {
       supplier_name: name,
       country: supplierData.country?.trim() || 'Overseas',
       contact_person: supplierData.contact_person?.trim() || null,
+      reference: supplierData.reference?.trim() || supplierData.reference_person?.trim() || null,
+      reference_person: supplierData.reference_person?.trim() || supplierData.reference?.trim() || null,
       email: supplierData.email?.trim() || null,
       phone: supplierData.phone?.trim() || null,
       address: supplierData.address?.trim() || null,
@@ -1438,7 +2027,388 @@ class Store {
   public getAuditLogs() {
     return this.state.auditLogs;
   }
+
+  // --- Incoming Stock & In-Transit Tracking ---
+  public linkIncomingStockWithPOs() {
+    if (!Array.isArray(this.state.incomingStock)) {
+      this.state.incomingStock = [];
+      return;
+    }
+
+    const lotToPo = new Map<string, { po_number: string; po_id: string }>();
+    for (const po of this.state.purchaseOrders) {
+      if (po.items) {
+        for (const item of po.items) {
+          if (item.lot_number) {
+            lotToPo.set(String(item.lot_number).trim(), { po_number: po.po_number, po_id: po.id });
+          }
+        }
+      }
+    }
+    for (const rc of this.state.receipts) {
+      if (rc.lot_number && rc.po_number) {
+        const foundPo = this.state.purchaseOrders.find(p => p.po_number === rc.po_number);
+        lotToPo.set(String(rc.lot_number).trim(), { po_number: rc.po_number, po_id: foundPo?.id || '' });
+      }
+    }
+
+    for (const inc of this.state.incomingStock) {
+      const match = lotToPo.get(String(inc.lot_number).trim());
+      if (match) {
+        inc.linked_po_number = match.po_number;
+        inc.linked_po_id = match.po_id;
+      }
+    }
+  }
+
+  public getIncomingStock(filters?: { 
+    status?: 'IN_TRANSIT' | 'RECEIVED' | 'ALL'; 
+    search?: string; 
+    port?: string; 
+    supplier?: string; 
+    lot?: string;
+  }): IncomingStockItem[] {
+    const seenIds = new Set<string>();
+    const uniqueRaw: IncomingStockItem[] = [];
+    for (const item of (this.state.incomingStock || [])) {
+      const key = item.id ? String(item.id).trim() : `inc-${Math.random()}`;
+      if (seenIds.has(key)) continue;
+      seenIds.add(key);
+      uniqueRaw.push(item);
+    }
+    let items = uniqueRaw;
+
+    if (filters?.status && filters.status !== 'ALL') {
+      items = items.filter(i => i.received_status === filters.status);
+    }
+
+    if (filters?.port && filters.port !== 'ALL') {
+      items = items.filter(i => (i.port || '').toLowerCase() === filters.port?.toLowerCase());
+    }
+
+    if (filters?.supplier && filters.supplier !== 'ALL') {
+      items = items.filter(i => (i.supplier || '').toLowerCase() === filters.supplier?.toLowerCase());
+    }
+
+    if (filters?.lot) {
+      items = items.filter(i => (i.lot_number || '').includes(filters.lot!));
+    }
+
+    if (filters?.search) {
+      const q = filters.search.toLowerCase().trim();
+      items = items.filter(i => 
+        (i.lot_number && i.lot_number.toLowerCase().includes(q)) ||
+        (i.supplier && i.supplier.toLowerCase().includes(q)) ||
+        (i.grade && i.grade.toLowerCase().includes(q)) ||
+        (i.make && i.make.toLowerCase().includes(q)) ||
+        (i.port && i.port.toLowerCase().includes(q)) ||
+        (i.heat_no && i.heat_no.toLowerCase().includes(q)) ||
+        (i.linked_po_number && i.linked_po_number.toLowerCase().includes(q))
+      );
+    }
+
+    return items;
+  }
+
+  public getIncomingStockItem(id: string): IncomingStockItem | undefined {
+    return (this.state.incomingStock || []).find(i => i.id === id);
+  }
+
+  public getIncomingStockByLot(lotNumber: string): IncomingStockItem[] {
+    const key = String(lotNumber).trim();
+    return (this.state.incomingStock || []).filter(i => String(i.lot_number).trim() === key);
+  }
+
+  public getIncomingStockForPO(poNumber: string): IncomingStockItem[] {
+    const key = String(poNumber).trim();
+    return (this.state.incomingStock || []).filter(i => String(i.linked_po_number).trim() === key);
+  }
+
+  public getIncomingStockSummary() {
+    const all = this.state.incomingStock || [];
+    const inTransit = all.filter(i => i.received_status === 'IN_TRANSIT');
+    const received = all.filter(i => i.received_status === 'RECEIVED');
+
+    const totalTransitWeight = inTransit.reduce((acc, i) => acc + (Number(i.weight) || 0), 0);
+    const totalReceivedWeight = received.reduce((acc, i) => acc + (Number(i.weight) || 0), 0);
+    const transitLots = Array.from(new Set(inTransit.map(i => i.lot_number))).filter(Boolean);
+    const receivedLots = Array.from(new Set(received.map(i => i.lot_number))).filter(Boolean);
+
+    const now = new Date();
+    const imminentThreshold = new Date();
+    imminentThreshold.setDate(imminentThreshold.getDate() + 14);
+
+    let imminentCount = 0;
+    let overdueTransitCount = 0;
+
+    for (const item of inTransit) {
+      if (item.eta_seaport) {
+        const etaDate = new Date(item.eta_seaport);
+        if (!isNaN(etaDate.getTime())) {
+          if (etaDate < now) {
+            overdueTransitCount++;
+          } else if (etaDate <= imminentThreshold) {
+            imminentCount++;
+          }
+        }
+      }
+    }
+
+    // Port breakdown
+    const portMap: Record<string, { count: number; weight: number; lots: Set<string>; imminentCount: number; overdueCount: number }> = {};
+    for (const item of inTransit) {
+      const port = item.port || 'Unassigned';
+      if (!portMap[port]) {
+        portMap[port] = { count: 0, weight: 0, lots: new Set<string>(), imminentCount: 0, overdueCount: 0 };
+      }
+      portMap[port].count++;
+      portMap[port].weight += Number(item.weight) || 0;
+      if (item.lot_number) portMap[port].lots.add(item.lot_number);
+
+      if (item.eta_seaport) {
+        const etaDate = new Date(item.eta_seaport);
+        if (!isNaN(etaDate.getTime())) {
+          if (etaDate < now) {
+            portMap[port].overdueCount++;
+          } else if (etaDate <= imminentThreshold) {
+            portMap[port].imminentCount++;
+          }
+        }
+      }
+    }
+
+    return {
+      totalInTransitItems: inTransit.length,
+      totalInTransitWeight: totalTransitWeight,
+      uniqueTransitLots: transitLots.length,
+      totalReceivedItems: received.length,
+      totalReceivedWeight: totalReceivedWeight,
+      uniqueReceivedLots: receivedLots.length,
+      imminentArrivals: imminentCount,
+      overdueTransitCount,
+      portStats: Object.entries(portMap).map(([port, data]) => ({
+        port,
+        count: data.count,
+        weight: data.weight,
+        uniqueLots: data.lots.size,
+        imminentCount: data.imminentCount,
+        overdueCount: data.overdueCount
+      })).sort((a, b) => b.weight - a.weight)
+    };
+  }
+
+  public markIncomingStockReceived(id: string, options?: { receipt_date?: string; location?: string }): { success: boolean; item?: IncomingStockItem; receipt?: Receipt; error?: string } {
+    const item = (this.state.incomingStock || []).find(i => i.id === id);
+    if (!item) return { success: false, error: 'Item not found' };
+
+    item.received_status = 'RECEIVED';
+    item.source_sheet = 'INCOMING CLOSE';
+
+    let createdReceipt: Receipt | undefined;
+    const receiptDate = options?.receipt_date || new Date().toISOString().split('T')[0];
+
+    // Check if linked to PO
+    if (item.linked_po_number) {
+      const po = this.state.purchaseOrders.find(p => p.po_number === item.linked_po_number || p.id === item.linked_po_id);
+      if (po && po.items && po.items.length > 0) {
+        const matchedItem = po.items.find(pi => 
+          (item.grade && pi.grade_code && pi.grade_code.toLowerCase().includes(item.grade.toLowerCase())) ||
+          (item.lot_number && pi.lot_number === item.lot_number)
+        ) || po.items[0];
+
+        const receiptNum = `REC-${po.po_number}-${(po.items.reduce((acc, it) => acc + (it.receipts?.length || 0), 0) + 1).toString().padStart(2, '0')}`;
+        createdReceipt = {
+          id: `rec-inc-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+          purchase_order_item_id: matchedItem.id,
+          po_number: po.po_number,
+          lot_id: `lot-${item.lot_number}`,
+          lot_number: item.lot_number,
+          receipt_number: receiptNum,
+          receipt_date: receiptDate,
+          received_quantity: Number(item.weight) || 0,
+          unit: 'KG',
+          supplier_invoice_number: item.heat_no ? `HEAT-${item.heat_no}` : undefined,
+          remarks: `Received at port ${item.port || 'Port'} from vessel transit`,
+          legacy_source_sheet: 'INCOMING CLOSE',
+          created_at: new Date().toISOString()
+        };
+
+        if (!matchedItem.receipts) matchedItem.receipts = [];
+        matchedItem.receipts.push(createdReceipt);
+        this.state.receipts.unshift(createdReceipt);
+        item.linked_receipt_id = createdReceipt.id;
+
+        // Update or create inventory Lot
+        let existingLot = this.state.lots.find(l => l.lot_number === item.lot_number);
+        if (existingLot) {
+          existingLot.total_received_qty += Number(item.weight) || 0;
+          existingLot.available_qty += Number(item.weight) || 0;
+          if (existingLot.available_qty > 0) existingLot.status = 'Available';
+        } else {
+          const dimParts = [item.dia_w ? `DIA ${item.dia_w}` : '', item.t ? `T${item.t}` : '', item.l ? `L${item.l}` : ''].filter(Boolean).join(' × ');
+          existingLot = {
+            id: `lot-${item.lot_number}`,
+            lot_number: item.lot_number,
+            purchase_order_item_id: matchedItem.id,
+            po_number: po.po_number,
+            supplier_name: item.supplier,
+            grade_code: item.grade,
+            section_name: item.dia_w ? 'Round' : 'Block',
+            dimensions_display: dimParts || undefined,
+            total_received_qty: Number(item.weight) || 0,
+            total_allocated_sold_qty: 0,
+            available_qty: Number(item.weight) || 0,
+            warehouse_location: options?.location || 'Main Yard (Port Arrival)',
+            status: 'Available',
+            created_at: new Date().toISOString()
+          };
+          this.state.lots.unshift(existingLot);
+        }
+
+        // Ledger transaction
+        this.state.inventoryTransactions.unshift({
+          id: `tx-inc-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+          lot_id: existingLot.id,
+          lot_number: item.lot_number,
+          transaction_type: 'PURCHASE_RECEIPT',
+          quantity: Number(item.weight) || 0,
+          reference_type: 'receipts',
+          reference_id: createdReceipt.id,
+          reference_display: `PO ${po.po_number} / Lot ${item.lot_number}`,
+          transaction_date: receiptDate,
+          remarks: `Physical stock received from sea port (${item.port || 'Port'})`,
+          created_at: new Date().toISOString()
+        });
+
+        matchedItem.status = 'Received';
+        this.recomputePOAggregates(po);
+      }
+    }
+
+    this.addAuditLog(
+      'INCOMING_STOCK_RECEIVED',
+      'INCOMING_STOCK',
+      item.id,
+      `Marked Lot ${item.lot_number} (${item.weight} KG) as RECEIVED at warehouse.`
+    );
+
+    this.save();
+    return { success: true, item, receipt: createdReceipt };
+  }
+
+  public importIncomingStock(items: IncomingStockItem[]): { added: number; updated: number } {
+    if (!Array.isArray(this.state.incomingStock)) {
+      this.state.incomingStock = [];
+    }
+
+    let added = 0;
+    let updated = 0;
+
+    for (const newItem of items) {
+      const existingIdx = this.state.incomingStock.findIndex(i => i.id === newItem.id);
+      if (existingIdx >= 0) {
+        this.state.incomingStock[existingIdx] = { ...this.state.incomingStock[existingIdx], ...newItem };
+        updated++;
+      } else {
+        this.state.incomingStock.unshift(newItem);
+        added++;
+      }
+    }
+
+    this.linkIncomingStockWithPOs();
+    this.addAuditLog(
+      'INCOMING_STOCK_IMPORTED',
+      'INCOMING_STOCK',
+      `batch-${Date.now()}`,
+      `Imported/synchronized ${added} new items and updated ${updated} items from INCOMING STOCK Excel.`
+    );
+    this.save();
+    return { added, updated };
+  }
+
+  public purgeAllData(): void {
+    this.deletedPoIds.clear();
+    this.deletedReceiptIds.clear();
+    this.state = getInitialState();
+    this.addAuditLog(
+      'DATABASE_PURGE',
+      'SYSTEM',
+      'clean-purge',
+      'All data purged from system by administrator for bulk upload.'
+    );
+    this.save();
+    this.pushToCloud();
+  }
+
+  public bulkImportData(payload: {
+    purchaseOrders?: PurchaseOrder[];
+    receipts?: Receipt[];
+    incomingStock?: IncomingStockItem[];
+  }): { poCount: number; receiptCount: number; stockCount: number } {
+    if (Array.isArray(payload.purchaseOrders) && payload.purchaseOrders.length > 0) {
+      const existingMap = new Map(this.state.purchaseOrders.map(p => [p.po_number, p]));
+      for (const po of payload.purchaseOrders) {
+        existingMap.set(po.po_number, po);
+      }
+      this.state.purchaseOrders = Array.from(existingMap.values());
+    }
+
+    if (Array.isArray(payload.receipts) && payload.receipts.length > 0) {
+      const existingRcs = new Map(this.state.receipts.map(r => [r.id, r]));
+      for (const rc of payload.receipts) {
+        existingRcs.set(rc.id, rc);
+      }
+      this.state.receipts = Array.from(existingRcs.values());
+    }
+
+    if (Array.isArray(payload.incomingStock) && payload.incomingStock.length > 0) {
+      const existingInc = new Map(this.state.incomingStock.map(i => [i.id, i]));
+      for (const inc of payload.incomingStock) {
+        existingInc.set(inc.id, inc);
+      }
+      this.state.incomingStock = Array.from(existingInc.values());
+    }
+
+    // Link incoming stock & recompute PO aggregates
+    this.linkIncomingStockWithPOs();
+    for (const po of this.state.purchaseOrders) {
+      this.recomputePOAggregates(po);
+    }
+
+    // Refresh suppliers list
+    const supSet = new Set(this.state.suppliers.map(s => canonicalSupplierKey(s.supplier_name)));
+    for (const po of this.state.purchaseOrders) {
+      if (!po.supplier_name) continue;
+      const key = canonicalSupplierKey(po.supplier_name);
+      if (!supSet.has(key)) {
+        supSet.add(key);
+        this.state.suppliers.push({
+          id: `sup-${key}`,
+          supplier_name: po.supplier_name,
+          country: po.origin || 'International',
+          status: 'active'
+        });
+      }
+    }
+
+    this.addAuditLog(
+      'BULK_IMPORT',
+      'SYSTEM',
+      'bulk-upload',
+      `Bulk uploaded ${payload.purchaseOrders?.length || 0} POs, ${payload.receipts?.length || 0} receipts, and ${payload.incomingStock?.length || 0} incoming stock items.`
+    );
+
+    this.save();
+    this.pushToCloud();
+
+    return {
+      poCount: payload.purchaseOrders?.length || 0,
+      receiptCount: payload.receipts?.length || 0,
+      stockCount: payload.incomingStock?.length || 0
+    };
+  }
 }
+
 
 // Global Singleton
 export const dataStore = new Store();

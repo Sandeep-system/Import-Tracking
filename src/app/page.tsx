@@ -30,6 +30,7 @@ import { PurchaseOrder, Receipt } from '@/types';
 import * as XLSX from 'xlsx';
 
 export default function DashboardPage() {
+  const [mounted, setMounted] = useState(false);
   const [dataVersion, setDataVersion] = useState(0);
   const [supplierFilter, setSupplierFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -39,6 +40,7 @@ export default function DashboardPage() {
   const pageSize = 10;
 
   useEffect(() => {
+    setMounted(true);
     const handleUpdate = () => setDataVersion((v) => v + 1);
     window.addEventListener('app:data-updated', handleUpdate);
     return () => window.removeEventListener('app:data-updated', handleUpdate);
@@ -179,8 +181,22 @@ export default function DashboardPage() {
   // Recent 8 receipts
   const recentReceipts = [...allReceipts].slice(-8).reverse();
 
+  if (!mounted) {
+    return (
+      <div className="space-y-6 p-4 animate-pulse" suppressHydrationWarning>
+        <div className="h-10 bg-slate-100 rounded-lg w-1/3" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-24 bg-slate-100 rounded-xl" />
+          ))}
+        </div>
+        <div className="h-96 bg-slate-100 rounded-xl" />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" suppressHydrationWarning>
       {/* Page Header with Stats Badge and Quick Navigation */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -401,8 +417,8 @@ export default function DashboardPage() {
                 className="bg-transparent text-slate-700 font-medium focus:outline-none text-xs"
               >
                 <option value="all">All Suppliers ({suppliers.length})</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.supplier_name}>{s.supplier_name}</option>
+                {suppliers.map((s, idx) => (
+                  <option key={`${s.id || s.supplier_name}-${idx}`} value={s.supplier_name}>{s.supplier_name}</option>
                 ))}
               </select>
             </div>
@@ -469,9 +485,9 @@ export default function DashboardPage() {
         )}
 
         {/* Orders Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
+        <div className="overflow-auto max-h-[calc(100vh-320px)] min-h-[300px] relative w-full">
+          <table className="w-full text-left border-separate border-spacing-0">
+            <thead className="sticky top-0 z-10 bg-slate-50">
               <tr>
                 <th className="table-header">PO Number</th>
                 <th className="table-header">Date</th>
@@ -493,7 +509,7 @@ export default function DashboardPage() {
                   </td>
                 </tr>
               ) : (
-                paginatedOrders.map((po) => {
+                paginatedOrders.map((po, idx) => {
                   const isClosed = po.is_closed || po.status === 'Closed';
                   const firstItem = po.items?.[0];
                   const itemSummary = firstItem 
@@ -501,7 +517,7 @@ export default function DashboardPage() {
                     : '—';
 
                   return (
-                    <tr key={po.id || po.po_number} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={`${po.id || 'po'}-${po.po_number || idx}`} className="hover:bg-slate-50/80 transition-colors">
                       {/* PO Number */}
                       <td className="table-cell font-bold text-blue-600">
                         <Link 
@@ -561,9 +577,9 @@ export default function DashboardPage() {
 
                       {/* Balance Qty */}
                       <td className="table-cell text-right font-medium">
-                        {isClosed ? (
+                        {isClosed || Math.abs((po.total_ordered_qty || 0) - (po.total_received_qty || 0)) < 0.001 ? (
                           <span className="text-slate-400 font-mono text-[11px]">
-                            {(po.total_balance_qty || 0) === 0 ? '0 KG' : `${formatWeight(po.total_balance_qty || 0)} (settled)`}
+                            0 KG
                           </span>
                         ) : (
                           <span className={`font-bold ${(po.total_balance_qty || 0) < 0 ? 'text-purple-600' : (po.total_balance_qty || 0) > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
@@ -575,11 +591,11 @@ export default function DashboardPage() {
                       {/* Status */}
                       <td className="table-cell text-center">
                         {isClosed ? (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                          <span suppressHydrationWarning className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
                             Closed / Settled
                           </span>
                         ) : (
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeClass(po.status)}`}>
+                          <span suppressHydrationWarning className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeClass(po.status)}`}>
                             {po.status}
                           </span>
                         )}

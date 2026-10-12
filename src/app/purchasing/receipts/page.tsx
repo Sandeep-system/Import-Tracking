@@ -13,19 +13,23 @@ import {
   FileText,
   AlertTriangle,
   Edit2,
-  Trash2
+  Trash2,
+  X
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { Receipt } from '@/types';
 import { formatWeight, formatDate } from '@/lib/utils';
 import { AddReceiptModal } from '@/components/AddReceiptModal';
 import { EditReceiptModal } from '@/components/EditReceiptModal';
-import { googleSync } from '@/lib/googleSync';
+import { useAuth } from '@/context/AuthContext';
 import * as XLSX from 'xlsx';
 
 export default function ReceiptsPage() {
+  const { isViewer } = useAuth();
   const [dataVersion, setDataVersion] = useState(0);
   const [search, setSearch] = useState('');
+  const [selectedPO, setSelectedPO] = useState('ALL');
+  const [selectedSupplier, setSelectedSupplier] = useState('ALL');
   const [isAddReceiptOpen, setIsAddReceiptOpen] = useState(false);
   const [editingReceipt, setEditingReceipt] = useState<Receipt | null>(null);
   const [deletingReceipt, setDeletingReceipt] = useState<Receipt | null>(null);
@@ -38,19 +42,58 @@ export default function ReceiptsPage() {
     return () => window.removeEventListener('app:data-updated', handleUpdate);
   }, []);
 
-  const allReceipts = dataStore.getReceipts();
+  const allReceipts = React.useMemo(() => dataStore.getReceipts(), [dataVersion]);
+  const allPOs = React.useMemo(() => dataStore.getPurchaseOrders(), [dataVersion]);
+
+  // Unique PO options
+  const uniquePOs = React.useMemo(() => {
+    const set = new Set(allReceipts.map(r => r.po_number).filter(Boolean) as string[]);
+    return Array.from(set).sort();
+  }, [allReceipts]);
+
+  // Unique Suppliers
+  const uniqueSuppliers = React.useMemo(() => {
+    const set = new Set(allPOs.map(p => p.supplier_name).filter(Boolean) as string[]);
+    return Array.from(set).sort();
+  }, [allPOs]);
+
+  // Supplier lookup by PO number
+  const poSupplierMap = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const po of allPOs) {
+      if (po.po_number && po.supplier_name) {
+        map.set(po.po_number, po.supplier_name);
+      }
+    }
+    return map;
+  }, [allPOs]);
   
-  const filteredReceipts = allReceipts.filter(rc => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      rc.receipt_number.toLowerCase().includes(q) ||
-      rc.po_number?.toLowerCase().includes(q) ||
-      rc.supplier_invoice_number?.toLowerCase().includes(q) ||
-      rc.lot_number?.toLowerCase().includes(q) ||
-      rc.remarks?.toLowerCase().includes(q)
-    );
-  });
+  const filteredReceipts = React.useMemo(() => {
+    return allReceipts.filter(rc => {
+      if (search) {
+        const q = search.toLowerCase();
+        const matches = (
+          rc.receipt_number.toLowerCase().includes(q) ||
+          rc.po_number?.toLowerCase().includes(q) ||
+          rc.supplier_invoice_number?.toLowerCase().includes(q) ||
+          rc.lot_number?.toLowerCase().includes(q) ||
+          rc.remarks?.toLowerCase().includes(q)
+        );
+        if (!matches) return false;
+      }
+
+      if (selectedPO !== 'ALL' && rc.po_number !== selectedPO) {
+        return false;
+      }
+
+      if (selectedSupplier !== 'ALL') {
+        const sup = rc.po_number ? poSupplierMap.get(rc.po_number) : '';
+        if (sup !== selectedSupplier) return false;
+      }
+
+      return true;
+    });
+  }, [allReceipts, search, selectedPO, selectedSupplier, poSupplierMap]);
 
   const totalPages = Math.ceil(filteredReceipts.length / pageSize) || 1;
   const paginated = filteredReceipts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -76,10 +119,7 @@ export default function ReceiptsPage() {
 
   const handleDeleteReceipt = (receipt: Receipt) => {
     try {
-      const { updatedPO } = dataStore.deleteReceipt(receipt.id);
-      if (updatedPO) {
-        googleSync.syncCreatePO(updatedPO);
-      }
+      dataStore.deleteReceipt(receipt.id);
       setDeletingReceipt(null);
       setDataVersion(v => v + 1);
     } catch (err: any) {
@@ -105,42 +145,93 @@ export default function ReceiptsPage() {
             <span>Export Excel</span>
           </button>
 
-          <button
-            onClick={() => setIsAddReceiptOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Record New Receipt</span>
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => setIsAddReceiptOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Record New Receipt</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white p-3.5 rounded-xl border border-slate-200 card-shadow flex items-center justify-between gap-3 text-xs">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-          <input
-            type="text"
-            value={search}
+      <div className="bg-white p-3.5 rounded-xl border border-slate-200 card-shadow flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Search by Receipt#, PO#, Invoice#, Lot#..."
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            />
+          </div>
+
+          <select
+            value={selectedPO}
             onChange={(e) => {
-              setSearch(e.target.value);
+              setSelectedPO(e.target.value);
               setCurrentPage(1);
             }}
-            placeholder="Search by Receipt#, PO#, Invoice#, Lot#..."
-            className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-          />
+            className="py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="ALL">All Purchase Orders ({uniquePOs.length})</option>
+            {uniquePOs.map(po => (
+              <option key={po} value={po}>PO #{po}</option>
+            ))}
+          </select>
+
+          <select
+            value={selectedSupplier}
+            onChange={(e) => {
+              setSelectedSupplier(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="ALL">All Suppliers ({uniqueSuppliers.length})</option>
+            {uniqueSuppliers.map(sup => (
+              <option key={sup} value={sup}>{sup}</option>
+            ))}
+          </select>
+
+          {(search !== '' || selectedPO !== 'ALL' || selectedSupplier !== 'ALL') && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setSelectedPO('ALL');
+                setSelectedSupplier('ALL');
+                setCurrentPage(1);
+              }}
+              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>Reset</span>
+            </button>
+          )}
         </div>
 
-        <div className="text-slate-500 font-medium">
-          Total Transactions: <strong className="text-slate-900">{filteredReceipts.length}</strong>
+        <div className="flex items-center gap-3 text-slate-600 font-medium">
+          <span>Transactions: <strong className="text-slate-900">{filteredReceipts.length}</strong></span>
+          <span>•</span>
+          <span>
+            Total Received: <strong className="text-emerald-600">{formatWeight(filteredReceipts.reduce((acc, r) => acc + (Number(r.received_quantity) || 0), 0))}</strong>
+          </span>
         </div>
       </div>
 
       {/* Receipts Table */}
       <div className="bg-white rounded-xl border border-slate-200 card-shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
+        <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
+          <table className="w-full text-left border-separate border-spacing-0">
+            <thead className="sticky top-0 z-10 bg-slate-50">
               <tr>
                 <th className="table-header">Receipt #</th>
                 <th className="table-header">Receipt Date</th>
@@ -195,22 +286,26 @@ export default function ReceiptsPage() {
                     </td>
                     <td className="table-cell text-slate-500 truncate max-w-[200px]">{rc.remarks || '—'}</td>
                     <td className="table-cell text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => setEditingReceipt(rc)}
-                          title="Edit Receipt"
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setDeletingReceipt(rc)}
-                          title="Delete Receipt"
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      {isViewer ? (
+                        <span className="text-[11px] text-slate-400 italic font-medium px-2 py-0.5">View Only</span>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setEditingReceipt(rc)}
+                            title="Edit Receipt"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingReceipt(rc)}
+                            title="Delete Receipt"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))

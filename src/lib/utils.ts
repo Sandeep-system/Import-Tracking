@@ -31,13 +31,19 @@ export function formatDate(val?: string | null): string {
 export function getStatusBadgeClass(status?: string): string {
   switch (status?.toLowerCase()) {
     case "open":
-      return "bg-blue-50 text-blue-700 border-blue-200";
+    case "pending":
+      return "bg-slate-100 text-slate-700 border-slate-300 font-semibold";
+    case "ready":
+    case "ready to ship":
+      return "bg-blue-50 text-blue-700 border-blue-200 font-semibold";
+    case "in transit":
+      return "bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold";
     case "partially received":
       return "bg-amber-50 text-amber-700 border-amber-200";
     case "partially resolved":
       return "bg-orange-50 text-orange-700 border-orange-200 font-medium";
     case "received":
-      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+      return "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold";
     case "over received":
       return "bg-purple-50 text-purple-700 border-purple-200 font-semibold";
     case "closed":
@@ -59,4 +65,74 @@ export function getStatusBadgeClass(status?: string): string {
     default:
       return "bg-slate-50 text-slate-600 border-slate-200";
   }
+}
+
+export function getEtaStatus(etaStr?: string | null): { text: string; color: string; daysDiff: number | null } {
+  if (!etaStr) return { text: 'ETA Unspecified', color: 'bg-slate-100 text-slate-600 border-slate-200', daysDiff: null };
+  const eta = new Date(etaStr);
+  if (isNaN(eta.getTime())) return { text: etaStr, color: 'bg-slate-100 text-slate-600 border-slate-200', daysDiff: null };
+  
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const etaDate = new Date(eta);
+  etaDate.setHours(0, 0, 0, 0);
+
+  const diffMs = etaDate.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { 
+      text: `Port Arrival Overdue (${Math.abs(diffDays)}d ago)`, 
+      color: 'bg-rose-50 text-rose-700 border-rose-200 font-bold',
+      daysDiff: diffDays
+    };
+  } else if (diffDays === 0) {
+    return { 
+      text: 'Arriving Today at Port', 
+      color: 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse font-bold',
+      daysDiff: 0
+    };
+  } else if (diffDays <= 7) {
+    return { 
+      text: `Arriving in ${diffDays} days`, 
+      color: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold',
+      daysDiff: diffDays
+    };
+  } else if (diffDays <= 20) {
+    return { 
+      text: `At Sea (${diffDays} days)`, 
+      color: 'bg-blue-50 text-blue-700 border-blue-200',
+      daysDiff: diffDays
+    };
+  } else {
+    return { 
+      text: `En Route (${diffDays} days)`, 
+      color: 'bg-slate-50 text-slate-600 border-slate-200',
+      daysDiff: diffDays
+    };
+  }
+}
+
+export function normalizeDateStr(val?: string | null): string {
+  if (!val) return '';
+  const str = String(val).trim();
+  const ymdMatch = str.match(/^\d{4}-\d{2}-\d{2}/);
+  if (ymdMatch) return ymdMatch[0];
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return '';
+}
+
+export function canonicalSupplierKey(name?: string | null): string {
+  if (!name) return '';
+  let str = name.toLowerCase();
+  str = str.replace(/[.,/()\\&_\-]+/g, ' ');
+  str = str.replace(/\b(d\s+o\s+o|l\s+l\s+c|s\s+r\s+l|s\s+p\s+a|doo|llc|srl|spa|co|ltd|corp|corporation|inc|pvt|limited|company|trading|group|sa)\b/gi, ' ');
+  str = str.replace(/[^a-z0-9]+/g, '').trim();
+  return str || name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }

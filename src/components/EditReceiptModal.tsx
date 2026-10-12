@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { X, AlertTriangle, CheckCircle2, PackageCheck } from 'lucide-react';
 import { Receipt } from '@/types';
 import { dataStore } from '@/lib/dataStore';
-import { googleSync } from '@/lib/googleSync';
 import { formatWeight, formatDate } from '@/lib/utils';
 
 interface EditReceiptModalProps {
@@ -24,6 +23,8 @@ export function EditReceiptModal({
   const [lotNumber, setLotNumber] = useState('');
   const [supplierInvoice, setSupplierInvoice] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
+  const [containerNo, setContainerNo] = useState('');
+  const [portOfLoading, setPortOfLoading] = useState('');
   const [warehouseLocation, setWarehouseLocation] = useState('Nhava Sheva Yard');
   const [remarks, setRemarks] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +36,8 @@ export function EditReceiptModal({
       setLotNumber(receipt.lot_number || '');
       setSupplierInvoice(receipt.supplier_invoice_number || '');
       setInvoiceDate(receipt.supplier_invoice_date || receipt.receipt_date || new Date().toISOString().split('T')[0]);
+      setContainerNo(receipt.container_no || '');
+      setPortOfLoading(receipt.port_of_loading || '');
       setRemarks(receipt.remarks || '');
       
       // Look up warehouse location from lot
@@ -71,14 +74,11 @@ export function EditReceiptModal({
         lotNumber: lotNumber.trim(),
         supplierInvoice: supplierInvoice.trim(),
         supplierInvoiceDate: invoiceDate,
+        containerNo: containerNo.trim() || undefined,
+        portOfLoading: portOfLoading.trim() || undefined,
         warehouseLocation: warehouseLocation.trim() || undefined,
         remarks: remarks.trim() || undefined
       });
-
-      // Background sync to Google Sheets
-      if (receipt.po_number) {
-        googleSync.syncReceipts(receipt.po_number, [updatedReceipt]);
-      }
 
       setIsSubmitting(false);
       onClose();
@@ -90,10 +90,10 @@ export function EditReceiptModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
+      <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
               <PackageCheck className="h-5 w-5" />
@@ -113,7 +113,8 @@ export function EditReceiptModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Received Quantity (KG) *</label>
@@ -159,6 +160,28 @@ export function EditReceiptModal({
                 className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               />
             </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Container Number</label>
+              <input
+                type="text"
+                value={containerNo}
+                onChange={(e) => setContainerNo(e.target.value)}
+                placeholder="e.g. MSKU1234567"
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Port of Load (POL)</label>
+              <input
+                type="text"
+                value={portOfLoading}
+                onChange={(e) => setPortOfLoading(e.target.value)}
+                placeholder="e.g. Shanghai / Ningbo"
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+            </div>
           </div>
 
           <div>
@@ -189,7 +212,9 @@ export function EditReceiptModal({
             </div>
           )}
 
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+          </div>
+
+          <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
             <button
               type="button"
               onClick={onClose}

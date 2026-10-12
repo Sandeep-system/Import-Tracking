@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { 
   ArrowLeft, 
@@ -26,19 +26,28 @@ import {
   RotateCcw,
   CheckCircle,
   HelpCircle,
-  PackageCheck
+  PackageCheck,
+  PackagePlus,
+  Ship,
+  ExternalLink,
+  Anchor
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { PurchaseOrder, PurchaseOrderItem, Receipt, BalanceResolution } from '@/types';
 import { formatWeight, formatCurrency, formatDate, getStatusBadgeClass } from '@/lib/utils';
 import { AddReceiptModal } from '@/components/AddReceiptModal';
 import { EditReceiptModal } from '@/components/EditReceiptModal';
-import { googleSync } from '@/lib/googleSync';
+import { useAuth } from '@/context/AuthContext';
 
 export default function PurchaseOrderDetailClient({ id: propId }: { id?: string }) {
+  const { isViewer, canEdit, isAdmin } = useAuth();
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const id = propId || (params?.id as string);
+  const rawId = propId || (params?.id as string) || '';
+  const searchId = searchParams?.get('po') || searchParams?.get('id') || '';
+  const id = (rawId === '[id]' || !rawId) ? searchId : rawId;
+  const [mounted, setMounted] = useState(false);
 
   const [po, setPo] = useState<PurchaseOrder | null>(null);
   const [selectedItem, setSelectedItem] = useState<PurchaseOrderItem | null>(null);
@@ -53,10 +62,7 @@ export default function PurchaseOrderDetailClient({ id: propId }: { id?: string 
 
   const handleDeleteReceipt = (receipt: Receipt) => {
     try {
-      const { updatedPO } = dataStore.deleteReceipt(receipt.id);
-      if (updatedPO) {
-        googleSync.syncCreatePO(updatedPO);
-      }
+      dataStore.deleteReceipt(receipt.id);
       setDeletingReceipt(null);
       setDataVersion(v => v + 1);
     } catch (err: any) {
@@ -130,6 +136,28 @@ const STANDARD_ORIGINS = [
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [isSubmittingResolve, setIsSubmittingResolve] = useState(false);
 
+  // Shipment Details Modal State (Ready to Ship -> In Transit)
+  const [shippingItem, setShippingItem] = useState<PurchaseOrderItem | null>(null);
+  const [shipmentDate, setShipmentDate] = useState('');
+  const [etaSeaport, setEtaSeaport] = useState('');
+  const [heatNo, setHeatNo] = useState('');
+  const [sims, setSims] = useState('');
+  const [shipDeliveryTerms, setShipDeliveryTerms] = useState('FOB');
+  const [shipPaymentTerms, setShipPaymentTerms] = useState('DP at sight');
+  const [isShipCustomPaymentTerms, setIsShipCustomPaymentTerms] = useState(false);
+  const [shipPort, setShipPort] = useState('N.S.');
+  const [shipContainerNo, setShipContainerNo] = useState('');
+  const [shipPortOfLoading, setShipPortOfLoading] = useState('');
+  const [isSubmittingShipment, setIsSubmittingShipment] = useState(false);
+  const [shipmentError, setShipmentError] = useState<string | null>(null);
+
+  // Receive Cargo Modal State (In Transit -> Received)
+  const [receivingItem, setReceivingItem] = useState<PurchaseOrderItem | null>(null);
+  const [receiveDate, setReceiveDate] = useState('');
+  const [receiveLocation, setReceiveLocation] = useState('Nhava Sheva Yard');
+  const [isSubmittingReceive, setIsSubmittingReceive] = useState(false);
+  const [receiveError, setReceiveError] = useState<string | null>(null);
+
   // Edit PO Modal State
   const [isEditPoOpen, setIsEditPoOpen] = useState(false);
   const [editOrderDate, setEditOrderDate] = useState('');
@@ -172,10 +200,62 @@ const STANDARD_ORIGINS = [
   const [bulkInvoiceDate, setBulkInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [bulkWarehouseLocation, setBulkWarehouseLocation] = useState('Nhava Sheva Yard');
   const [bulkRemarks, setBulkRemarks] = useState('');
-  const [bulkMode, setBulkMode] = useState<'RECEIVE' | 'UPDATE'>('RECEIVE');
+  const [bulkMode, setBulkMode] = useState<'READY' | 'SHIP' | 'RECEIVE' | 'UPDATE'>('READY');
   const [bulkItemQuantities, setBulkItemQuantities] = useState<Record<string, number>>({});
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [isSubmittingBulk, setIsSubmittingBulk] = useState(false);
+
+  // Bulk Shipping fields
+  const [bulkDateOfShipment, setBulkDateOfShipment] = useState(new Date().toISOString().split('T')[0]);
+  const [bulkEtaSeaport, setBulkEtaSeaport] = useState('');
+  const [bulkHeatNo, setBulkHeatNo] = useState('');
+  const [bulkSims, setBulkSims] = useState('');
+  const [bulkDeliveryTerms, setBulkDeliveryTerms] = useState('FOB');
+  const [bulkPaymentTerms, setBulkPaymentTerms] = useState('DP at sight');
+  const [bulkDischargePort, setBulkDischargePort] = useState('N.S.');
+  const [bulkContainerNo, setBulkContainerNo] = useState('');
+  const [bulkPortOfLoading, setBulkPortOfLoading] = useState('');
+
+  // Persistent in-memory cache of previously entered bulk action values per PO
+  const savedBulkValues = useRef<Record<string, {
+    lotNumber?: string;
+    invoiceNumber?: string;
+    invoiceDate?: string;
+    warehouseLocation?: string;
+    remarks?: string;
+    dateOfShipment?: string;
+    etaSeaport?: string;
+    dischargePort?: string;
+    deliveryTerms?: string;
+    paymentTerms?: string;
+    heatNo?: string;
+    sims?: string;
+    containerNo?: string;
+    portOfLoading?: string;
+  }>>({});
+
+  const updateSavedBulkValues = (fields: Partial<{
+    lotNumber: string;
+    invoiceNumber: string;
+    invoiceDate: string;
+    warehouseLocation: string;
+    remarks: string;
+    dateOfShipment: string;
+    etaSeaport: string;
+    dischargePort: string;
+    deliveryTerms: string;
+    paymentTerms: string;
+    heatNo: string;
+    sims: string;
+    containerNo: string;
+    portOfLoading: string;
+  }>) => {
+    if (!po) return;
+    savedBulkValues.current[po.id] = {
+      ...(savedBulkValues.current[po.id] || {}),
+      ...fields
+    };
+  };
 
   const toggleSelectItem = (itemId: string) => {
     setSelectedItemIds(prev => 
@@ -192,21 +272,137 @@ const STANDARD_ORIGINS = [
     }
   };
 
-  const handleOpenBulkReceipt = (mode: 'RECEIVE' | 'UPDATE' = 'RECEIVE') => {
+  const handleOpenBulkAction = (mode?: 'READY' | 'SHIP' | 'RECEIVE' | 'UPDATE') => {
     if (selectedItemIds.length === 0 || !po) return;
-    setBulkMode(mode);
+
+    // Smart default mode based on selected items' stage
+    let targetMode: 'READY' | 'SHIP' | 'RECEIVE' | 'UPDATE' = mode || 'READY';
+    const selectedItems = po.items?.filter(i => selectedItemIds.includes(i.id)) || [];
+    if (!mode) {
+      const hasOpen = selectedItems.some(i => i.status === 'Open' || !i.status);
+      const hasReady = selectedItems.some(i => i.status === 'Ready to Ship');
+      const hasTransit = selectedItems.some(i => i.status === 'In Transit');
+
+      if (hasTransit && !hasReady && !hasOpen) {
+        targetMode = 'RECEIVE';
+      } else if (hasReady && !hasOpen) {
+        targetMode = 'SHIP';
+      } else {
+        targetMode = 'READY';
+      }
+    }
+
+    setBulkMode(targetMode);
     setBulkError(null);
 
-    // Auto-fill full ordered / pending quantity for each selected item
-    const qtys: Record<string, number> = {};
-    const defaultLot = `LOT-${po.po_number}-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}`;
-    setBulkLotNumber(defaultLot);
-    setBulkInvoiceNumber('');
-    const todayStr = new Date().toISOString().split('T')[0];
-    setBulkInvoiceDate(todayStr);
-    setBulkWarehouseLocation('Nhava Sheva Yard');
-    setBulkRemarks('');
+    // Retrieve saved values for this PO
+    const saved = savedBulkValues.current[po.id] || {};
 
+    // 1. Resolve Lot Number
+    const allPoReceipts = (po.items || []).flatMap(i => i.receipts || []);
+    const existingItemLot = selectedItems.find(i => i.lot_number?.trim())?.lot_number?.trim();
+    const existingReceiptLot = selectedItems.find(i => i.receipts?.some(r => r.lot_number?.trim()))?.receipts?.find(r => r.lot_number?.trim())?.lot_number?.trim();
+    const poItemLot = po.items?.find(i => i.lot_number?.trim())?.lot_number?.trim();
+    const poReceiptLot = allPoReceipts.find(r => r.lot_number?.trim())?.lot_number?.trim();
+    const defaultLot = `LOT-${po.po_number}-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}`;
+    const lotToUse = existingItemLot || existingReceiptLot || saved.lotNumber?.trim() || poItemLot || poReceiptLot || defaultLot;
+    setBulkLotNumber(lotToUse);
+
+    // 2. Resolve Commercial Invoice
+    const existingItemInvoice = selectedItems.find(i => i.receipts?.some(r => r.supplier_invoice_number?.trim()))?.receipts?.find(r => r.supplier_invoice_number?.trim())?.supplier_invoice_number?.trim();
+    const poReceiptInvoice = allPoReceipts.find(r => r.supplier_invoice_number?.trim())?.supplier_invoice_number?.trim();
+    const invoiceToUse = existingItemInvoice || saved.invoiceNumber?.trim() || poReceiptInvoice || '';
+    setBulkInvoiceNumber(invoiceToUse);
+
+    // 3. Resolve Invoice / Receipt Date
+    const todayStr = new Date().toISOString().split('T')[0];
+    const existingItemDate = selectedItems.find(i => i.receipts?.some(r => r.supplier_invoice_date))?.receipts?.find(r => r.supplier_invoice_date)?.supplier_invoice_date;
+    const poReceiptDate = allPoReceipts.find(r => r.supplier_invoice_date)?.supplier_invoice_date;
+    const invoiceDateToUse = existingItemDate || saved.invoiceDate || poReceiptDate || todayStr;
+    setBulkInvoiceDate(invoiceDateToUse);
+
+    // 4. Resolve Warehouse Location
+    const existingLocation = selectedItems.find(i => i.receipts?.some(r => r.warehouse_location?.trim()))?.receipts?.find(r => r.warehouse_location?.trim())?.warehouse_location?.trim();
+    const locationToUse = existingLocation || saved.warehouseLocation?.trim() || 'Nhava Sheva Yard';
+    setBulkWarehouseLocation(locationToUse);
+
+    // 5. Resolve Remarks
+    const existingRemarks = selectedItems.find(i => i.receipts?.some(r => r.remarks?.trim()))?.receipts?.find(r => r.remarks?.trim())?.remarks?.trim();
+    const remarksToUse = existingRemarks || saved.remarks || '';
+    setBulkRemarks(remarksToUse);
+
+    // 6. Resolve Date of Shipment
+    const existingShipDate = selectedItems.find(i => i.date_of_shipment?.trim())?.date_of_shipment?.trim();
+    const poShipDate = po.items?.find(i => i.date_of_shipment?.trim())?.date_of_shipment?.trim();
+    const shipDateToUse = existingShipDate || saved.dateOfShipment || poShipDate || todayStr;
+    setBulkDateOfShipment(shipDateToUse);
+
+    // 7. Resolve ETA Seaport
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    const defaultEta = d.toISOString().split('T')[0];
+    const existingEta = selectedItems.find(i => i.eta_seaport?.trim())?.eta_seaport?.trim();
+    const poEta = po.items?.find(i => i.eta_seaport?.trim())?.eta_seaport?.trim();
+    const etaToUse = existingEta || saved.etaSeaport || poEta || po.expected_delivery_date || defaultEta;
+    setBulkEtaSeaport(etaToUse);
+
+    // 8. Heat No & SIMS
+    const existingHeat = selectedItems.find(i => i.heat_no?.trim())?.heat_no?.trim();
+    const poHeat = po.items?.find(i => i.heat_no?.trim())?.heat_no?.trim();
+    const heatToUse = existingHeat || saved.heatNo || poHeat || '';
+    setBulkHeatNo(heatToUse);
+
+    const existingSims = selectedItems.find(i => i.sims?.trim())?.sims?.trim();
+    const poSims = po.items?.find(i => i.sims?.trim())?.sims?.trim();
+    const simsToUse = existingSims || saved.sims || poSims || '';
+    setBulkSims(simsToUse);
+
+    // 9. Delivery & Payment Terms, Discharge Port
+    const existingDelivTerms = selectedItems.find(i => i.delivery_terms?.trim())?.delivery_terms?.trim();
+    const delivTermsToUse = existingDelivTerms || saved.deliveryTerms || po.delivery_terms || 'FOB';
+    setBulkDeliveryTerms(delivTermsToUse);
+
+    const existingPayTerms = selectedItems.find(i => i.payment_terms?.trim())?.payment_terms?.trim();
+    const payTermsToUse = existingPayTerms || saved.paymentTerms || po.payment_terms || 'DP at sight';
+    setBulkPaymentTerms(payTermsToUse);
+
+    const existingPort = selectedItems.find(i => i.destination_port?.trim())?.destination_port?.trim();
+    const portToUse = existingPort || saved.dischargePort || po.destination || 'N.S.';
+    setBulkDischargePort(portToUse);
+
+    // 10. Container No & Port of Loading
+    const existingContainer = selectedItems.find(i => i.container_no?.trim())?.container_no?.trim()
+      || selectedItems.find(i => i.receipts?.some(r => r.container_no?.trim()))?.receipts?.find(r => r.container_no?.trim())?.container_no?.trim();
+    const poContainer = po.items?.find(i => i.container_no?.trim())?.container_no?.trim();
+    const containerToUse = existingContainer || saved.containerNo || poContainer || '';
+    setBulkContainerNo(containerToUse);
+
+    const existingPol = selectedItems.find(i => i.port_of_loading?.trim())?.port_of_loading?.trim()
+      || selectedItems.find(i => i.receipts?.some(r => r.port_of_loading?.trim()))?.receipts?.find(r => r.port_of_loading?.trim())?.port_of_loading?.trim();
+    const poPol = po.items?.find(i => i.port_of_loading?.trim())?.port_of_loading?.trim();
+    const polToUse = existingPol || saved.portOfLoading || poPol || '';
+    setBulkPortOfLoading(polToUse);
+
+    // Store in cache for this PO
+    savedBulkValues.current[po.id] = {
+      lotNumber: lotToUse,
+      invoiceNumber: invoiceToUse,
+      invoiceDate: invoiceDateToUse,
+      warehouseLocation: locationToUse,
+      remarks: remarksToUse,
+      dateOfShipment: shipDateToUse,
+      etaSeaport: etaToUse,
+      dischargePort: portToUse,
+      deliveryTerms: delivTermsToUse,
+      paymentTerms: payTermsToUse,
+      heatNo: heatToUse,
+      sims: simsToUse,
+      containerNo: containerToUse,
+      portOfLoading: polToUse,
+    };
+
+    // Auto-fill item quantities
+    const qtys: Record<string, number> = {};
     for (const itemId of selectedItemIds) {
       const it = po.items?.find(i => i.id === itemId);
       if (it) {
@@ -218,24 +414,58 @@ const STANDARD_ORIGINS = [
     setIsBulkReceiptOpen(true);
   };
 
+  const handleOpenBulkReceipt = handleOpenBulkAction;
+
   const handleSubmitBulkReceipt = (e: React.FormEvent) => {
     e.preventDefault();
     if (!po) return;
     setBulkError(null);
 
-    if (!bulkLotNumber.trim()) {
-      setBulkError('Please enter a Lot Number.');
-      return;
+    if (bulkMode === 'READY' || bulkMode === 'UPDATE') {
+      if (!bulkLotNumber.trim()) {
+        setBulkError('Please enter a Lot Number.');
+        return;
+      }
+      if (!bulkInvoiceNumber.trim()) {
+        setBulkError('Please enter the Supplier Commercial Invoice number.');
+        return;
+      }
     }
-    if (!bulkInvoiceNumber.trim()) {
-      setBulkError('Please enter the Supplier Commercial Invoice number.');
-      return;
+
+    if (bulkMode === 'SHIP') {
+      if (!bulkDateOfShipment) {
+        setBulkError('Please enter Date of Shipment.');
+        return;
+      }
+      if (!bulkEtaSeaport) {
+        setBulkError('Please enter ETA (sea port).');
+        return;
+      }
     }
 
     try {
       setIsSubmittingBulk(true);
-      if (bulkMode === 'RECEIVE') {
-        const { receipts } = dataStore.addBulkReceipt({
+
+      // Always persist current inputs to memory cache for this PO
+      updateSavedBulkValues({
+        lotNumber: bulkLotNumber.trim(),
+        invoiceNumber: bulkInvoiceNumber.trim(),
+        invoiceDate: bulkInvoiceDate,
+        warehouseLocation: bulkWarehouseLocation.trim(),
+        remarks: bulkRemarks.trim(),
+        dateOfShipment: bulkDateOfShipment,
+        etaSeaport: bulkEtaSeaport,
+        dischargePort: bulkDischargePort,
+        deliveryTerms: bulkDeliveryTerms,
+        paymentTerms: bulkPaymentTerms,
+        heatNo: bulkHeatNo.trim(),
+        sims: bulkSims.trim(),
+        containerNo: bulkContainerNo.trim(),
+        portOfLoading: bulkPortOfLoading.trim(),
+      });
+
+      if (bulkMode === 'READY') {
+        dataStore.addBulkReceipt({
           poIdOrNumber: po.id,
           itemIds: selectedItemIds,
           lotNumber: bulkLotNumber.trim(),
@@ -244,9 +474,36 @@ const STANDARD_ORIGINS = [
           receiptDate: bulkInvoiceDate,
           warehouseLocation: bulkWarehouseLocation.trim() || undefined,
           remarks: bulkRemarks.trim() || undefined,
+          containerNo: bulkContainerNo.trim() || undefined,
+          portOfLoading: bulkPortOfLoading.trim() || undefined,
           itemQuantities: bulkItemQuantities
         });
-        googleSync.syncReceipts(po.po_number, receipts);
+      } else if (bulkMode === 'SHIP') {
+        for (const itemId of selectedItemIds) {
+          dataStore.markItemShipped({
+            poIdOrNumber: po.id,
+            itemId,
+            lotNumber: bulkLotNumber.trim() || undefined,
+            dateOfShipment: bulkDateOfShipment,
+            etaSeaport: bulkEtaSeaport,
+            heatNo: bulkHeatNo.trim() || undefined,
+            sims: bulkSims.trim() || undefined,
+            deliveryTerms: bulkDeliveryTerms,
+            paymentTerms: bulkPaymentTerms,
+            port: bulkDischargePort,
+            containerNo: bulkContainerNo.trim() || undefined,
+            portOfLoading: bulkPortOfLoading.trim() || undefined
+          });
+        }
+      } else if (bulkMode === 'RECEIVE') {
+        for (const itemId of selectedItemIds) {
+          dataStore.markItemReceived({
+            poIdOrNumber: po.id,
+            itemId,
+            receiptDate: bulkInvoiceDate,
+            warehouseLocation: bulkWarehouseLocation.trim() || undefined
+          });
+        }
       } else {
         dataStore.updateBulkItemReceipts({
           poIdOrNumber: po.id,
@@ -260,10 +517,14 @@ const STANDARD_ORIGINS = [
       setIsSubmittingBulk(false);
       setIsBulkReceiptOpen(false);
       setSelectedItemIds([]);
+      loadData();
       setDataVersion(v => v + 1);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('app:data-updated'));
+      }
     } catch (err: any) {
       setIsSubmittingBulk(false);
-      setBulkError(err.message || 'Failed to process bulk receipt.');
+      setBulkError(err.message || 'Failed to process bulk action.');
     }
   };
 
@@ -282,6 +543,7 @@ const STANDARD_ORIGINS = [
   };
 
   useEffect(() => {
+    setMounted(true);
     loadData();
   }, [id, dataVersion]);
 
@@ -293,10 +555,25 @@ const STANDARD_ORIGINS = [
 
   if (!po) {
     return (
-      <div className="p-8 text-center space-y-3">
-        <p className="text-slate-500">Loading purchase order details...</p>
-        <Link href="/purchasing/purchase-orders" className="text-blue-600 text-xs hover:underline">
-          Return to PO List
+      <div className="p-12 text-center max-w-md mx-auto space-y-4">
+        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+          <ShoppingBag className="w-6 h-6" />
+        </div>
+        <div>
+          <h3 className="text-base font-bold text-slate-800">
+            {mounted ? 'Purchase Order Not Found' : 'Loading Purchase Order...'}
+          </h3>
+          <p className="text-xs text-slate-500 mt-1">
+            {mounted 
+              ? (id ? `No purchase order matches "${id}". It may have been removed or not created yet.` : 'No Purchase Order was specified.')
+              : 'Retrieving order details and material specifications...'}
+          </p>
+        </div>
+        <Link 
+          href="/purchasing/purchase-orders" 
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 shadow-sm transition-all"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Return to Purchase Orders
         </Link>
       </div>
     );
@@ -308,6 +585,113 @@ const STANDARD_ORIGINS = [
   const handleOpenReceiptForItem = (itemId: string) => {
     setTargetItemId(itemId);
     setIsAddReceiptOpen(true);
+  };
+
+  const handleOpenShipmentModal = (item: PurchaseOrderItem) => {
+    setShippingItem(item);
+    setShipmentError(null);
+    const today = new Date().toISOString().split('T')[0];
+    setShipmentDate(item.date_of_shipment || today);
+
+    // Default ETA ~ 30 days from today or PO expected delivery
+    let defaultEta = item.eta_seaport || po?.expected_delivery_date || '';
+    if (!defaultEta) {
+      const d = new Date();
+      d.setDate(d.getDate() + 30);
+      defaultEta = d.toISOString().split('T')[0];
+    }
+    setEtaSeaport(defaultEta);
+    setHeatNo(item.heat_no || '');
+    setSims(item.sims || '');
+    setShipDeliveryTerms(item.delivery_terms || po?.delivery_terms || 'FOB');
+    const pTerms = item.payment_terms || po?.payment_terms || 'DP at sight';
+    setShipPaymentTerms(pTerms);
+    setIsShipCustomPaymentTerms(!STANDARD_PAYMENT_TERMS.slice(0, -1).includes(pTerms));
+    setShipPort(item.destination_port || po?.destination || 'N.S.');
+    setShipContainerNo(item.container_no || '');
+    setShipPortOfLoading(item.port_of_loading || '');
+  };
+
+  const handleSubmitShipment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shippingItem || !po) return;
+    setShipmentError(null);
+
+    if (!shipmentDate) {
+      setShipmentError('Please enter Date of Shipment.');
+      return;
+    }
+    if (!etaSeaport) {
+      setShipmentError('Please enter ETA (sea port).');
+      return;
+    }
+
+    try {
+      setIsSubmittingShipment(true);
+      dataStore.markItemShipped({
+        poIdOrNumber: po.id,
+        itemId: shippingItem.id,
+        dateOfShipment: shipmentDate,
+        etaSeaport: etaSeaport,
+        heatNo: heatNo.trim() || undefined,
+        sims: sims.trim() || undefined,
+        deliveryTerms: shipDeliveryTerms,
+        paymentTerms: shipPaymentTerms,
+        port: shipPort,
+        containerNo: shipContainerNo.trim() || undefined,
+        portOfLoading: shipPortOfLoading.trim() || undefined
+      });
+
+      setIsSubmittingShipment(false);
+      setShippingItem(null);
+      loadData();
+      setDataVersion(v => v + 1);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('app:data-updated'));
+      }
+    } catch (err: any) {
+      setIsSubmittingShipment(false);
+      setShipmentError(err.message || 'Failed to dispatch shipment.');
+    }
+  };
+
+  const handleOpenReceiveModal = (item: PurchaseOrderItem) => {
+    setReceivingItem(item);
+    setReceiveError(null);
+    setReceiveDate(new Date().toISOString().split('T')[0]);
+    setReceiveLocation(
+      (item.destination_port || po?.destination || '').toLowerCase().includes('nhava') ||
+      (item.destination_port || po?.destination || '').toLowerCase().includes('n.s')
+        ? 'Nhava Sheva Yard'
+        : 'Main Warehouse Yard'
+    );
+  };
+
+  const handleSubmitReceive = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!receivingItem || !po) return;
+    setReceiveError(null);
+
+    try {
+      setIsSubmittingReceive(true);
+      dataStore.markItemReceived({
+        poIdOrNumber: po.id,
+        itemId: receivingItem.id,
+        receiptDate: receiveDate,
+        warehouseLocation: receiveLocation
+      });
+
+      setIsSubmittingReceive(false);
+      setReceivingItem(null);
+      loadData();
+      setDataVersion(v => v + 1);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('app:data-updated'));
+      }
+    } catch (err: any) {
+      setIsSubmittingReceive(false);
+      setReceiveError(err.message || 'Failed to confirm cargo receipt.');
+    }
   };
 
   const handleOpenEditPO = () => {
@@ -493,40 +877,48 @@ const STANDARD_ORIGINS = [
         </div>
 
         <div className="flex items-center gap-2.5">
-          <button
-            onClick={handleOpenEditPO}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg card-shadow transition-colors"
-          >
-            <Pencil className="h-3.5 w-3.5 text-slate-600" />
-            <span>Edit PO Details</span>
-          </button>
+          {!isViewer && (
+            <button
+              onClick={handleOpenEditPO}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg card-shadow transition-colors cursor-pointer"
+            >
+              <Pencil className="h-3.5 w-3.5 text-slate-600" />
+              <span>Edit PO Details</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            <span>Delete PO</span>
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete PO</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setIsAddItemOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg card-shadow transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5 text-blue-600" />
-            <span>Add Item to PO</span>
-          </button>
+          {!isViewer && (
+            <>
+              <button
+                onClick={() => setIsAddItemOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg card-shadow transition-colors cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5 text-blue-600" />
+                <span>Add Item to PO</span>
+              </button>
 
-          <button
-            onClick={() => {
-              setTargetItemId(undefined);
-              setIsAddReceiptOpen(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Add Receipt to PO</span>
-          </button>
+              <button
+                onClick={() => {
+                  setTargetItemId(undefined);
+                  setIsAddReceiptOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Record Material Ready</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -566,8 +958,8 @@ const STANDARD_ORIGINS = [
               <span className="text-sm font-bold text-slate-800">{formatWeight(po.total_ordered_qty)}</span>
             </div>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Received</span>
-              <span className="text-sm font-bold text-emerald-600">{formatWeight(po.total_received_qty)}</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Recd / Ready Qty</span>
+              <span className="text-sm font-bold text-emerald-600">{formatWeight(po.total_ready_qty ?? po.total_received_qty)}</span>
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pending</span>
@@ -629,6 +1021,85 @@ const STANDARD_ORIGINS = [
             <span>{po.remarks}</span>
           </div>
         )}
+
+        {/* Linked Inbound Logistics from INCOMING STOCK */}
+        {(() => {
+          const incItems = dataStore.getIncomingStockForPO(po.po_number);
+          if (incItems.length === 0) return null;
+          const transitItems = incItems.filter(i => i.received_status === 'IN_TRANSIT');
+          const receivedItems = incItems.filter(i => i.received_status === 'RECEIVED');
+          const lotsList = Array.from(new Set(incItems.map(i => i.lot_number))).filter(Boolean);
+
+          return (
+            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50/80 to-indigo-50/60 rounded-xl border border-blue-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-blue-200/60">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-600 text-white rounded-lg shadow-sm">
+                    <Ship className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-blue-950 uppercase tracking-wider">
+                      Inbound Logistics & Maritime Transit (INCOMING STOCK.xlsx)
+                    </h4>
+                    <p className="text-[11px] text-blue-700">
+                      {incItems.length} linked shipment items across Lot(s): <strong className="font-mono">{lotsList.join(', ')}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                  <Link
+                    href={`/purchasing/shipments?tab=ports&search=${encodeURIComponent(po.po_number)}`}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-white px-2.5 py-1 rounded-md border border-indigo-200 shadow-2xs"
+                    title="Track Port ETA & Maritime Hub for this PO"
+                  >
+                    <Anchor className="h-3 w-3 text-indigo-600" />
+                    <span>Port ETA Hub</span>
+                  </Link>
+
+                  <Link
+                    href={`/purchasing/shipments?tab=shipments&search=${encodeURIComponent(po.po_number)}`}
+                    className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:text-blue-900 bg-white px-2.5 py-1 rounded-md border border-blue-200 shadow-2xs"
+                  >
+                    <span>Open Shipments Tracker</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">In-Transit Cargo</span>
+                  <span className="font-extrabold text-blue-700 text-sm">
+                    {formatWeight(transitItems.reduce((acc, i) => acc + (Number(i.weight) || 0), 0))}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block">({transitItems.length} line items at sea)</span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Discharge Port & Terms</span>
+                  <span className="font-bold text-slate-800">
+                    {incItems[0]?.port || po.destination || 'N.S.'} ({incItems[0]?.delivery_terms || po.delivery_terms || 'FOB'})
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Sea Port ETA</span>
+                  <span className="font-bold text-slate-800">
+                    {incItems[0]?.eta_seaport ? formatDate(incItems[0].eta_seaport) : 'In Transit'}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Heat / Metallurgy</span>
+                  <span className="font-bold font-mono text-slate-800">
+                    {incItems.find(i => i.heat_no)?.heat_no ? `Heat: ${incItems.find(i => i.heat_no)?.heat_no}` : 'Verified specs'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Material Line Items Table */}
@@ -648,11 +1119,13 @@ const STANDARD_ORIGINS = [
                 </span>
                 <button
                   type="button"
-                  onClick={() => handleOpenBulkReceipt('RECEIVE')}
+                  onClick={() => handleOpenBulkAction()}
                   className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded shadow-sm transition-colors"
+                  title="Execute stage progression (Ready, Shipped, Received) across selected items"
                 >
-                  <PackageCheck className="h-3.5 w-3.5" />
-                  <span>Bulk Receive Items</span>
+                  <Layers className="h-3.5 w-3.5" />
+                  <span>Bulk Action</span>
+                  <span className="text-[10px] opacity-80">▾</span>
                 </button>
                 <button
                   type="button"
@@ -683,9 +1156,9 @@ const STANDARD_ORIGINS = [
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
+        <div className="overflow-auto max-h-[calc(100vh-320px)] min-h-[300px] relative w-full">
+          <table className="w-full text-left border-separate border-spacing-0">
+            <thead className="sticky top-0 z-10 bg-slate-50">
               <tr>
                 <th className="table-header w-10 text-center">
                   <input 
@@ -707,7 +1180,7 @@ const STANDARD_ORIGINS = [
                 <th className="table-header">Treatment & Condition</th>
                 <th className="table-header text-right">Price</th>
                 <th className="table-header text-right">Ordered Qty</th>
-                <th className="table-header text-right">Received Qty</th>
+                <th className="table-header text-right">Recd / Ready Qty</th>
                 <th className="table-header text-right">Pending Qty</th>
                 <th className="table-header text-center">Receipts</th>
                 <th className="table-header text-center">Status</th>
@@ -717,8 +1190,9 @@ const STANDARD_ORIGINS = [
             <tbody className="divide-y divide-slate-100 text-xs">
               {po.items?.map((item) => {
                 const dimStr = `${item.diameter_width || '—'} ${item.thickness ? 'x ' + item.thickness : ''} ${item.length ? 'x ' + item.length : ''} mm`;
-                const actionable = item.actionable_pending_qty ?? item.balance_quantity ?? 0;
-                const physicalShort = item.physical_short_qty ?? Math.max(0, item.ordered_quantity - (item.received_quantity || 0));
+                const isFullySettled = Math.abs(item.ordered_quantity - (item.received_quantity || 0)) < 0.001;
+                const actionable = isFullySettled ? 0 : (item.actionable_pending_qty ?? item.balance_quantity ?? 0);
+                const physicalShort = isFullySettled ? 0 : (item.physical_short_qty ?? Math.max(0, item.ordered_quantity - (item.received_quantity || 0)));
 
                 return (
                   <tr 
@@ -743,11 +1217,23 @@ const STANDARD_ORIGINS = [
                     <td className="table-cell text-slate-600">
                       <span className="font-medium text-slate-800">{item.treatment || 'Annealed'}</span>
                       <span className="text-[10px] text-slate-500 font-medium block">{item.condition_name || 'BLACK ROLLED'}</span>
-                      {item.lot_number && (
-                        <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono font-bold">
-                          Lot: {item.lot_number}
-                        </span>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                        {item.lot_number && (
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-mono font-bold">
+                            Lot: {item.lot_number}
+                          </span>
+                        )}
+                        {item.container_no && (
+                          <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-mono font-semibold">
+                            Cont: {item.container_no}
+                          </span>
+                        )}
+                        {item.port_of_loading && (
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-semibold">
+                            POL: {item.port_of_loading}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="table-cell text-right font-mono text-slate-700">
                       {formatCurrency(item.purchase_price, item.currency)}
@@ -756,16 +1242,16 @@ const STANDARD_ORIGINS = [
                       {formatWeight(item.ordered_quantity)}
                     </td>
                     <td className="table-cell text-right font-bold text-emerald-600">
-                      {formatWeight(item.received_quantity)}
+                      {formatWeight(item.ready_quantity ?? item.received_quantity ?? 0)}
                     </td>
-                    <td className={`table-cell text-right font-bold ${actionable < 0 ? 'text-purple-700' : 'text-blue-700'}`}>
-                      <div>{formatWeight(actionable)}</div>
-                      {actionable >= 0 && physicalShort > actionable && (
+                    <td className={`table-cell text-right font-bold ${!isFullySettled && actionable < 0 ? 'text-purple-700' : isFullySettled ? 'text-slate-400' : 'text-blue-700'}`}>
+                      <div>{formatWeight(isFullySettled ? 0 : actionable)}</div>
+                      {!isFullySettled && actionable >= 0 && physicalShort > actionable && (
                         <div className="text-[10px] text-amber-700 font-normal">
                           Short: {formatWeight(physicalShort)}
                         </div>
                       )}
-                      {actionable < 0 && (
+                      {!isFullySettled && actionable < 0 && (
                         <div className="text-[10px] text-purple-600 font-normal">
                           Over: {formatWeight(Math.abs(actionable))}
                         </div>
@@ -777,34 +1263,103 @@ const STANDARD_ORIGINS = [
                       </span>
                     </td>
                     <td className="table-cell text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeClass(item.status)}`}>
+                      <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border tracking-wide uppercase ${getStatusBadgeClass(item.status)}`}>
                         {item.status}
                       </span>
                     </td>
                     <td className="table-cell text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenReceiptForItem(item.id);
-                          }}
-                          className="px-2 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 font-semibold text-[11px] transition-colors"
-                        >
-                          + Receive
-                        </button>
-                        {actionable > 0 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenResolveBalance(item);
-                            }}
-                            className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-600 hover:text-white text-amber-800 border border-amber-200 font-semibold text-[11px] transition-colors"
-                            title="Resolve remaining balance"
-                          >
-                            Resolve
-                          </button>
-                        )}
-                      </div>
+                      {isViewer ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          {item.status === 'In Transit' && (
+                            <Link
+                              href={`/purchasing/shipments?tab=ports&search=${encodeURIComponent(item.lot_number || po.po_number)}`}
+                              className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold text-[11px] transition-colors flex items-center gap-1"
+                              title="Track Port ETA and sea shipment details"
+                            >
+                              <Anchor className="h-3 w-3" />
+                              <span>Port ETA</span>
+                            </Link>
+                          )}
+                          <span className="text-[11px] text-slate-400 italic font-medium px-2 py-0.5">View Only</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {/* 1. Status is Open -> Ready button */}
+                          {item.status === 'Open' && (
+                            <button
+                              onClick={() => handleOpenReceiptForItem(item.id)}
+                              className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 border border-blue-200 font-bold text-[11px] transition-colors flex items-center gap-1 shadow-sm"
+                              title="Record material ready at mill / supplier"
+                            >
+                              <PackagePlus className="h-3 w-3" />
+                              <span>Ready</span>
+                            </button>
+                          )}
+
+                          {/* 2. Status is Ready to Ship -> Shipped button */}
+                          {item.status === 'Ready to Ship' && (
+                            <button
+                              onClick={() => handleOpenShipmentModal(item)}
+                              className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1"
+                              title="Record maritime dispatch details (Date of Shipment, Port ETA, Heat, SIMS, Terms)"
+                            >
+                              <Ship className="h-3 w-3" />
+                              <span>Shipped</span>
+                            </button>
+                          )}
+
+                          {/* 3. Status is In Transit -> Received button & Port ETA link */}
+                          {item.status === 'In Transit' && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleOpenReceiveModal(item)}
+                                className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1"
+                                title="Confirm physical arrival into warehouse/yard"
+                              >
+                                <CheckCircle2 className="h-3 w-3" />
+                                <span>Received</span>
+                              </button>
+                              <Link
+                                href={`/purchasing/shipments?tab=ports&search=${encodeURIComponent(item.lot_number || po.po_number)}`}
+                                className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold text-[11px] transition-colors flex items-center gap-1"
+                                title="Track Port ETA and sea shipment details"
+                              >
+                                <Anchor className="h-3 w-3" />
+                                <span>Port ETA</span>
+                              </Link>
+                            </div>
+                          )}
+
+                          {/* 4. Status is Received -> Received badge */}
+                          {item.status === 'Received' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[10px]">
+                              <CheckCircle className="h-3 w-3 text-emerald-600" />
+                              <span>Received</span>
+                            </span>
+                          )}
+
+                          {/* Fallback for other statuses */}
+                          {!['Open', 'Ready to Ship', 'In Transit', 'Received'].includes(item.status) && (
+                            <button
+                              onClick={() => handleOpenReceiptForItem(item.id)}
+                              className="px-2.5 py-1 rounded bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 font-semibold text-[11px] transition-colors"
+                            >
+                              Ready
+                            </button>
+                          )}
+
+                          {/* Balance resolution button for shortages */}
+                          {actionable > 0 && item.status !== 'In Transit' && item.status !== 'Open' && (
+                            <button
+                              onClick={() => handleOpenResolveBalance(item)}
+                              className="px-2 py-1 rounded bg-slate-50 hover:bg-amber-600 hover:text-white text-amber-800 border border-amber-200 font-semibold text-[11px] transition-colors"
+                              title="Resolve remaining balance"
+                            >
+                              Resolve
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -916,6 +1471,28 @@ const STANDARD_ORIGINS = [
                 </div>
               </div>
 
+              {/* Shipping & Logistics Details Card */}
+              {(selectedItem.container_no || selectedItem.port_of_loading || selectedItem.destination_port || selectedItem.delivery_terms || selectedItem.heat_no || selectedItem.sims) && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-amber-50/40 rounded-xl border border-amber-200/80 text-xs">
+                  <div>
+                    <span className="text-[10px] text-amber-700 uppercase font-bold tracking-wider block">Container Number</span>
+                    <span className="font-mono font-bold text-slate-900">{selectedItem.container_no || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-amber-700 uppercase font-bold tracking-wider block">Port of Load (POL)</span>
+                    <span className="font-semibold text-slate-800">{selectedItem.port_of_loading || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-amber-700 uppercase font-bold tracking-wider block">Port of Discharge (POD)</span>
+                    <span className="font-semibold text-slate-800">{selectedItem.destination_port || po.destination || 'N.S.'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-amber-700 uppercase font-bold tracking-wider block">Heat # / SIMS</span>
+                    <span className="font-mono text-slate-800">{[selectedItem.heat_no, selectedItem.sims].filter(Boolean).join(' • ') || '—'}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Quantity Summary Card (Section 6) */}
               <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
@@ -933,31 +1510,35 @@ const STANDARD_ORIGINS = [
                     <span className="text-[10px] text-slate-400 font-bold uppercase block">Received</span>
                     <span className="text-sm font-bold text-emerald-600">{formatWeight(selectedItem.received_quantity)}</span>
                   </div>
-                  <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Physical Short</span>
-                    <span className="text-sm font-bold text-slate-700">
-                      {formatWeight(selectedItem.physical_short_qty ?? Math.max(0, selectedItem.ordered_quantity - (selectedItem.received_quantity || 0)))}
-                    </span>
-                  </div>
-                  <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Carried Forward</span>
-                    <span className="text-sm font-bold text-indigo-600">{formatWeight(selectedItem.carried_forward_qty || 0)}</span>
-                  </div>
-                  <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Waived / Short</span>
-                    <span className="text-sm font-bold text-amber-600">{formatWeight(selectedItem.waived_qty || 0)}</span>
-                  </div>
                   {(() => {
-                    const selBal = selectedItem.actionable_pending_qty ?? selectedItem.balance_quantity ?? 0;
+                    const isSelectedSettled = Math.abs(selectedItem.ordered_quantity - (selectedItem.received_quantity || 0)) < 0.001;
+                    const selPhysicalShort = isSelectedSettled ? 0 : (selectedItem.physical_short_qty ?? Math.max(0, selectedItem.ordered_quantity - (selectedItem.received_quantity || 0)));
+                    const selBal = isSelectedSettled ? 0 : (selectedItem.actionable_pending_qty ?? selectedItem.balance_quantity ?? 0);
                     return (
-                      <div className={`p-2.5 rounded-lg border ${selBal < 0 ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
-                        <span className={`text-[10px] font-bold uppercase block ${selBal < 0 ? 'text-purple-600' : 'text-blue-600'}`}>
-                          {selBal < 0 ? 'Over Received' : 'Pending Qty'}
-                        </span>
-                        <span className={`text-sm font-bold ${selBal < 0 ? 'text-purple-900' : 'text-blue-900'}`}>
-                          {formatWeight(selBal)}
-                        </span>
-                      </div>
+                      <>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block">Physical Short</span>
+                          <span className="text-sm font-bold text-slate-700">
+                            {formatWeight(selPhysicalShort)}
+                          </span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block">Carried Forward</span>
+                          <span className="text-sm font-bold text-indigo-600">{formatWeight(isSelectedSettled ? 0 : (selectedItem.carried_forward_qty || 0))}</span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block">Waived / Short</span>
+                          <span className="text-sm font-bold text-amber-600">{formatWeight(isSelectedSettled ? 0 : (selectedItem.waived_qty || 0))}</span>
+                        </div>
+                        <div className={`p-2.5 rounded-lg border ${!isSelectedSettled && selBal < 0 ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
+                          <span className={`text-[10px] font-bold uppercase block ${!isSelectedSettled && selBal < 0 ? 'text-purple-600' : 'text-blue-600'}`}>
+                            {!isSelectedSettled && selBal < 0 ? 'Over Received' : 'Pending Qty'}
+                          </span>
+                          <span className={`text-sm font-bold ${!isSelectedSettled && selBal < 0 ? 'text-purple-900' : 'text-blue-900'}`}>
+                            {formatWeight(selBal)}
+                          </span>
+                        </div>
+                      </>
                     );
                   })()}
                 </div>
@@ -1023,7 +1604,7 @@ const STANDARD_ORIGINS = [
                                 </span>
                               </td>
                               <td className="p-2.5 text-right">
-                                {res.status === 'ACTIVE' && (
+                                {res.status === 'ACTIVE' && canEdit && (
                                   <button
                                     onClick={() => handleReverseResolution(res.id)}
                                     className="px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-50 rounded border border-rose-200 transition-colors"
@@ -1048,16 +1629,18 @@ const STANDARD_ORIGINS = [
                     <History className="h-4 w-4 text-emerald-600" />
                     <span>Physical Receipt Timeline ({selectedItem.receipts?.length || 0} Deliveries)</span>
                   </h3>
-                  <button
-                    onClick={() => {
-                      const itId = selectedItem.id;
-                      setSelectedItem(null);
-                      handleOpenReceiptForItem(itId);
-                    }}
-                    className="px-2.5 py-1 text-[11px] font-bold text-blue-600 hover:text-white hover:bg-blue-600 rounded border border-blue-200 transition-colors"
-                  >
-                    + Record Receipt
-                  </button>
+                  {!isViewer && (
+                    <button
+                      onClick={() => {
+                        const itId = selectedItem.id;
+                        setSelectedItem(null);
+                        handleOpenReceiptForItem(itId);
+                      }}
+                      className="px-2.5 py-1 text-[11px] font-bold text-blue-600 hover:text-white hover:bg-blue-600 rounded border border-blue-200 transition-colors"
+                    >
+                      + Record Receipt
+                    </button>
+                  )}
                 </div>
 
                 {!selectedItem.receipts || selectedItem.receipts.length === 0 ? (
@@ -1082,6 +1665,16 @@ const STANDARD_ORIGINS = [
                           </div>
                           <p className="text-[11px] text-slate-500">
                             Assigned to Lot: <strong className="text-slate-800 font-mono">{rc.lot_number || 'UNASSIGNED'}</strong>
+                            {rc.container_no && (
+                              <span className="ml-2 font-mono text-[10px] bg-amber-100/80 text-amber-800 px-1.5 py-0.5 rounded font-semibold border border-amber-200">
+                                Cont: {rc.container_no}
+                              </span>
+                            )}
+                            {rc.port_of_loading && (
+                              <span className="ml-1 text-[10px] bg-slate-200/70 text-slate-700 px-1.5 py-0.5 rounded font-semibold">
+                                POL: {rc.port_of_loading}
+                              </span>
+                            )}
                             {rc.raw_formula && (
                               <span className="ml-2 font-mono text-[10px] bg-slate-200/70 px-1 py-0.5 rounded text-slate-600">
                                 Formula: {rc.raw_formula}
@@ -1096,24 +1689,26 @@ const STANDARD_ORIGINS = [
                             </span>
                             <span className="text-[10px] text-slate-400">Warehouse Receipt</span>
                           </div>
-                          <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
-                            <button
-                              type="button"
-                              onClick={() => setEditingReceipt(rc)}
-                              title="Edit Receipt"
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingReceipt(rc)}
-                              title="Delete Receipt"
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
+                          {!isViewer && (
+                            <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
+                              <button
+                                type="button"
+                                onClick={() => setEditingReceipt(rc)}
+                                title="Edit Receipt"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingReceipt(rc)}
+                                title="Delete Receipt"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1124,20 +1719,25 @@ const STANDARD_ORIGINS = [
               {/* Modal Footer Actions */}
               <div className="pt-4 border-t flex items-center justify-between">
                 <div>
-                  {(selectedItem.actionable_pending_qty ?? selectedItem.balance_quantity ?? 0) > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const it = selectedItem;
-                        setSelectedItem(null);
-                        handleOpenResolveBalance(it);
-                      }}
-                      className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm transition-colors flex items-center gap-1.5"
-                    >
-                      <Split className="h-3.5 w-3.5" />
-                      <span>Resolve Balance ({formatWeight(selectedItem.actionable_pending_qty ?? selectedItem.balance_quantity)})</span>
-                    </button>
-                  )}
+                  {(() => {
+                    const isSelectedSettled = Math.abs(selectedItem.ordered_quantity - (selectedItem.received_quantity || 0)) < 0.001;
+                    const actQty = isSelectedSettled ? 0 : (selectedItem.actionable_pending_qty ?? selectedItem.balance_quantity ?? 0);
+                    if (actQty <= 0 || isViewer) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const it = selectedItem;
+                          setSelectedItem(null);
+                          handleOpenResolveBalance(it);
+                        }}
+                        className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm transition-colors flex items-center gap-1.5"
+                      >
+                        <Split className="h-3.5 w-3.5" />
+                        <span>Resolve Balance ({formatWeight(actQty)})</span>
+                      </button>
+                    );
+                  })()}
                 </div>
                 <button
                   type="button"
@@ -1442,8 +2042,8 @@ const STANDARD_ORIGINS = [
                     {suppliers.findIndex(s => s.supplier_name.toLowerCase() === (editSupplierName || '').toLowerCase()) === -1 && editSupplierName && (
                       <option value={editSupplierName}>{editSupplierName}</option>
                     )}
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.supplier_name}>
+                    {suppliers.map((s, idx) => (
+                      <option key={`${s.id || s.supplier_name}-${idx}`} value={s.supplier_name}>
                         {s.supplier_name} ({s.country || 'Overseas'})
                       </option>
                     ))}
@@ -1673,10 +2273,10 @@ const STANDARD_ORIGINS = [
         const remainingAfter = Math.max(0, actionable - totalResolving);
 
         return (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 space-y-5 animate-in fade-in zoom-in-95 my-6">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
               {/* Header */}
-              <div className="flex items-center justify-between border-b pb-3">
+              <div className="px-6 py-4 border-b flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2.5 text-amber-600">
                   <div className="p-2 rounded-lg bg-amber-100">
                     <Split className="h-5 w-5 text-amber-700" />
@@ -1696,31 +2296,31 @@ const STANDARD_ORIGINS = [
                 </button>
               </div>
 
-              {/* Balance Context Metrics Bar */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Ordered</span>
-                  <span className="font-bold text-slate-800">{formatWeight(resolvingItem.ordered_quantity)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Received</span>
-                  <span className="font-bold text-emerald-600">{formatWeight(resolvingItem.received_quantity)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Physical Short</span>
-                  <span className="font-bold text-slate-700">{formatWeight(physicalShort)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Already Resolved</span>
-                  <span className="font-bold text-indigo-600">{formatWeight(alreadyResolved)}</span>
-                </div>
-                <div className="bg-blue-100/70 rounded-lg py-1 border border-blue-200">
-                  <span className="text-[10px] text-blue-700 font-bold uppercase block">Pending Qty</span>
-                  <span className="font-bold text-blue-900 text-sm">{formatWeight(actionable)}</span>
-                </div>
-              </div>
-
-              <form onSubmit={handleSubmitResolveBalance} className="space-y-4 text-xs text-slate-700">
+              <form onSubmit={handleSubmitResolveBalance} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                <div className="p-6 space-y-4 text-xs text-slate-700 overflow-y-auto flex-1">
+                  {/* Balance Context Metrics Bar */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Ordered</span>
+                      <span className="font-bold text-slate-800">{formatWeight(resolvingItem.ordered_quantity)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Received</span>
+                      <span className="font-bold text-emerald-600">{formatWeight(resolvingItem.received_quantity)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Physical Short</span>
+                      <span className="font-bold text-slate-700">{formatWeight(physicalShort)}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Already Resolved</span>
+                      <span className="font-bold text-indigo-600">{formatWeight(alreadyResolved)}</span>
+                    </div>
+                    <div className="bg-blue-100/70 rounded-lg py-1 border border-blue-200">
+                      <span className="text-[10px] text-blue-700 font-bold uppercase block">Pending Qty</span>
+                      <span className="font-bold text-blue-900 text-sm">{formatWeight(actionable)}</span>
+                    </div>
+                  </div>
                 {/* Decision Prompt */}
                 <div>
                   <label className="block font-bold text-slate-900 mb-2 text-xs">
@@ -1898,8 +2498,10 @@ const STANDARD_ORIGINS = [
                   </div>
                 )}
 
+                </div>
+
                 {/* Submit Actions */}
-                <div className="pt-3 border-t flex items-center justify-end gap-3">
+                <div className="px-6 py-3.5 bg-slate-50 border-t flex items-center justify-end gap-3 shrink-0">
                   <button
                     type="button"
                     onClick={() => setIsResolveOpen(false)}
@@ -1923,22 +2525,22 @@ const STANDARD_ORIGINS = [
         );
       })()}
 
-      {/* BULK RECEIVE / EDIT MODAL */}
+      {/* BULK ACTION HUB MODAL */}
       {isBulkReceiptOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="h-9 w-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
-                  <PackageCheck className="h-5 w-5" />
+                  <Layers className="h-5 w-5" />
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm">
-                    {bulkMode === 'RECEIVE' ? 'Bulk Receive Selected Items' : 'Bulk Edit Lot & Invoice Details'}
+                    Bulk Action Hub ({selectedItemIds.length} items selected)
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Applying shared Lot No. and Invoice across {selectedItemIds.length} selected items
+                    Apply lifecycle transitions or update details across selected items
                   </p>
                 </div>
               </div>
@@ -1950,82 +2552,470 @@ const STANDARD_ORIGINS = [
               </button>
             </div>
 
-            <form onSubmit={handleSubmitBulkReceipt} className="p-6 space-y-4 text-xs">
-              {/* Auto-fill notification alert */}
-              {bulkMode === 'RECEIVE' && (
+            {/* Action Mode Tabs */}
+            <div className="px-6 pt-3 border-b border-slate-200/80 flex items-center gap-2 bg-slate-50/60 overflow-x-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => { setBulkMode('READY'); setBulkError(null); }}
+                className={`px-3.5 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  bulkMode === 'READY'
+                    ? 'border-blue-600 text-blue-600 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/60'
+                }`}
+              >
+                <PackagePlus className="h-3.5 w-3.5" />
+                <span>1. Mark Ready</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setBulkMode('SHIP'); setBulkError(null); }}
+                className={`px-3.5 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  bulkMode === 'SHIP'
+                    ? 'border-indigo-600 text-indigo-600 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/60'
+                }`}
+              >
+                <Ship className="h-3.5 w-3.5" />
+                <span>2. Mark Shipped</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setBulkMode('RECEIVE'); setBulkError(null); }}
+                className={`px-3.5 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  bulkMode === 'RECEIVE'
+                    ? 'border-emerald-600 text-emerald-600 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/60'
+                }`}
+              >
+                <PackageCheck className="h-3.5 w-3.5" />
+                <span>3. Mark Received</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setBulkMode('UPDATE'); setBulkError(null); }}
+                className={`px-3.5 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  bulkMode === 'UPDATE'
+                    ? 'border-slate-800 text-slate-800 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100/60'
+                }`}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                <span>Edit Info</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitBulkReceipt} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+              {/* Contextual Notice */}
+              {bulkMode === 'READY' && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-xs flex items-start gap-2.5">
-                  <CheckCircle2 className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <PackagePlus className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold block">Full Ordered Quantities Auto-Filled:</span>
+                    <span className="font-bold block">1. Record Material Ready at Mill:</span>
                     <span>
-                      Since multiple items are selected under one Lot and Invoice, the full contracted / pending quantity for each item has been pre-filled automatically.
+                      Assign shared Lot Number and Commercial Invoice. Selected items will transition to <strong>Ready to Ship</strong> with their ready quantities recorded.
                     </span>
                   </div>
                 </div>
               )}
 
-              {/* Shared Metadata Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/70 p-4 rounded-xl border border-slate-200">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-700">Lot Number *</label>
-                    <button
-                      type="button"
-                      onClick={() => setBulkLotNumber(`LOT-${po.po_number}-${Math.floor(100 + Math.random() * 900)}`)}
-                      className="text-[10px] text-blue-600 hover:underline font-semibold"
-                    >
-                      Generate Lot #
-                    </button>
+              {bulkMode === 'SHIP' && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-indigo-800 text-xs flex items-start gap-2.5">
+                  <Ship className="h-4 w-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">2. Record Maritime Shipment Dispatch:</span>
+                    <span>
+                      Dispatch selected items for sea transit. Transitions items to <strong>In Transit</strong> and syncs them automatically to the Sea Port Tracking board.
+                    </span>
                   </div>
-                  <input
-                    type="text"
-                    required
-                    value={bulkLotNumber}
-                    onChange={(e) => setBulkLotNumber(e.target.value)}
-                    placeholder="e.g. LOT-24-001"
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
                 </div>
+              )}
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Supplier Commercial Invoice *</label>
-                  <input
-                    type="text"
-                    required
-                    value={bulkInvoiceNumber}
-                    onChange={(e) => setBulkInvoiceNumber(e.target.value)}
-                    placeholder="e.g. INV-2024-8841"
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
+              {bulkMode === 'RECEIVE' && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-start gap-2.5">
+                  <PackageCheck className="h-4 w-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">3. Confirm Physical Yard Gate-In & Receipt:</span>
+                    <span>
+                      Record physical warehouse yard gate-in and inspection. Transitions items to <strong>Received</strong> and replenishes active yard inventory.
+                    </span>
+                  </div>
                 </div>
+              )}
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Supplier Invoice Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={bulkInvoiceDate}
-                    onChange={(e) => setBulkInvoiceDate(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
+              {bulkMode === 'UPDATE' && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 text-xs flex items-start gap-2.5">
+                  <Pencil className="h-4 w-4 text-slate-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block">Edit Lot & Invoice Metadata:</span>
+                    <span>
+                      Update shared Lot Number and Commercial Invoice details across selected items without modifying their lifecycle status.
+                    </span>
+                  </div>
                 </div>
+              )}
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Warehouse Location</label>
-                  <input
-                    type="text"
-                    value={bulkWarehouseLocation}
-                    onChange={(e) => setBulkWarehouseLocation(e.target.value)}
-                    placeholder="e.g. Nhava Sheva Yard"
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
+              {/* MODE: READY OR UPDATE FIELDS */}
+              {(bulkMode === 'READY' || bulkMode === 'UPDATE') && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/70 p-4 rounded-xl border border-slate-200">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-semibold text-slate-700">Lot Number *</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newLot = `LOT-${po.po_number}-${Math.floor(100 + Math.random() * 900)}`;
+                          setBulkLotNumber(newLot);
+                          updateSavedBulkValues({ lotNumber: newLot });
+                        }}
+                        className="text-[10px] text-blue-600 hover:underline font-semibold"
+                      >
+                        Generate Lot #
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={bulkLotNumber}
+                      onChange={(e) => {
+                        setBulkLotNumber(e.target.value);
+                        updateSavedBulkValues({ lotNumber: e.target.value });
+                      }}
+                      placeholder="e.g. LOT-24-001"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Supplier Commercial Invoice *</label>
+                    <input
+                      type="text"
+                      required
+                      value={bulkInvoiceNumber}
+                      onChange={(e) => {
+                        setBulkInvoiceNumber(e.target.value);
+                        updateSavedBulkValues({ invoiceNumber: e.target.value });
+                      }}
+                      placeholder="e.g. INV-2024-8841"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Supplier Invoice Date *</label>
+                    <input
+                      type="date"
+                      required
+                      value={bulkInvoiceDate}
+                      onChange={(e) => {
+                        setBulkInvoiceDate(e.target.value);
+                        updateSavedBulkValues({ invoiceDate: e.target.value });
+                      }}
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Warehouse Location</label>
+                    <input
+                      type="text"
+                      value={bulkWarehouseLocation}
+                      onChange={(e) => {
+                        setBulkWarehouseLocation(e.target.value);
+                        updateSavedBulkValues({ warehouseLocation: e.target.value });
+                      }}
+                      placeholder="e.g. Nhava Sheva Yard"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Container Number (Optional)</label>
+                    <input
+                      type="text"
+                      value={bulkContainerNo}
+                      onChange={(e) => {
+                        setBulkContainerNo(e.target.value);
+                        updateSavedBulkValues({ containerNo: e.target.value });
+                      }}
+                      placeholder="e.g. MSKU1234567"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Port of Load (POL) (Optional)</label>
+                    <input
+                      type="text"
+                      value={bulkPortOfLoading}
+                      onChange={(e) => {
+                        setBulkPortOfLoading(e.target.value);
+                        updateSavedBulkValues({ portOfLoading: e.target.value });
+                      }}
+                      placeholder="e.g. Shanghai / Ningbo"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-slate-700 mb-1">Remarks / Mill Ready Notes (Optional)</label>
+                    <input
+                      type="text"
+                      value={bulkRemarks}
+                      onChange={(e) => {
+                        setBulkRemarks(e.target.value);
+                        updateSavedBulkValues({ remarks: e.target.value });
+                      }}
+                      placeholder="e.g. Materials inspected & packed at mill, ready for dispatch"
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* MODE: SHIPMENT DISPATCH FIELDS */}
+              {bulkMode === 'SHIP' && (
+                <div className="space-y-4">
+                  {/* Linked Lot & Invoice Info Badge */}
+                  <div className="p-3 bg-indigo-100/70 border border-indigo-200 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-indigo-900 font-bold">Assigned Lot:</span>
+                      <span className="font-mono font-bold bg-white px-2 py-0.5 rounded text-indigo-700 border border-indigo-200">
+                        {bulkLotNumber || 'Pending'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-indigo-900 font-bold">Commercial Invoice:</span>
+                      <span className="font-bold bg-white px-2 py-0.5 rounded text-indigo-700 border border-indigo-200">
+                        {bulkInvoiceNumber || 'Pending'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-indigo-50/30 p-4 rounded-xl border border-indigo-100">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Date of Shipment (B/L Date) *</label>
+                      <input
+                        type="date"
+                        required
+                        value={bulkDateOfShipment}
+                        onChange={(e) => {
+                          setBulkDateOfShipment(e.target.value);
+                          updateSavedBulkValues({ dateOfShipment: e.target.value });
+                        }}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">ETA (Sea Port Arrival) *</label>
+                      <input
+                        type="date"
+                        required
+                        value={bulkEtaSeaport}
+                        onChange={(e) => {
+                          setBulkEtaSeaport(e.target.value);
+                          updateSavedBulkValues({ etaSeaport: e.target.value });
+                        }}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Discharge Port</label>
+                      <select
+                        value={bulkDischargePort}
+                        onChange={(e) => {
+                          setBulkDischargePort(e.target.value);
+                          updateSavedBulkValues({ dischargePort: e.target.value });
+                        }}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                      >
+                        <option value="N.S.">N.S. (Nhava Sheva / JNPT)</option>
+                        <option value="Nhava Sheva">Nhava Sheva</option>
+                        <option value="Mundra">Mundra</option>
+                        <option value="Chennai">Chennai</option>
+                        <option value="Hazira">Hazira</option>
+                        <option value="Kolkata">Kolkata</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Delivery Terms</label>
+                      <select
+                        value={bulkDeliveryTerms}
+                        onChange={(e) => {
+                          setBulkDeliveryTerms(e.target.value);
+                          updateSavedBulkValues({ deliveryTerms: e.target.value });
+                        }}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                      >
+                        <option value="FOB">FOB</option>
+                        <option value="CFR">CFR</option>
+                        <option value="CIF">CIF</option>
+                        <option value="EXW">EXW</option>
+                        <option value="FCA">FCA</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Payment Terms</label>
+                      <select
+                        value={bulkPaymentTerms}
+                        onChange={(e) => {
+                          setBulkPaymentTerms(e.target.value);
+                          updateSavedBulkValues({ paymentTerms: e.target.value });
+                        }}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                      >
+                        <option value="DP at sight">DP at sight</option>
+                        <option value="CAD (Cash Against Documents)">CAD</option>
+                        <option value="LC at sight">LC at sight</option>
+                        <option value="LC 30 Days from BL Date">LC 30 Days</option>
+                        <option value="LC 60 Days from BL Date">LC 60 Days</option>
+                        <option value="LC 90 Days from BL Date">LC 90 Days</option>
+                        <option value="LC 120 Days from BL Date">LC 120 Days</option>
+                        <option value="100% Advance TT">100% Advance TT</option>
+                        <option value="Open Account 30 days">Open Account 30 days</option>
+                        <option value="Net 30 days">Net 30 days</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Heat Number(s) (Optional)</label>
+                      <input
+                        type="text"
+                        value={bulkHeatNo}
+                        onChange={(e) => {
+                          setBulkHeatNo(e.target.value);
+                          updateSavedBulkValues({ heatNo: e.target.value });
+                        }}
+                        placeholder="e.g. H-8831 / H-8832"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Container Number (Optional)</label>
+                      <input
+                        type="text"
+                        value={bulkContainerNo}
+                        onChange={(e) => {
+                          setBulkContainerNo(e.target.value);
+                          updateSavedBulkValues({ containerNo: e.target.value });
+                        }}
+                        placeholder="e.g. MSKU1234567"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Port of Load (POL) (Optional)</label>
+                      <input
+                        type="text"
+                        value={bulkPortOfLoading}
+                        onChange={(e) => {
+                          setBulkPortOfLoading(e.target.value);
+                          updateSavedBulkValues({ portOfLoading: e.target.value });
+                        }}
+                        placeholder="e.g. Shanghai / Ningbo"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block font-semibold text-slate-700 mb-1">SIMS Registration (Optional)</label>
+                      <input
+                        type="text"
+                        value={bulkSims}
+                        onChange={(e) => {
+                          setBulkSims(e.target.value);
+                          updateSavedBulkValues({ sims: e.target.value });
+                        }}
+                        placeholder="e.g. SIMS-2024-81920"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* MODE: RECEIVE FIELDS */}
+              {bulkMode === 'RECEIVE' && (
+                <div className="space-y-4">
+                  {/* Linked Lot & Container Info Badge */}
+                  <div className="p-3 bg-emerald-100/70 border border-emerald-200 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-900 font-bold">Assigned Lot:</span>
+                      <span className="font-mono font-bold bg-white px-2 py-0.5 rounded text-emerald-700 border border-emerald-200">
+                        {bulkLotNumber || 'Pending'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-900 font-bold">Container:</span>
+                      <span className="font-mono font-bold bg-white px-2 py-0.5 rounded text-emerald-700 border border-emerald-200">
+                        {bulkContainerNo || '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-900 font-bold">Invoice:</span>
+                      <span className="font-bold bg-white px-2 py-0.5 rounded text-emerald-700 border border-emerald-200">
+                        {bulkInvoiceNumber || '—'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-emerald-50/30 p-4 rounded-xl border border-emerald-100">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Physical Yard Location *</label>
+                      <input
+                        type="text"
+                        required
+                        value={bulkWarehouseLocation}
+                        onChange={(e) => {
+                          setBulkWarehouseLocation(e.target.value);
+                          updateSavedBulkValues({ warehouseLocation: e.target.value });
+                        }}
+                        placeholder="e.g. Nhava Sheva Yard"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Date of Yard Receipt *</label>
+                      <input
+                        type="date"
+                        required
+                        value={bulkInvoiceDate}
+                        onChange={(e) => {
+                          setBulkInvoiceDate(e.target.value);
+                          updateSavedBulkValues({ invoiceDate: e.target.value });
+                        }}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block font-semibold text-slate-700 mb-1">Yard Remarks / Physical Inspection Notes</label>
+                      <input
+                        type="text"
+                        value={bulkRemarks}
+                        onChange={(e) => {
+                          setBulkRemarks(e.target.value);
+                          updateSavedBulkValues({ remarks: e.target.value });
+                        }}
+                        placeholder="e.g. Bundles unloaded in Yard A, visual inspection verified OK"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Selected Items Breakdown Table */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1.5">
-                  Selected Items ({selectedItemIds.length}) & Landed Quantities
+                  Selected Items ({selectedItemIds.length}) & Quantities
                 </label>
                 <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
                   <table className="w-full text-left text-xs">
@@ -2033,9 +3023,10 @@ const STANDARD_ORIGINS = [
                       <tr>
                         <th className="py-2 px-3 font-semibold text-slate-600">Line</th>
                         <th className="py-2 px-3 font-semibold text-slate-600">Grade & Dimensions</th>
+                        <th className="py-2 px-3 font-semibold text-slate-600 text-center">Status</th>
                         <th className="py-2 px-3 font-semibold text-slate-600 text-right">Ordered</th>
                         <th className="py-2 px-3 font-semibold text-slate-600 text-right">
-                          {bulkMode === 'RECEIVE' ? 'Receive Qty (KG)' : 'Current Received'}
+                          {bulkMode === 'READY' ? 'Ready Qty (KG)' : bulkMode === 'SHIP' ? 'Dispatch Qty' : bulkMode === 'RECEIVE' ? 'Yard Qty' : 'Current Qty'}
                         </th>
                       </tr>
                     </thead>
@@ -2056,11 +3047,16 @@ const STANDARD_ORIGINS = [
                                 {item.diameter_width} x {item.thickness || '—'} x {item.length || '—'} mm
                               </span>
                             </td>
+                            <td className="py-2 px-3 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${getStatusBadgeClass(item.status || 'Open')}`}>
+                                {item.status || 'Open'}
+                              </span>
+                            </td>
                             <td className="py-2 px-3 text-right font-medium text-slate-600">
                               {formatWeight(item.ordered_quantity)}
                             </td>
                             <td className="py-2 px-3 text-right">
-                              {bulkMode === 'RECEIVE' ? (
+                              {bulkMode === 'READY' ? (
                                 <input
                                   type="number"
                                   min="0"
@@ -2073,8 +3069,12 @@ const STANDARD_ORIGINS = [
                                   className="w-28 p-1.5 bg-white border border-slate-300 rounded font-bold text-right text-xs focus:ring-1 focus:ring-blue-500"
                                 />
                               ) : (
-                                <span className="font-bold text-emerald-600">
-                                  {formatWeight(item.received_quantity || 0)}
+                                <span className="font-bold text-slate-800">
+                                  {formatWeight(
+                                    bulkMode === 'RECEIVE'
+                                      ? (item.received_quantity || item.ready_quantity || item.ordered_quantity)
+                                      : (item.ready_quantity || item.ordered_quantity)
+                                  )}
                                 </span>
                               )}
                             </td>
@@ -2087,22 +3087,28 @@ const STANDARD_ORIGINS = [
               </div>
 
               {/* Total Summary */}
-              {bulkMode === 'RECEIVE' && (
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="font-semibold text-slate-600">Total Bulk Quantity to Receive:</span>
-                  <span className="font-bold font-mono text-sm text-blue-700">
-                    {formatWeight(
-                      selectedItemIds.reduce((sum, itemId) => {
-                        const it = po.items?.find(i => i.id === itemId);
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="font-semibold text-slate-600">
+                  {bulkMode === 'READY' && 'Total Bulk Ready Quantity:'}
+                  {bulkMode === 'SHIP' && 'Total Weight to Dispatch:'}
+                  {bulkMode === 'RECEIVE' && 'Total Quantity to Receive at Yard:'}
+                  {bulkMode === 'UPDATE' && 'Total Selected Items Weight:'}
+                </span>
+                <span className="font-bold font-mono text-sm text-blue-700">
+                  {formatWeight(
+                    selectedItemIds.reduce((sum, itemId) => {
+                      const it = po.items?.find(i => i.id === itemId);
+                      if (bulkMode === 'READY') {
                         const val = bulkItemQuantities[itemId] !== undefined 
                           ? bulkItemQuantities[itemId] 
                           : (it?.actionable_pending_qty ?? it?.balance_quantity ?? it?.ordered_quantity ?? 0);
                         return sum + (Number(val) || 0);
-                      }, 0)
-                    )}
-                  </span>
-                </div>
-              )}
+                      }
+                      return sum + (Number(it?.ready_quantity || it?.ordered_quantity) || 0);
+                    }, 0)
+                  )}
+                </span>
+              </div>
 
               {bulkError && (
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
@@ -2111,8 +3117,10 @@ const STANDARD_ORIGINS = [
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+              </div>
+
+              {/* Pinned Desktop-Friendly Actions */}
+              <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsBulkReceiptOpen(false)}
@@ -2123,9 +3131,25 @@ const STANDARD_ORIGINS = [
                 <button
                   type="submit"
                   disabled={isSubmittingBulk}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50"
+                  className={`px-5 py-2 text-white font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50 ${
+                    bulkMode === 'READY'
+                      ? 'bg-blue-600 hover:bg-blue-700'
+                      : bulkMode === 'SHIP'
+                      ? 'bg-indigo-600 hover:bg-indigo-700'
+                      : bulkMode === 'RECEIVE'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-slate-800 hover:bg-slate-900'
+                  }`}
                 >
-                  {isSubmittingBulk ? 'Processing...' : bulkMode === 'RECEIVE' ? 'Record Bulk Receipt' : 'Save Bulk Changes'}
+                  {isSubmittingBulk 
+                    ? 'Processing...' 
+                    : bulkMode === 'READY'
+                    ? 'Record Ready to Ship'
+                    : bulkMode === 'SHIP'
+                    ? 'Confirm Maritime Dispatch (In Transit)'
+                    : bulkMode === 'RECEIVE'
+                    ? 'Confirm Physical Yard Receipt'
+                    : 'Save Bulk Changes'}
                 </button>
               </div>
             </form>
@@ -2187,6 +3211,360 @@ const STANDARD_ORIGINS = [
                 Yes, Delete Receipt
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shipment Details Modal (Ready to Ship -> In Transit) */}
+      {shippingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500 text-white">
+                  <Ship className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">
+                    Shipment Dispatch Details — Item #{shippingItem.line_number}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    PO {po.po_number} • {shippingItem.grade_code} • Lot: {shippingItem.lot_number || `LOT-${po.po_number}`}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShippingItem(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitShipment} className="p-6 space-y-4 text-xs text-slate-700">
+              {shipmentError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <span>{shipmentError}</span>
+                </div>
+              )}
+
+              {/* Cargo Summary Banner */}
+              <div className="grid grid-cols-3 gap-3 p-3 bg-amber-50/60 border border-amber-200 rounded-xl text-center">
+                <div>
+                  <span className="text-[10px] text-amber-700 font-bold uppercase block">Material</span>
+                  <span className="font-bold text-slate-900">{shippingItem.grade_code} {shippingItem.section_name}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-amber-700 font-bold uppercase block">Cargo Weight</span>
+                  <span className="font-bold text-emerald-700">
+                    {formatWeight(shippingItem.ready_quantity || shippingItem.received_quantity || shippingItem.ordered_quantity)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-amber-700 font-bold uppercase block">Target Port</span>
+                  <span className="font-bold text-slate-800">{shipPort || 'N.S.'}</span>
+                </div>
+              </div>
+
+              {/* Date of Shipment & ETA (sea port) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Date of Shipment *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={shipmentDate}
+                    onChange={(e) => setShipmentDate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Vessel Bill of Lading (BL) / Departure date</span>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    ETA (sea port) *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={etaSeaport}
+                    onChange={(e) => setEtaSeaport(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Estimated arrival date at sea port of discharge</span>
+                </div>
+              </div>
+
+              {/* Heat & SIMS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Heat Number (Heat)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. HT-2024-9881 / 67210"
+                    value={heatNo}
+                    onChange={(e) => setHeatNo(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Mill MTC heat melt identification</span>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    SIMS
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. SIMS-882190 / Reg #"
+                    value={sims}
+                    onChange={(e) => setSims(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Steel Import Monitoring System reference</span>
+                </div>
+              </div>
+
+              {/* Container Number & Port of Load */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Container Number
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. MSKU1234567 / TGHU89210"
+                    value={shipContainerNo}
+                    onChange={(e) => setShipContainerNo(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">20ft / 40ft container number</span>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Port of Load (POL)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Shanghai / Ningbo / Hamburg"
+                    value={shipPortOfLoading}
+                    onChange={(e) => setShipPortOfLoading(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Origin loading port</span>
+                </div>
+              </div>
+
+              {/* Delivery Terms & Port */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Delivery Terms (Incoterms)
+                  </label>
+                  <select
+                    value={shipDeliveryTerms}
+                    onChange={(e) => setShipDeliveryTerms(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  >
+                    <option value="FOB">FOB (Free on Board)</option>
+                    <option value="CFR">CFR (Cost and Freight)</option>
+                    <option value="CIF">CIF (Cost, Insurance & Freight)</option>
+                    <option value="Ex-Works">Ex-Works</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Destination / Port of Discharge
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Nhava Sheva (N.S.)"
+                    value={shipPort}
+                    onChange={(e) => setShipPort(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Payment Terms */}
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">
+                  Payment Terms
+                </label>
+                <select
+                  value={isShipCustomPaymentTerms ? 'Custom...' : (STANDARD_PAYMENT_TERMS.includes(shipPaymentTerms) ? shipPaymentTerms : 'Custom...')}
+                  onChange={(e) => {
+                    if (e.target.value === 'Custom...') {
+                      setIsShipCustomPaymentTerms(true);
+                    } else {
+                      setIsShipCustomPaymentTerms(false);
+                      setShipPaymentTerms(e.target.value);
+                    }
+                  }}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                >
+                  {STANDARD_PAYMENT_TERMS.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                {isShipCustomPaymentTerms && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom payment terms"
+                    value={shipPaymentTerms}
+                    onChange={(e) => setShipPaymentTerms(e.target.value)}
+                    className="mt-1.5 w-full p-2.5 bg-white border border-blue-400 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                )}
+              </div>
+
+              {/* Notice */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-[11px] leading-relaxed">
+                Saving shipment details will set this item to <strong>In Transit</strong> and automatically sync it to the <strong>In-Transit Stock</strong> board with vessel ETA.
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShippingItem(null)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingShipment}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Ship className="h-4 w-4" />
+                  <span>{isSubmittingShipment ? 'Saving...' : 'Confirm & Set In Transit'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Receive Cargo Modal (In Transit -> Received) */}
+      {receivingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-600 text-white">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">
+                    Confirm Cargo Receipt — Item #{receivingItem.line_number}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    PO {po.po_number} • {receivingItem.grade_code} • Port Arrival to Warehouse
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReceivingItem(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitReceive} className="p-6 space-y-4 text-xs text-slate-700">
+              {receiveError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <span>{receiveError}</span>
+                </div>
+              )}
+
+              {/* Cargo Details Card */}
+              <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-emerald-800 font-semibold">Material Item:</span>
+                  <span className="font-bold text-slate-900">{receivingItem.grade_code} ({receivingItem.section_name})</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-emerald-800 font-semibold">Lot Number:</span>
+                  <span className="font-mono font-bold text-slate-900">{receivingItem.lot_number || `LOT-${po.po_number}`}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-emerald-800 font-semibold">Cargo Weight:</span>
+                  <span className="font-mono font-bold text-emerald-700 text-sm">
+                    {formatWeight(receivingItem.ready_quantity || receivingItem.received_quantity || receivingItem.ordered_quantity)}
+                  </span>
+                </div>
+                {receivingItem.date_of_shipment && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-emerald-800 font-semibold">Shipment Date:</span>
+                    <span className="text-slate-700">{formatDate(receivingItem.date_of_shipment)}</span>
+                  </div>
+                )}
+                {receivingItem.eta_seaport && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-emerald-800 font-semibold">Port ETA:</span>
+                    <span className="text-slate-700">{formatDate(receivingItem.eta_seaport)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Receipt Date & Location */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Receipt Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={receiveDate}
+                    onChange={(e) => setReceiveDate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Warehouse / Yard Location
+                  </label>
+                  <input
+                    type="text"
+                    value={receiveLocation}
+                    onChange={(e) => setReceiveLocation(e.target.value)}
+                    placeholder="e.g. Nhava Sheva Yard"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-[11px] leading-relaxed">
+                Confirming receipt transitions the item status to <strong>Received</strong>, moves the cargo in Incoming Stock to <strong>Received Stock (INCOMING CLOSE)</strong>, and registers available physical inventory in the warehouse.
+              </div>
+
+              {/* Modal Actions */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setReceivingItem(null)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingReceive}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>{isSubmittingReceive ? 'Processing...' : 'Confirm Receipt'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

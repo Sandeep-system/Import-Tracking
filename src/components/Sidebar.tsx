@@ -45,7 +45,7 @@ const navSections: NavSection[] = [
     items: [
       { label: 'Purchase Orders', href: '/purchasing/purchase-orders', icon: ShoppingBag },
       { label: 'Receipts Log', href: '/purchasing/receipts', icon: Package },
-      { label: 'Shipments & Ports', href: '/purchasing/shipments', icon: Anchor },
+      { label: 'Shipments & Ports', href: '/purchasing/shipments', icon: Anchor, badge: 'Ports' },
       { label: 'Suppliers', href: '/purchasing/suppliers', icon: Building2 },
     ]
   },

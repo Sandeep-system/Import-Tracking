@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Building2, Search, Plus, MapPin, Globe, Phone, Mail, ShoppingBag, X } from 'lucide-react';
+import { Building2, Search, Plus, MapPin, Globe, Phone, Mail, ShoppingBag, X, UserCheck } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
-import { formatWeight } from '@/lib/utils';
+import { formatWeight, canonicalSupplierKey } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 export default function SuppliersPage() {
+  const { isViewer } = useAuth();
   const [dataVersion, setDataVersion] = useState(0);
   const [search, setSearch] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -17,6 +19,7 @@ export default function SuppliersPage() {
   const [country, setCountry] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [terms, setTerms] = useState('DP at sight');
+  const [reference, setReference] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -28,13 +31,29 @@ export default function SuppliersPage() {
     return () => window.removeEventListener('app:data-updated', handleUpdate);
   }, []);
 
-  const suppliers = dataStore.getSuppliers();
+  const rawSuppliers = dataStore.getSuppliers();
   const allPOs = dataStore.getPurchaseOrders();
+
+  const suppliers = React.useMemo(() => {
+    const seen = new Set<string>();
+    const list: typeof rawSuppliers = [];
+    for (const s of rawSuppliers) {
+      if (!s || !s.supplier_name) continue;
+      const key = canonicalSupplierKey(s.supplier_name);
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(s);
+      }
+    }
+    return list;
+  }, [rawSuppliers, dataVersion]);
 
   const filtered = suppliers.filter(s => 
     s.supplier_name.toLowerCase().includes(search.toLowerCase()) ||
     s.country?.toLowerCase().includes(search.toLowerCase()) ||
-    s.supplier_code?.toLowerCase().includes(search.toLowerCase())
+    s.supplier_code?.toLowerCase().includes(search.toLowerCase()) ||
+    s.reference?.toLowerCase().includes(search.toLowerCase()) ||
+    s.reference_person?.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleCreateSupplier = (e: React.FormEvent) => {
@@ -47,6 +66,8 @@ export default function SuppliersPage() {
       country: country.trim() || 'Overseas',
       default_currency: currency,
       payment_terms: terms.trim() || undefined,
+      reference: reference.trim() || undefined,
+      reference_person: reference.trim() || undefined,
       contact_person: contactPerson.trim() || undefined,
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
@@ -58,6 +79,8 @@ export default function SuppliersPage() {
     setCode('');
     setCountry('');
     setCurrency('USD');
+    setTerms('DP at sight');
+    setReference('');
     setTerms('DP at sight');
     setContactPerson('');
     setEmail('');
@@ -79,13 +102,15 @@ export default function SuppliersPage() {
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Overseas Suppliers & Mills</h1>
           <p className="text-xs text-slate-500">Manage international steel suppliers, terms, and purchase volumes</p>
         </div>
-        <button
-          onClick={() => setIsAddOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add Supplier</span>
-        </button>
+        {!isViewer && (
+          <button
+            onClick={() => setIsAddOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Supplier</span>
+          </button>
+        )}
       </div>
 
       {/* Search and Count Bar */}
@@ -107,13 +132,18 @@ export default function SuppliersPage() {
 
       {/* Suppliers Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((s) => {
-          const supplierPOs = allPOs.filter(p => p.supplier_id === s.id || p.supplier_name === s.supplier_name);
+        {filtered.map((s, idx) => {
+          const sCanon = canonicalSupplierKey(s.supplier_name);
+          const supplierPOs = allPOs.filter(p => 
+            p.supplier_id === s.id || 
+            p.supplier_name === s.supplier_name ||
+            (p.supplier_name && canonicalSupplierKey(p.supplier_name) === sCanon)
+          );
           const totalOrd = supplierPOs.reduce((acc, p) => acc + (p.total_ordered_qty || 0), 0);
           const totalPend = supplierPOs.reduce((acc, p) => acc + (p.total_balance_qty || 0), 0);
 
           return (
-            <div key={s.id} className="bg-white p-5 rounded-xl border border-slate-200 card-shadow flex flex-col justify-between space-y-4">
+            <div key={`${s.id || s.supplier_name}-${idx}`} className="bg-white p-5 rounded-xl border border-slate-200 card-shadow flex flex-col justify-between space-y-4">
               <div>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2.5">
@@ -145,6 +175,17 @@ export default function SuppliersPage() {
                     {s.phone && <div className="text-slate-600">{s.phone}</div>}
                   </div>
                 )}
+
+                {/* Reference Person / Mill Agent */}
+                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-500 font-medium flex items-center gap-1">
+                    <UserCheck className="h-3.5 w-3.5 text-blue-600" />
+                    <span>Reference:</span>
+                  </span>
+                  <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                    {s.reference || s.reference_person || supplierPOs.find(p => p.reference_person || p.reference)?.reference_person || 'Direct'}
+                  </span>
+                </div>
 
                 <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
                   <div>
@@ -246,6 +287,17 @@ export default function SuppliersPage() {
                     placeholder="e.g. DP at sight, LC 90 days"
                     value={terms}
                     onChange={(e) => setTerms(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-700">Reference Person / Agent</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Ramesh Kumar / Direct Mill"
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>

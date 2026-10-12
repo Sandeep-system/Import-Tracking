@@ -1,6 +1,8 @@
 export type POStatus = 
   | 'Draft' 
   | 'Open' 
+  | 'Ready to Ship'
+  | 'In Transit'
   | 'Partially Received' 
   | 'Received' 
   | 'Over Received' 
@@ -14,6 +16,8 @@ export type POStatus =
 
 export type ItemStatus = 
   | 'Open' 
+  | 'Ready to Ship'
+  | 'In Transit'
   | 'Partially Received' 
   | 'Received' 
   | 'Over Received' 
@@ -23,6 +27,7 @@ export type ItemStatus =
   | 'Closed — Short Received'
   | 'Closed — Balance Carried Forward'
   | 'Closed — Balance Resolved';
+
 
 export type ResolutionType = 'CARRY_FORWARD' | 'WAIVED';
 export type ResolutionStatus = 'ACTIVE' | 'REVERSED';
@@ -62,6 +67,8 @@ export interface Supplier {
   supplier_name: string;
   country?: string | null;
   contact_person?: string | null;
+  reference?: string | null;
+  reference_person?: string | null;
   email?: string | null;
   phone?: string | null;
   address?: string | null;
@@ -141,6 +148,7 @@ export interface PurchaseOrder {
   total_items?: number;
   total_ordered_qty?: number;
   total_received_qty?: number;
+  total_ready_qty?: number;
   total_balance_qty?: number;
   total_physical_short_qty?: number;
   total_carried_forward_qty?: number;
@@ -193,6 +201,16 @@ export interface PurchaseOrderItem {
   is_overdue?: boolean;
   days_overdue?: number;
   receipt_count?: number;
+  ready_quantity?: number;
+  date_of_shipment?: string | null;
+  eta_seaport?: string | null;
+  heat_no?: string | null;
+  sims?: string | null;
+  delivery_terms?: string | null;
+  payment_terms?: string | null;
+  destination_port?: string | null;
+  container_no?: string | null;
+  port_of_loading?: string | null;
   legacy_source_sheet?: string | null;
   legacy_excel_row?: number | null;
   receipts?: Receipt[];
@@ -212,6 +230,9 @@ export interface Receipt {
   unit: string;
   supplier_invoice_number?: string | null;
   supplier_invoice_date?: string | null;
+  container_no?: string | null;
+  port_of_loading?: string | null;
+  warehouse_location?: string | null;
   raw_formula?: string | null;
   remarks?: string | null;
   created_by?: string | null;
@@ -317,4 +338,52 @@ export interface MigrationSummary {
   needsReviewCount: number;
   formulaDummyCount: number;
   readyForImportCount: number;
+}
+
+export interface IncomingStockItem {
+  id: string;
+  make: string;
+  supplier: string;
+  lot_number: string;
+  grade: string;
+  condition?: string | null;
+  dia_w?: number | string | null;
+  t?: number | string | null;
+  l?: number | string | null;
+  pieces?: number | string | null;
+  weight: number;
+  customer?: string | null;
+  port?: string | null;
+  date_of_shipment?: string | null;
+  eta_seaport?: string | null;
+  received_status: 'READY' | 'IN_TRANSIT' | 'RECEIVED';
+  heat_no?: string | null;
+  sec_weight?: number | null;
+  delivery_terms?: string | null;
+  price?: number | null;
+  currency?: string | null;
+  sims?: string | null;
+  payment_terms?: string | null;
+  container_no?: string | null;
+  port_of_loading?: string | null;
+  hsn_code?: string | null;
+  bis?: string | null;
+  source_sheet: 'INCOMING SE' | 'INCOMING CLOSE';
+  linked_po_number?: string | null;
+  linked_po_id?: string | null;
+  linked_receipt_id?: string | null;
+}
+
+export interface DataState {
+  purchaseOrders: PurchaseOrder[];
+  suppliers: Supplier[];
+  customers: Customer[];
+  lots: Lot[];
+  receipts: Receipt[];
+  inventoryTransactions: InventoryTransaction[];
+  customerAllocations: CustomerAllocation[];
+  sales: Sale[];
+  auditLogs: AuditLog[];
+  balanceResolutions: BalanceResolution[];
+  incomingStock: IncomingStockItem[];
 }
