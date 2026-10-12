@@ -65,6 +65,16 @@ export function AddReceiptModal({
     }
   }, [selectedPoId, purchaseOrders, defaultItemId]);
 
+  useEffect(() => {
+    if (selectedItemId && selectedPoId) {
+      const po = purchaseOrders.find(p => p.id === selectedPoId || p.po_number === selectedPoId);
+      const it = po?.items?.find(i => i.id === selectedItemId);
+      if (it) {
+        if (it.lot_number) setLotNumber(it.lot_number);
+      }
+    }
+  }, [selectedItemId, selectedPoId, purchaseOrders]);
+
   if (!isOpen) return null;
 
   const currentPo = purchaseOrders.find(p => p.id === selectedPoId || p.po_number === selectedPoId);
@@ -125,10 +135,10 @@ export function AddReceiptModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-lg bg-blue-600">
               <PackagePlus className="h-5 w-5 text-white" />
@@ -144,7 +154,8 @@ export function AddReceiptModal({
         </div>
 
         {/* Modal Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 text-xs text-slate-700">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="p-6 space-y-4 text-xs text-slate-700 overflow-y-auto flex-1">
           {error && (
             <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 flex items-center gap-2">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -161,8 +172,8 @@ export function AddReceiptModal({
                 onChange={(e) => setSelectedPoId(e.target.value)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               >
-                {purchaseOrders.map((po) => (
-                  <option key={po.id} value={po.id}>
+                {purchaseOrders.map((po, idx) => (
+                  <option key={`${po.id}-${idx}`} value={po.id}>
                     PO {po.po_number} — {po.supplier_name}
                   </option>
                 ))}
@@ -260,13 +271,14 @@ export function AddReceiptModal({
               />
             </div>
 
-            <div>
+
+            <div className="sm:col-span-2">
               <label className="block font-semibold text-slate-700 mb-1">Remarks / Bundle Info</label>
               <input
                 type="text"
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
-                placeholder="e.g. Container MSKU1234567, 4 bundles"
+                placeholder="e.g. 4 bundles, wooden box packing"
                 className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               />
             </div>
@@ -310,8 +322,10 @@ export function AddReceiptModal({
             </div>
           )}
 
+          </div>
+
           {/* Modal Footer Buttons */}
-          <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-200">
+          <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
             <button
               type="button"
               onClick={onClose}

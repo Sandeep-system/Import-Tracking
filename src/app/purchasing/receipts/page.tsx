@@ -21,10 +21,11 @@ import { Receipt } from '@/types';
 import { formatWeight, formatDate } from '@/lib/utils';
 import { AddReceiptModal } from '@/components/AddReceiptModal';
 import { EditReceiptModal } from '@/components/EditReceiptModal';
-import { googleSync } from '@/lib/googleSync';
+import { useAuth } from '@/context/AuthContext';
 import * as XLSX from 'xlsx';
 
 export default function ReceiptsPage() {
+  const { isViewer } = useAuth();
   const [dataVersion, setDataVersion] = useState(0);
   const [search, setSearch] = useState('');
   const [selectedPO, setSelectedPO] = useState('ALL');
@@ -118,10 +119,7 @@ export default function ReceiptsPage() {
 
   const handleDeleteReceipt = (receipt: Receipt) => {
     try {
-      const { updatedPO } = dataStore.deleteReceipt(receipt.id);
-      if (updatedPO) {
-        googleSync.syncCreatePO(updatedPO);
-      }
+      dataStore.deleteReceipt(receipt.id);
       setDeletingReceipt(null);
       setDataVersion(v => v + 1);
     } catch (err: any) {
@@ -147,13 +145,15 @@ export default function ReceiptsPage() {
             <span>Export Excel</span>
           </button>
 
-          <button
-            onClick={() => setIsAddReceiptOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Record New Receipt</span>
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => setIsAddReceiptOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm shadow-blue-500/20 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Record New Receipt</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -229,9 +229,9 @@ export default function ReceiptsPage() {
 
       {/* Receipts Table */}
       <div className="bg-white rounded-xl border border-slate-200 card-shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
+        <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
+          <table className="w-full text-left border-separate border-spacing-0">
+            <thead className="sticky top-0 z-10 bg-slate-50">
               <tr>
                 <th className="table-header">Receipt #</th>
                 <th className="table-header">Receipt Date</th>
@@ -286,22 +286,26 @@ export default function ReceiptsPage() {
                     </td>
                     <td className="table-cell text-slate-500 truncate max-w-[200px]">{rc.remarks || '—'}</td>
                     <td className="table-cell text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => setEditingReceipt(rc)}
-                          title="Edit Receipt"
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setDeletingReceipt(rc)}
-                          title="Delete Receipt"
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      {isViewer ? (
+                        <span className="text-[11px] text-slate-400 italic font-medium px-2 py-0.5">View Only</span>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setEditingReceipt(rc)}
+                            title="Edit Receipt"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingReceipt(rc)}
+                            title="Delete Receipt"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))

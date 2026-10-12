@@ -30,8 +30,10 @@ import * as XLSX from 'xlsx';
 import { dataStore } from '@/lib/dataStore';
 import { IncomingStockItem, PurchaseOrder } from '@/types';
 import { formatWeight, formatDate, cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 export default function IncomingStockPage() {
+  const { isViewer } = useAuth();
   const [dataVersion, setDataVersion] = useState(0);
   const [activeTab, setActiveTab] = useState<'IN_TRANSIT' | 'RECEIVED' | 'PORTS'>('IN_TRANSIT');
   
@@ -308,13 +310,15 @@ export default function IncomingStockPage() {
             <span>Shipments & Port Hub</span>
           </Link>
 
-          <button
-            onClick={() => setIsUploadModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 card-shadow transition-colors"
-          >
-            <UploadCloud className="h-3.5 w-3.5 text-blue-600" />
-            <span>Sync / Upload Excel</span>
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => setIsUploadModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 card-shadow transition-colors"
+            >
+              <UploadCloud className="h-3.5 w-3.5 text-blue-600" />
+              <span>Sync / Upload Excel</span>
+            </button>
+          )}
 
           <button
             onClick={handleExport}
@@ -704,9 +708,9 @@ export default function IncomingStockPage() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
+        <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
+          <table className="w-full text-left border-separate border-spacing-0 text-xs">
+            <thead className="sticky top-0 z-10 bg-slate-50">
               <tr>
                 <th className="table-header">Lot Number</th>
                 <th className="table-header">Linked PO</th>
@@ -730,13 +734,13 @@ export default function IncomingStockPage() {
                   </td>
                 </tr>
               ) : (
-                filteredItems.map((item) => {
+                filteredItems.map((item, idx) => {
                   const etaInfo = getEtaStatus(item.eta_seaport);
                   const isTransit = item.received_status === 'IN_TRANSIT';
 
                   return (
                     <tr 
-                      key={item.id} 
+                      key={`${item.id || 'inc'}-${idx}`} 
                       className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
                       onClick={() => setInspectingItem(item)}
                     >
@@ -868,13 +872,15 @@ export default function IncomingStockPage() {
                       <td className="table-cell text-center" onClick={(e) => e.stopPropagation()}>
                         {isTransit ? (
                           <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              onClick={() => setReceivingItem(item)}
-                              className="px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 transition-colors shadow-2xs"
-                              title="Confirm physical arrival into warehouse/yard"
-                            >
-                              Receive
-                            </button>
+                            {!isViewer && (
+                              <button
+                                onClick={() => setReceivingItem(item)}
+                                className="px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 transition-colors shadow-2xs"
+                                title="Confirm physical arrival into warehouse/yard"
+                              >
+                                Receive
+                              </button>
+                            )}
                             <Link
                               href={`/purchasing/shipments?tab=ports&search=${encodeURIComponent(item.lot_number)}`}
                               className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
@@ -1051,7 +1057,7 @@ export default function IncomingStockPage() {
                 >
                   Close
                 </button>
-                {inspectingItem.received_status === 'IN_TRANSIT' && (
+                {!isViewer && inspectingItem.received_status === 'IN_TRANSIT' && (
                   <button
                     onClick={() => {
                       const itm = inspectingItem;

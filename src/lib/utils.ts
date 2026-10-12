@@ -112,3 +112,27 @@ export function getEtaStatus(etaStr?: string | null): { text: string; color: str
     };
   }
 }
+
+export function normalizeDateStr(val?: string | null): string {
+  if (!val) return '';
+  const str = String(val).trim();
+  const ymdMatch = str.match(/^\d{4}-\d{2}-\d{2}/);
+  if (ymdMatch) return ymdMatch[0];
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return '';
+}
+
+export function canonicalSupplierKey(name?: string | null): string {
+  if (!name) return '';
+  let str = name.toLowerCase();
+  str = str.replace(/[.,/()\\&_\-]+/g, ' ');
+  str = str.replace(/\b(d\s+o\s+o|l\s+l\s+c|s\s+r\s+l|s\s+p\s+a|doo|llc|srl|spa|co|ltd|corp|corporation|inc|pvt|limited|company|trading|group|sa)\b/gi, ' ');
+  str = str.replace(/[^a-z0-9]+/g, '').trim();
+  return str || name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}

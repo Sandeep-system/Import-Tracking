@@ -32,7 +32,8 @@ import {
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { IncomingStockItem, PurchaseOrder, PurchaseOrderItem } from '@/types';
-import { formatDate, formatWeight, getEtaStatus, getStatusBadgeClass, cn } from '@/lib/utils';
+import { formatDate, formatWeight, getEtaStatus, getStatusBadgeClass, cn, normalizeDateStr } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 import * as XLSX from 'xlsx';
 
 export type ShipmentStage = 'Pending' | 'Ready' | 'In Transit' | 'Received';
@@ -53,6 +54,8 @@ export interface UnifiedShipmentItem {
   sims?: string | null;
   delivery_terms?: string | null;
   payment_terms?: string | null;
+  container_no?: string | null;
+  port_of_loading?: string | null;
   customer?: string | null;
   status: ShipmentStage;
   rawIncoming?: IncomingStockItem;
@@ -60,7 +63,26 @@ export interface UnifiedShipmentItem {
   rawItem?: PurchaseOrderItem;
 }
 
+export interface LotShipmentGroup {
+  lot_number: string;
+  items: UnifiedShipmentItem[];
+  item_count: number;
+  total_weight: number;
+  supplier: string;
+  make?: string | null;
+  linked_po_number?: string | null;
+  port: string;
+  date_of_shipment?: string | null;
+  eta_seaport?: string | null;
+  delivery_terms?: string | null;
+  payment_terms?: string | null;
+  container_no?: string | null;
+  port_of_loading?: string | null;
+  status: ShipmentStage;
+}
+
 function ShipmentsContent() {
+  const { isViewer } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -71,9 +93,9 @@ function ShipmentsContent() {
     setMounted(true);
   }, []);
 
-  // Tab State: 'shipments' | 'ports' | 'orders'
-  const initialTab = (searchParams.get('tab') as 'shipments' | 'ports' | 'orders') || 'shipments';
-  const [activeTab, setActiveTab] = useState<'shipments' | 'ports' | 'orders'>(initialTab);
+  // Tab State: 'shipments' | 'arrivals' | 'ports' | 'orders'
+  const initialTab = (searchParams.get('tab') as 'shipments' | 'arrivals' | 'ports' | 'orders') || 'shipments';
+  const [activeTab, setActiveTab] = useState<'shipments' | 'arrivals' | 'ports' | 'orders'>(initialTab);
 
   // Filters
   const initialSearch = searchParams.get('search') || '';
@@ -83,6 +105,15 @@ function ShipmentsContent() {
   const [selectedSupplier, setSelectedSupplier] = useState('ALL');
   const [selectedTerms, setSelectedTerms] = useState('ALL');
   const [selectedShipmentStatus, setSelectedShipmentStatus] = useState<string>('ALL');
+
+  // Tab 1: Expanded Lots State
+  const [expandedShipmentLots, setExpandedShipmentLots] = useState<string[]>([]);
+
+  // Tab 2: Arrivals Schedule State
+  const [arrivalsTimeFilter, setArrivalsTimeFilter] = useState<'ALL' | 'UPCOMING' | 'THIS_WEEK' | 'THIS_MONTH' | 'OVERDUE' | 'UNSCHEDULED' | 'RECEIVED'>('ALL');
+  const [arrivalsSearch, setArrivalsSearch] = useState<string>('');
+  const [arrivalsPort, setArrivalsPort] = useState<string>('ALL');
+  const [collapsedArrivalDates, setCollapsedArrivalDates] = useState<string[]>([]);
 
   // Tab 3: Lot-Wise Shipment Tracking & View Controls
   const [ordersViewMode, setOrdersViewMode] = useState<'lots' | 'pos'>('lots');
@@ -113,7 +144,7 @@ function ShipmentsContent() {
 
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam === 'shipments' || tabParam === 'ports' || tabParam === 'orders') {
+    if (tabParam === 'shipments' || tabParam === 'arrivals' || tabParam === 'ports' || tabParam === 'orders') {
       setActiveTab(tabParam);
     }
     const portParam = searchParams.get('port');
@@ -136,18 +167,30 @@ function ShipmentsContent() {
 
   // Active POs for Orders Tab and Unified Shipments
   const activePOs = useMemo(() => {
-    return dataStore.getPurchaseOrders().filter(p => !p.is_closed);
+    const raw = dataStore.getPurchaseOrders().filter(p => !p.is_closed);
+    const seen = new Set<string>();
+    return raw.filter(p => {
+      const key = `${p.id || ''}:::${p.po_number || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [dataVersion]);
 
   // Unified Shipments synthesizing incoming stock and contract PO lots across 4 stages: Pending, Ready, In Transit, Received
   const allUnifiedShipments = useMemo(() => {
     const list: UnifiedShipmentItem[] = [];
+    const seenUnifiedIds = new Set<string>();
     const matchedPoItemIds = new Set<string>();
     const matchedPoLotKeys = new Set<string>();
 
     // 1. Process all incomingStock items with an assigned lot number
     for (const inc of allIncoming) {
       if (!inc.lot_number || !inc.lot_number.trim()) continue;
+      const cleanIncId = inc.id ? String(inc.id).trim() : '';
+      if (cleanIncId && seenUnifiedIds.has(cleanIncId)) continue;
+      if (cleanIncId) seenUnifiedIds.add(cleanIncId);
+
       let matchedPo: PurchaseOrder | undefined;
       let matchedItem: PurchaseOrderItem | undefined;
 
@@ -157,7 +200,7 @@ function ShipmentsContent() {
           matchedItem = matchedPo.items.find(pi => 
             (inc.lot_number && pi.lot_number?.trim() === inc.lot_number.trim()) ||
             inc.id.includes(pi.id)
-          ) || matchedPo.items[0];
+          );
         }
       } else if (inc.lot_number) {
         for (const po of activePOs) {
@@ -214,6 +257,8 @@ function ShipmentsContent() {
         sims: inc.sims || matchedItem?.sims || null,
         delivery_terms: inc.delivery_terms || matchedItem?.delivery_terms || matchedPo?.delivery_terms || 'FOB',
         payment_terms: inc.payment_terms || matchedItem?.payment_terms || matchedPo?.payment_terms || 'DP at sight',
+        container_no: inc.container_no || matchedItem?.container_no || null,
+        port_of_loading: inc.port_of_loading || matchedItem?.port_of_loading || null,
         customer: inc.customer || matchedPo?.customer_name || null,
         status: stage,
         rawIncoming: inc,
@@ -227,11 +272,18 @@ function ShipmentsContent() {
       if (!po.items) continue;
       for (const item of po.items) {
         if (matchedPoItemIds.has(item.id)) continue;
-        // Items will only go to the shipment after assigning lot no. from PO tab
-        if (!item.lot_number || !item.lot_number.trim()) continue;
-        const lotNo = item.lot_number.trim();
+        // Items will go to the shipment after assigning lot no. or transitioning to Ready/In Transit/Received
+        const lotNo = item.lot_number?.trim() 
+          || item.receipts?.find(r => r.lot_number?.trim())?.lot_number?.trim()
+          || (['Ready to Ship', 'In Transit', 'Received', 'Closed — Fully Received'].includes(item.status || '') ? `LOT-${po.po_number}-${item.line_number}` : '');
+
+        if (!lotNo) continue;
         if (matchedPoLotKeys.has(lotNo)) continue;
         if (matchedPoLotKeys.has(`${po.po_number}-${item.line_number}`)) continue;
+
+        const uid = `po-ship-${po.id}-${item.id || item.line_number}`;
+        if (seenUnifiedIds.has(uid)) continue;
+        seenUnifiedIds.add(uid);
 
         let stage: ShipmentStage = 'Pending';
         if (item.status === 'Ready to Ship') {
@@ -266,6 +318,8 @@ function ShipmentsContent() {
           sims: item.sims || null,
           delivery_terms: item.delivery_terms || po.delivery_terms || 'FOB',
           payment_terms: item.payment_terms || po.payment_terms || 'DP at sight',
+          container_no: item.container_no || null,
+          port_of_loading: item.port_of_loading || null,
           customer: po.customer_name || null,
           status: stage,
           rawPo: po,
@@ -277,55 +331,350 @@ function ShipmentsContent() {
     return list;
   }, [allIncoming, activePOs]);
 
-  // Counts across all 4 shipment stages
+  // Group all unified shipments by lot number (one entry per 1 lot)
+  const allGroupedShipments = useMemo(() => {
+    const map = new Map<string, {
+      lot_number: string;
+      items: UnifiedShipmentItem[];
+      supplier: string;
+      make?: string | null;
+      linked_po_number?: string | null;
+      port: string;
+      date_of_shipment?: string | null;
+      eta_seaport?: string | null;
+      delivery_terms?: string | null;
+      payment_terms?: string | null;
+      container_no?: string | null;
+      port_of_loading?: string | null;
+    }>();
+
+    for (const item of allUnifiedShipments) {
+      const key = item.lot_number?.trim() || item.id;
+      let group = map.get(key);
+      if (!group) {
+        group = {
+          lot_number: key,
+          items: [],
+          supplier: item.supplier,
+          make: item.make,
+          linked_po_number: item.linked_po_number,
+          port: item.port,
+          date_of_shipment: item.date_of_shipment,
+          eta_seaport: item.eta_seaport,
+          delivery_terms: item.delivery_terms,
+          payment_terms: item.payment_terms,
+          container_no: item.container_no,
+          port_of_loading: item.port_of_loading,
+        };
+        map.set(key, group);
+      }
+      group.items.push(item);
+      if (!group.container_no && item.container_no) group.container_no = item.container_no;
+      if (!group.port_of_loading && item.port_of_loading) group.port_of_loading = item.port_of_loading;
+      if (!group.date_of_shipment && item.date_of_shipment) group.date_of_shipment = item.date_of_shipment;
+      if (!group.eta_seaport && item.eta_seaport) group.eta_seaport = item.eta_seaport;
+      if (!group.make && item.make) group.make = item.make;
+      if (!group.linked_po_number && item.linked_po_number) group.linked_po_number = item.linked_po_number;
+    }
+
+    const list: LotShipmentGroup[] = [];
+    for (const g of map.values()) {
+      const totalWeight = g.items.reduce((acc, it) => acc + (Number(it.weight) || 0), 0);
+      let stage: ShipmentStage = 'Pending';
+      if (g.items.every(it => it.status === 'Received')) {
+        stage = 'Received';
+      } else if (g.items.some(it => it.status === 'In Transit')) {
+        stage = 'In Transit';
+      } else if (g.items.some(it => it.status === 'Ready')) {
+        stage = 'Ready';
+      } else {
+        stage = 'Pending';
+      }
+
+      list.push({
+        lot_number: g.lot_number,
+        items: g.items,
+        item_count: g.items.length,
+        total_weight: totalWeight,
+        supplier: g.supplier,
+        make: g.make,
+        linked_po_number: g.linked_po_number,
+        port: g.port,
+        date_of_shipment: g.date_of_shipment,
+        eta_seaport: g.eta_seaport,
+        delivery_terms: g.delivery_terms,
+        payment_terms: g.payment_terms,
+        container_no: g.container_no,
+        port_of_loading: g.port_of_loading,
+        status: stage,
+      });
+    }
+
+    return list;
+  }, [allUnifiedShipments]);
+
+  // Counts of unique lots across all 4 shipment stages
   const statusCounts = useMemo(() => {
     let pending = 0;
     let ready = 0;
     let inTransit = 0;
     let received = 0;
-    for (const s of allUnifiedShipments) {
+    for (const s of allGroupedShipments) {
       if (s.status === 'Pending') pending++;
       else if (s.status === 'Ready') ready++;
       else if (s.status === 'In Transit') inTransit++;
       else if (s.status === 'Received') received++;
     }
-    return { pending, ready, inTransit, received, total: allUnifiedShipments.length };
-  }, [allUnifiedShipments]);
+    return { pending, ready, inTransit, received, total: allGroupedShipments.length };
+  }, [allGroupedShipments]);
 
-  // Filtered shipments based on status, port, supplier, terms, search
-  const filteredShipments = useMemo(() => {
-    return allUnifiedShipments.filter(item => {
+  // Filtered shipments grouped by lot based on status, port, supplier, terms, search
+  const filteredGroupedShipments = useMemo(() => {
+    return allGroupedShipments.filter(group => {
       // Status filter
-      if (selectedShipmentStatus !== 'ALL' && item.status.toUpperCase() !== selectedShipmentStatus.toUpperCase()) {
+      if (selectedShipmentStatus !== 'ALL' && group.status.toUpperCase() !== selectedShipmentStatus.toUpperCase()) {
         return false;
       }
       // Port filter
-      if (selectedPort !== 'ALL' && (item.port || '').toLowerCase() !== selectedPort.toLowerCase()) {
+      if (selectedPort !== 'ALL' && (group.port || '').toLowerCase() !== selectedPort.toLowerCase()) {
         return false;
       }
       // Supplier filter
-      if (selectedSupplier !== 'ALL' && (item.supplier || '').toLowerCase() !== selectedSupplier.toLowerCase()) {
+      if (selectedSupplier !== 'ALL' && (group.supplier || '').toLowerCase() !== selectedSupplier.toLowerCase()) {
         return false;
       }
       // Delivery terms filter
-      if (selectedTerms !== 'ALL' && (item.delivery_terms || '').toUpperCase() !== selectedTerms.toUpperCase()) {
+      if (selectedTerms !== 'ALL' && (group.delivery_terms || '').toUpperCase() !== selectedTerms.toUpperCase()) {
         return false;
       }
       // Search filter
       if (search.trim()) {
         const q = search.toLowerCase().trim();
-        const matchLot = item.lot_number.toLowerCase().includes(q);
-        const matchPo = (item.linked_po_number || '').toLowerCase().includes(q);
-        const matchSupplier = item.supplier.toLowerCase().includes(q);
-        const matchPort = (item.port || '').toLowerCase().includes(q);
-        const matchStatus = item.status.toLowerCase().includes(q);
-        if (!matchLot && !matchPo && !matchSupplier && !matchPort && !matchStatus) {
+        const matchLot = group.lot_number.toLowerCase().includes(q);
+        const matchPo = (group.linked_po_number || '').toLowerCase().includes(q);
+        const matchSupplier = group.supplier.toLowerCase().includes(q);
+        const matchPort = (group.port || '').toLowerCase().includes(q);
+        const matchStatus = group.status.toLowerCase().includes(q);
+        const matchContainer = (group.container_no || '').toLowerCase().includes(q);
+        const matchItems = group.items.some(it => 
+          (it.grade || '').toLowerCase().includes(q) ||
+          (it.dimensions || '').toLowerCase().includes(q) ||
+          (it.heat_no || '').toLowerCase().includes(q) ||
+          (it.container_no || '').toLowerCase().includes(q)
+        );
+        if (!matchLot && !matchPo && !matchSupplier && !matchPort && !matchStatus && !matchContainer && !matchItems) {
           return false;
         }
       }
       return true;
     });
-  }, [allUnifiedShipments, selectedShipmentStatus, selectedPort, selectedSupplier, selectedTerms, search]);
+  }, [allGroupedShipments, selectedShipmentStatus, selectedPort, selectedSupplier, selectedTerms, search]);
+
+  // Flattened filtered items for counts and exports
+  const filteredShipments = useMemo(() => {
+    return filteredGroupedShipments.flatMap(g => g.items);
+  }, [filteredGroupedShipments]);
+
+  // --- TAB 2: ARRIVALS SCHEDULE (GROUPED CHRONOLOGICALLY BY ARRIVAL DATE) ---
+  const arrivalsByDate = useMemo(() => {
+    const map = new Map<string, {
+      dateStr: string;
+      displayDate: string;
+      etaInfo: { text: string; color: string; daysDiff: number | null };
+      lots: LotShipmentGroup[];
+      totalWeight: number;
+    }>();
+
+    for (const lot of allGroupedShipments) {
+      const rawDate = normalizeDateStr(lot.eta_seaport);
+      const dateKey = rawDate || 'unscheduled';
+
+      let entry = map.get(dateKey);
+      if (!entry) {
+        const etaInfo = rawDate
+          ? getEtaStatus(rawDate)
+          : { text: 'ETA Pending', color: 'bg-slate-100 text-slate-600 border-slate-200', daysDiff: null };
+        const displayDate = rawDate ? formatDate(rawDate) : 'Unscheduled / Pending Arrival Date';
+        entry = {
+          dateStr: dateKey,
+          displayDate,
+          etaInfo,
+          lots: [],
+          totalWeight: 0,
+        };
+        map.set(dateKey, entry);
+      }
+      entry.lots.push(lot);
+      entry.totalWeight += lot.total_weight || 0;
+    }
+
+    // Sort dates chronologically: earliest arrival date first; 'unscheduled' placed at the end
+    const entries = Array.from(map.values());
+    entries.sort((a, b) => {
+      if (a.dateStr === 'unscheduled') return 1;
+      if (b.dateStr === 'unscheduled') return -1;
+      return new Date(a.dateStr).getTime() - new Date(b.dateStr).getTime();
+    });
+
+    return entries;
+  }, [allGroupedShipments]);
+
+  // Overall arrivals statistics for KPI cards & pill counts
+  const arrivalsStats = useMemo(() => {
+    let upcomingLots = 0;
+    let upcomingWeight = 0;
+    let thisWeekLots = 0;
+    let thisWeekWeight = 0;
+    let thisMonthLots = 0;
+    let thisMonthWeight = 0;
+    let overdueLots = 0;
+    let overdueWeight = 0;
+    let unscheduledLots = 0;
+    let unscheduledWeight = 0;
+    let receivedLots = 0;
+    let receivedWeight = 0;
+    let totalScheduledLots = 0;
+    let totalScheduledWeight = 0;
+    let totalActiveLots = 0;
+    let totalActiveWeight = 0;
+
+    for (const group of arrivalsByDate) {
+      const isUnscheduled = group.dateStr === 'unscheduled';
+      const days = group.etaInfo.daysDiff;
+      for (const lot of group.lots) {
+        const wt = lot.total_weight || 0;
+
+        if (lot.status === 'Received') {
+          receivedLots++;
+          receivedWeight += wt;
+          continue;
+        }
+
+        totalActiveLots++;
+        totalActiveWeight += wt;
+
+        if (isUnscheduled) {
+          unscheduledLots++;
+          unscheduledWeight += wt;
+        } else {
+          totalScheduledLots++;
+          totalScheduledWeight += wt;
+
+          if (days !== null) {
+            if (days < 0) {
+              overdueLots++;
+              overdueWeight += wt;
+            } else {
+              upcomingLots++;
+              upcomingWeight += wt;
+              if (days <= 7) {
+                thisWeekLots++;
+                thisWeekWeight += wt;
+              }
+              if (days <= 30) {
+                thisMonthLots++;
+                thisMonthWeight += wt;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      totalActiveLots,
+      totalActiveWeight,
+      upcomingLots,
+      upcomingWeight,
+      thisWeekLots,
+      thisWeekWeight,
+      thisMonthLots,
+      thisMonthWeight,
+      overdueLots,
+      overdueWeight,
+      unscheduledLots,
+      unscheduledWeight,
+      receivedLots,
+      receivedWeight,
+      totalScheduledLots,
+      totalScheduledWeight,
+      uniqueArrivalDates: arrivalsByDate.filter(g => g.dateStr !== 'unscheduled').length
+    };
+  }, [arrivalsByDate]);
+
+  // Filtered arrival date groups based on timeline, port, and search
+  const filteredArrivalsByDate = useMemo(() => {
+    return arrivalsByDate
+      .map(group => {
+        const matchedLots = group.lots.filter(lot => {
+          // Time filter
+          if (arrivalsTimeFilter === 'ALL') {
+            if (lot.status === 'Received') return false;
+          } else if (arrivalsTimeFilter === 'UPCOMING') {
+            if (lot.status === 'Received') return false;
+            if (group.dateStr === 'unscheduled') return false;
+            if (group.etaInfo.daysDiff !== null && group.etaInfo.daysDiff < 0) return false;
+          } else if (arrivalsTimeFilter === 'THIS_WEEK') {
+            if (lot.status === 'Received') return false;
+            if (group.dateStr === 'unscheduled') return false;
+            if (group.etaInfo.daysDiff === null || group.etaInfo.daysDiff < 0 || group.etaInfo.daysDiff > 7) return false;
+          } else if (arrivalsTimeFilter === 'THIS_MONTH') {
+            if (lot.status === 'Received') return false;
+            if (group.dateStr === 'unscheduled') return false;
+            if (group.etaInfo.daysDiff === null || group.etaInfo.daysDiff < 0 || group.etaInfo.daysDiff > 30) return false;
+          } else if (arrivalsTimeFilter === 'OVERDUE') {
+            if (lot.status === 'Received') return false;
+            if (group.dateStr === 'unscheduled') return false;
+            if (group.etaInfo.daysDiff === null || group.etaInfo.daysDiff >= 0) return false;
+          } else if (arrivalsTimeFilter === 'UNSCHEDULED') {
+            if (lot.status === 'Received') return false;
+            if (group.dateStr !== 'unscheduled') return false;
+          } else if (arrivalsTimeFilter === 'RECEIVED') {
+            if (lot.status !== 'Received') return false;
+          }
+
+          // Port filter
+          if (arrivalsPort !== 'ALL' && (lot.port || '').toLowerCase() !== arrivalsPort.toLowerCase()) {
+            return false;
+          }
+
+          // Search filter
+          if (arrivalsSearch.trim()) {
+            const q = arrivalsSearch.toLowerCase().trim();
+            const matchLot = lot.lot_number.toLowerCase().includes(q);
+            const matchPo = (lot.linked_po_number || '').toLowerCase().includes(q);
+            const matchSupplier = lot.supplier.toLowerCase().includes(q);
+            const matchPort = (lot.port || '').toLowerCase().includes(q);
+            const matchContainer = (lot.container_no || '').toLowerCase().includes(q);
+            const matchDate = group.displayDate.toLowerCase().includes(q) || group.dateStr.includes(q);
+            const matchItems = lot.items.some(it => 
+              (it.grade || '').toLowerCase().includes(q) ||
+              (it.dimensions || '').toLowerCase().includes(q) ||
+              (it.heat_no || '').toLowerCase().includes(q)
+            );
+            if (!matchLot && !matchPo && !matchSupplier && !matchPort && !matchContainer && !matchDate && !matchItems) {
+              return false;
+            }
+          }
+
+          return true;
+        });
+
+        if (matchedLots.length === 0) return null;
+
+        const totalWeight = matchedLots.reduce((acc, l) => acc + (l.total_weight || 0), 0);
+        return {
+          ...group,
+          lots: matchedLots,
+          totalWeight
+        };
+      })
+      .filter(Boolean) as Array<typeof arrivalsByDate[0]>;
+  }, [arrivalsByDate, arrivalsTimeFilter, arrivalsPort, arrivalsSearch]);
+
+  const filteredArrivalsLotsCount = useMemo(() => {
+    return filteredArrivalsByDate.reduce((sum, g) => sum + g.lots.length, 0);
+  }, [filteredArrivalsByDate]);
 
   // Unique ports, suppliers, and terms for dropdowns
   const uniquePorts = useMemo(() => {
@@ -410,6 +759,8 @@ function ShipmentsContent() {
       port: string;
       deliveryTerms: string;
       paymentTerms: string;
+      containerNo?: string | null;
+      portOfLoading?: string | null;
       rawItem: PurchaseOrderItem;
       rawPo: PurchaseOrder;
     }> = [];
@@ -417,16 +768,18 @@ function ShipmentsContent() {
     for (const po of activePOs) {
       if (!po.items || po.items.length === 0) continue;
       for (const item of po.items) {
-        // Items will only go to shipment after assigning lot no. from PO tab
-        if (!item.lot_number || !item.lot_number.trim()) continue;
+        // Items will go to shipment after assigning lot no. or transitioning to Ready/In Transit/Received
+        const lotNo = item.lot_number?.trim()
+          || item.receipts?.find(r => r.lot_number?.trim())?.lot_number?.trim()
+          || (['Ready to Ship', 'In Transit', 'Received', 'Closed — Fully Received'].includes(item.status || '') ? `LOT-${po.po_number}-${item.line_number}` : '');
+
+        if (!lotNo) continue;
 
         const dimStr = [
           item.diameter_width ? `DIA ${item.diameter_width}` : '',
           item.thickness ? `T${item.thickness}` : '',
           item.length ? `L${item.length}` : ''
         ].filter(Boolean).join(' × ');
-
-        const lotNo = item.lot_number.trim();
 
         list.push({
           id: `${po.id}-${item.id || item.line_number}`,
@@ -450,6 +803,8 @@ function ShipmentsContent() {
           port: item.destination_port || po.destination || 'N.S.',
           deliveryTerms: item.delivery_terms || po.delivery_terms || 'FOB',
           paymentTerms: item.payment_terms || po.payment_terms || 'DP at sight',
+          containerNo: item.container_no || null,
+          portOfLoading: item.port_of_loading || null,
           rawItem: item,
           rawPo: po
         });
@@ -602,6 +957,8 @@ function ShipmentsContent() {
         'Shipment Status': l.status,
         'Ordered Qty (KG)': l.orderedQty,
         'Ready / Recd Qty (KG)': l.readyQty,
+        'Container Number': l.containerNo || '—',
+        'Port of Load (POL)': l.portOfLoading || '—',
         'Date of Shipment': l.dateOfShipment || '—',
         'Sea Port ETA': l.etaSeaport || '—',
         'Discharge Port': l.port,
@@ -611,7 +968,29 @@ function ShipmentsContent() {
       const ws = XLSX.utils.json_to_sheet(lotRows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'PO Lots Shipment Status');
-      XLSX.writeFile(wb, `PO_Lots_Shipment_Status_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } else if (activeTab === 'arrivals') {
+      const arrivalRows = filteredArrivalsByDate.flatMap(dateGroup =>
+        dateGroup.lots.map(lot => ({
+          'Arrival Date (ETA)': dateGroup.dateStr === 'unscheduled' ? 'Unscheduled' : dateGroup.dateStr,
+          'Arrival Status': dateGroup.etaInfo.text,
+          'Lot Number': lot.lot_number,
+          'PO Number': lot.linked_po_number ? `PO ${lot.linked_po_number}` : 'Direct Cargo',
+          'Supplier': lot.supplier,
+          'Mill / Make': lot.make || 'Standard',
+          'Weight (KG)': lot.total_weight,
+          'Discharge Port': lot.port,
+          'Port of Load (POL)': lot.port_of_loading || '—',
+          'Container Number': lot.container_no || '—',
+          'Date of Shipment': lot.date_of_shipment || '—',
+          'Shipment Status': lot.status,
+          'Delivery Terms': lot.delivery_terms || 'FOB',
+          'Payment Terms': lot.payment_terms || '—'
+        }))
+      );
+      const ws = XLSX.utils.json_to_sheet(arrivalRows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Arrivals Schedule');
+      XLSX.writeFile(wb, `Port_Arrivals_Schedule_${new Date().toISOString().split('T')[0]}.xlsx`);
     } else {
       const exportRows = filteredShipments.map(i => ({
         'Lot Number': i.lot_number,
@@ -620,6 +999,8 @@ function ShipmentsContent() {
         'Supplier': i.supplier,
         'Shipment Status': i.status,
         'Weight (KG)': i.weight,
+        'Container Number': i.container_no || '—',
+        'Port of Load (POL)': i.port_of_loading || '—',
         'Port of Discharge': i.port || 'N.S.',
         'Date of Shipment': i.date_of_shipment || '—',
         'Sea Port ETA': i.eta_seaport || '—',
@@ -669,13 +1050,6 @@ function ShipmentsContent() {
         </div>
 
         <div className="flex items-center gap-2.5">
-          <Link
-            href="/purchasing/incoming-stock"
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 card-shadow transition-colors"
-          >
-            <Ship className="h-3.5 w-3.5 text-blue-600" />
-            <span>Open Tracking Board</span>
-          </Link>
 
           <button
             onClick={handleExport}
@@ -810,7 +1184,23 @@ function ShipmentsContent() {
               <Ship className="h-3.5 w-3.5" />
               <span>Shipments</span>
               <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 text-blue-800 font-extrabold">
-                {allUnifiedShipments.length}
+                {allGroupedShipments.length} Lots
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('arrivals')}
+              className={cn(
+                "px-4 py-2.5 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-2",
+                activeTab === 'arrivals'
+                  ? "border-emerald-600 text-emerald-700 bg-white shadow-sm"
+                  : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60"
+              )}
+            >
+              <Calendar className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Arrivals Schedule</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 text-emerald-800 font-extrabold">
+                {arrivalsStats.totalActiveLots} Lots
               </span>
             </button>
 
@@ -861,7 +1251,7 @@ function ShipmentsContent() {
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-1">Status:</span>
               {(['ALL', 'Pending', 'Ready', 'In Transit', 'Received'] as const).map(st => {
                 const isSelected = selectedShipmentStatus === st;
-                const count = st === 'ALL' ? allUnifiedShipments.length :
+                const count = st === 'ALL' ? allGroupedShipments.length :
                   st === 'Pending' ? statusCounts.pending :
                   st === 'Ready' ? statusCounts.ready :
                   st === 'In Transit' ? statusCounts.inTransit : statusCounts.received;
@@ -919,7 +1309,7 @@ function ShipmentsContent() {
                   onChange={(e) => setSelectedShipmentStatus(e.target.value)}
                   className="py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-blue-500/20"
                 >
-                  <option value="ALL">All Statuses ({allUnifiedShipments.length})</option>
+                  <option value="ALL">All Statuses ({allGroupedShipments.length})</option>
                   <option value="Pending">Pending ({statusCounts.pending})</option>
                   <option value="Ready">Ready ({statusCounts.ready})</option>
                   <option value="In Transit">In Transit ({statusCounts.inTransit})</option>
@@ -980,150 +1370,784 @@ function ShipmentsContent() {
               </div>
 
               <div className="text-slate-500 font-medium">
-                Showing <strong className="text-slate-900">{filteredShipments.length}</strong> shipment items
+                Showing <strong className="text-slate-900">{filteredGroupedShipments.length}</strong> lots ({filteredShipments.length} items)
               </div>
             </div>
 
-            {/* Shipments Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
+            {/* Shipments Table - Grouped Lot-Wise */}
+            <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
+              <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                <thead className="sticky top-0 z-10 bg-slate-50">
                   <tr>
+                    <th className="table-header w-10 text-center"></th>
                     <th className="table-header">Lot Number</th>
                     <th className="table-header">Linked PO</th>
                     <th className="table-header">Supplier / Mill</th>
                     <th className="table-header text-center">Status</th>
-                    <th className="table-header text-right">Weight (KG)</th>
+                    <th className="table-header text-right">Total Weight (KG)</th>
                     <th className="table-header">Discharge Port</th>
                     <th className="table-header">Shipment Date</th>
                     <th className="table-header">Port ETA & Countdown</th>
                     <th className="table-header">Terms</th>
+                    <th className="table-header text-center">Items</th>
                     <th className="table-header text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredShipments.length === 0 ? (
+                  {filteredGroupedShipments.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-12 text-center text-slate-400">
+                      <td colSpan={12} className="py-12 text-center text-slate-400">
                         <Ship className="h-8 w-8 mx-auto text-slate-300 mb-2" />
-                        <p className="font-semibold text-slate-600">No shipments matching your filters.</p>
+                        <p className="font-semibold text-slate-600">No shipment lots matching your filters.</p>
                         <p className="text-[11px] text-slate-400 mt-1">Try resetting filters or adjusting search criteria.</p>
                       </td>
                     </tr>
                   ) : (
-                    filteredShipments.map((item) => {
-                      const etaInfo = getEtaStatus(item.eta_seaport);
+                    filteredGroupedShipments.map((group, groupIdx) => {
+                      const etaInfo = getEtaStatus(group.eta_seaport);
+                      const isExpanded = expandedShipmentLots.includes(group.lot_number);
 
                       return (
-                        <tr 
-                          key={item.id}
-                          onClick={() => setInspectingItem(item)}
-                          className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
-                        >
-                          <td className="table-cell">
-                            <span className="font-mono font-bold text-xs bg-slate-900 text-white px-2 py-0.5 rounded shadow-2xs">
-                              {item.lot_number}
-                            </span>
-                          </td>
-                          <td className="table-cell" onClick={(e) => e.stopPropagation()}>
-                            {item.linked_po_number ? (
-                              <Link
-                                href={`/purchasing/purchase-orders/${item.linked_po_number}`}
-                                className="font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
-                              >
-                                <span>PO {item.linked_po_number}</span>
-                                <ExternalLink className="h-3 w-3 opacity-60" />
-                              </Link>
-                            ) : (
-                              <span className="text-slate-400 font-medium">Direct Cargo</span>
+                        <React.Fragment key={`${group.lot_number || 'grp'}-${groupIdx}`}>
+                          <tr 
+                            onClick={() => {
+                              setExpandedShipmentLots(prev => 
+                                prev.includes(group.lot_number)
+                                  ? prev.filter(l => l !== group.lot_number)
+                                  : [...prev, group.lot_number]
+                              );
+                            }}
+                            className={cn(
+                              "cursor-pointer transition-colors group select-none",
+                              isExpanded ? "bg-blue-50/50" : "hover:bg-blue-50/30"
                             )}
-                          </td>
-                          <td className="table-cell">
-                            <span className="font-semibold text-slate-800 block truncate max-w-[150px]">{item.supplier}</span>
-                            {item.make && (
-                              <span className="text-[10px] text-slate-400 block truncate max-w-[150px]">Mill: {item.make}</span>
-                            )}
-                          </td>
-                          <td className="table-cell text-center" onClick={(e) => e.stopPropagation()}>
-                            {renderShipmentStatusBadge(item.status)}
-                          </td>
-                          <td className="table-cell text-right font-mono font-bold text-blue-700">
-                            {formatWeight(item.weight)}
-                          </td>
-                          <td className="table-cell">
-                            <span className="inline-flex items-center gap-1 font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[11px]">
-                              <MapPin className="h-3 w-3 text-red-500" />
-                              {item.port || 'N.S.'}
-                            </span>
-                          </td>
-                          <td className="table-cell text-slate-600 font-medium">
-                            {formatDate(item.date_of_shipment)}
-                          </td>
-                          <td className="table-cell">
-                            {item.eta_seaport ? (
-                              <div className="space-y-0.5">
-                                <span className="font-semibold text-slate-800 block">{formatDate(item.eta_seaport)}</span>
-                                <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] border ${etaInfo.color}`}>
-                                  {etaInfo.text}
+                          >
+                            <td className="table-cell text-center" onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedShipmentLots(prev => 
+                                prev.includes(group.lot_number)
+                                  ? prev.filter(l => l !== group.lot_number)
+                                  : [...prev, group.lot_number]
+                              );
+                            }}>
+                              <div className="flex items-center justify-center">
+                                {isExpanded ? (
+                                  <ChevronUp className="h-4 w-4 text-blue-600 font-bold" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                                )}
+                              </div>
+                            </td>
+                            <td className="table-cell">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-bold text-xs bg-slate-900 text-white px-2 py-0.5 rounded shadow-2xs">
+                                  {group.lot_number}
                                 </span>
                               </div>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
-                          </td>
-                          <td className="table-cell">
-                            <span className="font-semibold text-slate-800 block">{item.delivery_terms || 'FOB'}</span>
-                            {item.payment_terms && (
-                              <span className="text-[10px] text-slate-400 block truncate max-w-[100px]">{item.payment_terms}</span>
-                            )}
-                          </td>
-                          <td className="table-cell text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            {item.status === 'In Transit' && (
-                              <button
-                                onClick={() => {
-                                  setReceivingItem(item);
-                                  setWarehouseLocation(item.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
-                                }}
-                                className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1 ml-auto"
-                                title="Receive cargo arrival into warehouse inventory"
-                              >
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                                <span>Receive</span>
-                              </button>
-                            )}
-                            {item.status === 'Ready' && (
-                              <Link
-                                href={item.linked_po_number ? `/purchasing/purchase-orders/${item.linked_po_number}` : `/purchasing/purchase-orders`}
-                                className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] shadow-sm transition-colors inline-flex items-center gap-1 ml-auto"
-                                title="Open PO to record shipment details"
-                              >
-                                <Ship className="h-3.5 w-3.5" />
-                                <span>Ship Item →</span>
-                              </Link>
-                            )}
-                            {item.status === 'Pending' && (
-                              <Link
-                                href={item.linked_po_number ? `/purchasing/purchase-orders/${item.linked_po_number}` : `/purchasing/purchase-orders`}
-                                className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 border border-blue-200 font-bold text-[11px] shadow-2xs transition-colors inline-flex items-center gap-1 ml-auto"
-                                title="Open PO to mark item ready"
-                              >
-                                <PackagePlus className="h-3.5 w-3.5" />
-                                <span>Ready →</span>
-                              </Link>
-                            )}
-                            {item.status === 'Received' && (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Received ✓
+                              {group.container_no && (
+                                <span className="block mt-0.5 text-[10px] font-mono text-amber-800 font-semibold truncate max-w-[130px]" title={`Container: ${group.container_no}`}>
+                                  Cont: {group.container_no}
+                                </span>
+                              )}
+                            </td>
+                            <td className="table-cell" onClick={(e) => e.stopPropagation()}>
+                              {group.linked_po_number ? (
+                                <Link
+                                  href={`/purchasing/purchase-orders/${group.linked_po_number}`}
+                                  className="font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                                >
+                                  <span>PO {group.linked_po_number}</span>
+                                  <ExternalLink className="h-3 w-3 opacity-60" />
+                                </Link>
+                              ) : (
+                                <span className="text-slate-400 font-medium">Direct Cargo</span>
+                              )}
+                            </td>
+                            <td className="table-cell">
+                              <span className="font-semibold text-slate-800 block truncate max-w-[150px]">{group.supplier}</span>
+                              {group.make && (
+                                <span className="text-[10px] text-slate-400 block truncate max-w-[150px]">Mill: {group.make}</span>
+                              )}
+                            </td>
+                            <td className="table-cell text-center" onClick={(e) => e.stopPropagation()}>
+                              {renderShipmentStatusBadge(group.status)}
+                            </td>
+                            <td className="table-cell text-right font-mono font-bold text-blue-700">
+                              {formatWeight(group.total_weight)}
+                            </td>
+                            <td className="table-cell">
+                              <span className="inline-flex items-center gap-1 font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[11px]">
+                                <MapPin className="h-3 w-3 text-red-500" />
+                                {group.port || 'N.S.'}
                               </span>
-                            )}
-                          </td>
-                        </tr>
+                              {group.port_of_loading && (
+                                <span className="text-[10px] text-slate-500 block mt-0.5 font-medium">POL: {group.port_of_loading}</span>
+                              )}
+                            </td>
+                            <td className="table-cell text-slate-600 font-medium">
+                              {formatDate(group.date_of_shipment)}
+                            </td>
+                            <td className="table-cell">
+                              {group.eta_seaport ? (
+                                <div className="space-y-0.5">
+                                  <span className="font-semibold text-slate-800 block">{formatDate(group.eta_seaport)}</span>
+                                  <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] border ${etaInfo.color}`}>
+                                    {etaInfo.text}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+                            <td className="table-cell">
+                              <span className="font-semibold text-slate-800 block">{group.delivery_terms || 'FOB'}</span>
+                              {group.payment_terms && (
+                                <span className="text-[10px] text-slate-400 block truncate max-w-[100px]">{group.payment_terms}</span>
+                              )}
+                            </td>
+                            <td className="table-cell text-center">
+                              <span className="inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold text-[11px] border border-blue-200">
+                                <Boxes className="h-3 w-3" />
+                                <span>{group.items.length}</span>
+                              </span>
+                            </td>
+                            <td className="table-cell text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedShipmentLots(prev => 
+                                    prev.includes(group.lot_number)
+                                      ? prev.filter(l => l !== group.lot_number)
+                                      : [...prev, group.lot_number]
+                                  );
+                                }}
+                                className={cn(
+                                  "px-2.5 py-1 rounded text-[11px] font-bold transition-all inline-flex items-center gap-1",
+                                  isExpanded
+                                    ? "bg-slate-200 hover:bg-slate-300 text-slate-800"
+                                    : "bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 border border-blue-200 shadow-2xs"
+                                )}
+                              >
+                                {isExpanded ? (
+                                  <>
+                                    <ChevronUp className="h-3.5 w-3.5" />
+                                    <span>Hide Items</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="h-3.5 w-3.5" />
+                                    <span>View Items ({group.items.length})</span>
+                                  </>
+                                )}
+                              </button>
+                            </td>
+                          </tr>
+
+                          {/* Expanded Items Sub-Table */}
+                          {isExpanded && (
+                            <tr className="bg-blue-50/20">
+                              <td colSpan={12} className="p-0 border-b border-slate-200">
+                                <div className="p-4 bg-gradient-to-r from-blue-50/60 via-slate-50 to-indigo-50/50 border-l-4 border-l-blue-600 space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Boxes className="h-4 w-4 text-blue-600" />
+                                      <span className="font-bold text-slate-900 text-xs">
+                                        Items in Lot <span className="font-mono bg-slate-900 text-white px-1.5 py-0.5 rounded text-[11px]">{group.lot_number}</span> ({group.items.length} items • {formatWeight(group.total_weight)})
+                                      </span>
+                                      {group.linked_po_number && (
+                                        <span className="text-[11px] text-slate-500">
+                                          — Purchase Order #{group.linked_po_number}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 italic">
+                                      Click any item row to inspect complete mill & shipping details
+                                    </span>
+                                  </div>
+
+                                  <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                      <thead>
+                                        <tr className="bg-slate-100/90 text-slate-600 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
+                                          <th className="py-2 px-3">Grade Code</th>
+                                          <th className="py-2 px-3">Section / Shape</th>
+                                          <th className="py-2 px-3">Dimensions</th>
+                                          <th className="py-2 px-3 text-right">Weight (KG)</th>
+                                          <th className="py-2 px-3">Heat Number</th>
+                                          <th className="py-2 px-3">SIMS Reg.</th>
+                                          <th className="py-2 px-3">Container No.</th>
+                                          <th className="py-2 px-3">Port of Load</th>
+                                          <th className="py-2 px-3 text-center">Status</th>
+                                          <th className="py-2 px-3 text-right">Action</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100">
+                                        {group.items.map((item, idx) => (
+                                          <tr 
+                                            key={`${item.id || 'item'}-${idx}`}
+                                            onClick={() => setInspectingItem(item)}
+                                            className="hover:bg-blue-50/60 cursor-pointer transition-colors group/item"
+                                          >
+                                            <td className="py-2.5 px-3 font-bold text-slate-900 flex items-center gap-1.5">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block"></span>
+                                              <span>{item.grade || '—'}</span>
+                                            </td>
+                                            <td className="py-2.5 px-3 text-slate-600 font-medium">
+                                              {item.rawItem?.section_name || item.rawIncoming?.condition || 'Steel'}
+                                            </td>
+                                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">
+                                              {item.dimensions || '—'}
+                                            </td>
+                                            <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-700">
+                                              {formatWeight(item.weight)}
+                                            </td>
+                                            <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
+                                              {item.heat_no ? (
+                                                <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-800 font-semibold">{item.heat_no}</span>
+                                              ) : '—'}
+                                            </td>
+                                            <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
+                                              {item.sims || '—'}
+                                            </td>
+                                            <td className="py-2.5 px-3 font-mono text-amber-800 text-[11px] font-semibold">
+                                              {item.container_no ? (
+                                                <span className="bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">{item.container_no}</span>
+                                              ) : (group.container_no ? (
+                                                <span className="bg-amber-50/60 px-1.5 py-0.5 rounded text-amber-800/80">{group.container_no}</span>
+                                              ) : '—')}
+                                            </td>
+                                            <td className="py-2.5 px-3 text-slate-600 text-[11px]">
+                                              {item.port_of_loading || group.port_of_loading || '—'}
+                                            </td>
+                                            <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                              {renderShipmentStatusBadge(item.status)}
+                                            </td>
+                                            <td className="py-2.5 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                              <div className="flex items-center justify-end gap-1.5">
+                                                {!isViewer && item.status === 'In Transit' && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setReceivingItem(item);
+                                                      setWarehouseLocation(item.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                                                    }}
+                                                    className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] shadow-2xs transition-colors flex items-center gap-1"
+                                                    title="Receive cargo arrival into warehouse inventory"
+                                                  >
+                                                    <CheckCircle2 className="h-3 w-3" />
+                                                    <span>Receive</span>
+                                                  </button>
+                                                )}
+                                                {item.status === 'Ready' && (
+                                                  <Link
+                                                    href={item.linked_po_number ? `/purchasing/purchase-orders/${item.linked_po_number}` : `/purchasing/purchase-orders`}
+                                                    className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] shadow-2xs transition-colors inline-flex items-center gap-1"
+                                                    title="Open PO to record shipment details"
+                                                  >
+                                                    <Ship className="h-3 w-3" />
+                                                    <span>Ship →</span>
+                                                  </Link>
+                                                )}
+                                                {item.status === 'Pending' && (
+                                                  <Link
+                                                    href={item.linked_po_number ? `/purchasing/purchase-orders/${item.linked_po_number}` : `/purchasing/purchase-orders`}
+                                                    className="px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 border border-blue-200 font-bold text-[10px] transition-colors inline-flex items-center gap-1"
+                                                    title="Open PO to mark item ready"
+                                                  >
+                                                    <PackagePlus className="h-3 w-3" />
+                                                    <span>Ready →</span>
+                                                  </Link>
+                                                )}
+                                                {item.status === 'Received' && (
+                                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                    ✓ Recd
+                                                  </span>
+                                                )}
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setInspectingItem(item)}
+                                                  className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[10px] transition-colors"
+                                                >
+                                                  Details
+                                                </button>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })
                   )}
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* TAB 2: ARRIVALS SCHEDULE BY DATE */}
+        {activeTab === 'arrivals' && (
+          <div className="p-6 space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-bold text-slate-900">Maritime Port Arrivals Schedule</h2>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    {arrivalsStats.uniqueArrivalDates} Scheduled Arrival Dates
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Chronological schedule of container cargo arrivals at maritime ports. Track which lot is arriving on what date.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (collapsedArrivalDates.length === 0) {
+                      setCollapsedArrivalDates(filteredArrivalsByDate.map(g => g.dateStr));
+                    } else {
+                      setCollapsedArrivalDates([]);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors shadow-2xs"
+                >
+                  {collapsedArrivalDates.length === 0 ? 'Collapse All Dates' : 'Expand All Dates'}
+                </button>
+              </div>
+            </div>
+
+            {/* Arrivals KPI Highlights */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+              <div 
+                onClick={() => setArrivalsTimeFilter('ALL')}
+                className={cn(
+                  "p-3.5 rounded-xl border transition-all cursor-pointer card-shadow",
+                  arrivalsTimeFilter === 'ALL' ? "bg-slate-900 text-white border-slate-900 ring-2 ring-slate-900/20" : "bg-white border-slate-200 hover:border-slate-300"
+                )}
+              >
+                <div className={cn("flex items-center justify-between", arrivalsTimeFilter === 'ALL' ? "text-slate-200" : "text-slate-600")}>
+                  <span className="text-[10px] font-bold uppercase tracking-wider">All In-Transit</span>
+                  <Ship className="h-4 w-4" />
+                </div>
+                <div className={cn("mt-2 text-xl font-extrabold", arrivalsTimeFilter === 'ALL' ? "text-white" : "text-slate-900")}>
+                  {arrivalsStats.totalActiveLots} Lots
+                </div>
+                <div className={cn("text-[11px] font-mono font-bold mt-0.5", arrivalsTimeFilter === 'ALL' ? "text-slate-300" : "text-slate-500")}>
+                  {formatWeight(arrivalsStats.totalActiveWeight)}
+                </div>
+              </div>
+
+              <div 
+                onClick={() => setArrivalsTimeFilter('THIS_WEEK')}
+                className={cn(
+                  "p-3.5 rounded-xl border transition-all cursor-pointer card-shadow",
+                  arrivalsTimeFilter === 'THIS_WEEK' ? "bg-amber-50/50 border-amber-400 ring-2 ring-amber-400/20" : "bg-white border-slate-200 hover:border-slate-300"
+                )}
+              >
+                <div className="flex items-center justify-between text-amber-700">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Arriving This Week</span>
+                  <Clock className="h-4 w-4" />
+                </div>
+                <div className="mt-2 text-xl font-extrabold text-amber-900">
+                  {arrivalsStats.thisWeekLots} Lots
+                </div>
+                <div className="text-[11px] font-mono font-bold text-amber-700 mt-0.5">
+                  {formatWeight(arrivalsStats.thisWeekWeight)}
+                </div>
+              </div>
+
+              <div 
+                onClick={() => setArrivalsTimeFilter('THIS_MONTH')}
+                className={cn(
+                  "p-3.5 rounded-xl border transition-all cursor-pointer card-shadow",
+                  arrivalsTimeFilter === 'THIS_MONTH' ? "bg-blue-50/50 border-blue-400 ring-2 ring-blue-400/20" : "bg-white border-slate-200 hover:border-slate-300"
+                )}
+              >
+                <div className="flex items-center justify-between text-blue-700">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Arriving in 30 Days</span>
+                  <Calendar className="h-4 w-4" />
+                </div>
+                <div className="mt-2 text-xl font-extrabold text-blue-900">
+                  {arrivalsStats.thisMonthLots} Lots
+                </div>
+                <div className="text-[11px] font-mono font-bold text-blue-700 mt-0.5">
+                  {formatWeight(arrivalsStats.thisMonthWeight)}
+                </div>
+              </div>
+
+              <div 
+                onClick={() => setArrivalsTimeFilter('OVERDUE')}
+                className={cn(
+                  "p-3.5 rounded-xl border transition-all cursor-pointer card-shadow",
+                  arrivalsTimeFilter === 'OVERDUE' ? "bg-rose-50/50 border-rose-400 ring-2 ring-rose-400/20" : "bg-white border-slate-200 hover:border-slate-300"
+                )}
+              >
+                <div className="flex items-center justify-between text-rose-700">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Delayed / Overdue</span>
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+                <div className="mt-2 text-xl font-extrabold text-rose-900">
+                  {arrivalsStats.overdueLots} Lots
+                </div>
+                <div className="text-[11px] font-mono font-bold text-rose-700 mt-0.5">
+                  {formatWeight(arrivalsStats.overdueWeight)}
+                </div>
+              </div>
+
+              <div 
+                onClick={() => setArrivalsTimeFilter('UNSCHEDULED')}
+                className={cn(
+                  "p-3.5 rounded-xl border transition-all cursor-pointer card-shadow",
+                  arrivalsTimeFilter === 'UNSCHEDULED' ? "bg-slate-100 border-slate-400 ring-2 ring-slate-400/20" : "bg-white border-slate-200 hover:border-slate-300"
+                )}
+              >
+                <div className="flex items-center justify-between text-slate-700">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Schedule Pending</span>
+                  <Layers className="h-4 w-4" />
+                </div>
+                <div className="mt-2 text-xl font-extrabold text-slate-900">
+                  {arrivalsStats.unscheduledLots} Lots
+                </div>
+                <div className="text-[11px] font-mono font-bold text-slate-600 mt-0.5">
+                  {formatWeight(arrivalsStats.unscheduledWeight)}
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Toolbar for Arrivals */}
+            <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+                {(['ALL', 'THIS_WEEK', 'THIS_MONTH', 'UPCOMING', 'OVERDUE', 'UNSCHEDULED', 'RECEIVED'] as const).map(tf => {
+                  const isSelected = arrivalsTimeFilter === tf;
+                  const label = 
+                    tf === 'ALL' ? 'All In-Transit' :
+                    tf === 'THIS_WEEK' ? 'This Week (< 7d)' :
+                    tf === 'THIS_MONTH' ? 'Next 30 Days' :
+                    tf === 'UPCOMING' ? 'All Scheduled' :
+                    tf === 'OVERDUE' ? 'Delayed' :
+                    tf === 'UNSCHEDULED' ? 'Schedule Pending' : 'Received';
+
+                  const count =
+                    tf === 'ALL' ? arrivalsStats.totalActiveLots :
+                    tf === 'THIS_WEEK' ? arrivalsStats.thisWeekLots :
+                    tf === 'THIS_MONTH' ? arrivalsStats.thisMonthLots :
+                    tf === 'UPCOMING' ? arrivalsStats.upcomingLots :
+                    tf === 'OVERDUE' ? arrivalsStats.overdueLots :
+                    tf === 'UNSCHEDULED' ? arrivalsStats.unscheduledLots : arrivalsStats.receivedLots;
+
+                  return (
+                    <button
+                      key={tf}
+                      type="button"
+                      onClick={() => setArrivalsTimeFilter(tf)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap",
+                        isSelected
+                          ? "bg-slate-900 text-white shadow-2xs"
+                          : "bg-white text-slate-700 hover:bg-slate-200/80 border border-slate-200"
+                      )}
+                    >
+                      <span>{label}</span>
+                      <span className={cn(
+                        "px-1.5 py-0.2 rounded-full text-[10px]",
+                        isSelected ? "bg-white/20 text-white font-extrabold" : "bg-slate-100 text-slate-700"
+                      )}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                <div className="h-4 w-px bg-slate-200 mx-1 hidden sm:block"></div>
+
+                {/* Port Filter */}
+                <select
+                  value={arrivalsPort}
+                  onChange={(e) => setArrivalsPort(e.target.value)}
+                  className="py-1 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  <option value="ALL">All Ports ({uniquePorts.length})</option>
+                  {uniquePorts.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+
+                {/* Search */}
+                <div className="relative min-w-[200px] flex-1 max-w-xs">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={arrivalsSearch}
+                    onChange={(e) => setArrivalsSearch(e.target.value)}
+                    placeholder="Search lot, PO, date, supplier, container..."
+                    className="w-full pl-8 pr-3 py-1 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  />
+                  {arrivalsSearch && (
+                    <button
+                      onClick={() => setArrivalsSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {(arrivalsSearch || arrivalsPort !== 'ALL' || arrivalsTimeFilter !== 'ALL') && (
+                  <button
+                    onClick={() => {
+                      setArrivalsSearch('');
+                      setArrivalsPort('ALL');
+                      setArrivalsTimeFilter('ALL');
+                    }}
+                    className="text-xs font-semibold text-rose-600 hover:underline px-1"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+
+              <div className="text-slate-500 font-medium text-xs">
+                Showing <strong className="text-slate-900">{filteredArrivalsByDate.length}</strong> arrival dates ({filteredArrivalsLotsCount} lots)
+              </div>
+            </div>
+
+            {/* Date-Grouped Arrivals Schedule */}
+            {filteredArrivalsByDate.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-400 card-shadow">
+                <Calendar className="h-10 w-10 mx-auto text-slate-300 mb-3" />
+                <h3 className="font-bold text-slate-700 text-sm">No arrivals found matching your criteria</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                  Try adjusting the arrival time filter, clearing the search query, or selecting another port of discharge.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredArrivalsByDate.map((dateGroup) => {
+                  const isCollapsed = collapsedArrivalDates.includes(dateGroup.dateStr);
+                  const daysDiff = dateGroup.etaInfo.daysDiff;
+                  const isOverdue = daysDiff !== null && daysDiff < 0;
+                  const isToday = daysDiff === 0;
+                  const isThisWeek = daysDiff !== null && daysDiff > 0 && daysDiff <= 7;
+
+                  return (
+                    <div 
+                      key={dateGroup.dateStr}
+                      className={cn(
+                        "rounded-xl border transition-all overflow-hidden card-shadow bg-white",
+                        isToday ? "border-amber-300 ring-2 ring-amber-400/20" :
+                        isOverdue ? "border-rose-200" :
+                        isThisWeek ? "border-emerald-300" : "border-slate-200"
+                      )}
+                    >
+                      {/* Date Header Card */}
+                      <div 
+                        onClick={() => {
+                          setCollapsedArrivalDates(prev =>
+                            prev.includes(dateGroup.dateStr)
+                              ? prev.filter(d => d !== dateGroup.dateStr)
+                              : [...prev, dateGroup.dateStr]
+                          );
+                        }}
+                        className={cn(
+                          "px-4 py-3 flex flex-wrap items-center justify-between gap-3 cursor-pointer select-none transition-colors border-b",
+                          isToday ? "bg-amber-50/70 border-amber-200 hover:bg-amber-100/50" :
+                          isOverdue ? "bg-rose-50/50 border-rose-200 hover:bg-rose-100/40" :
+                          isThisWeek ? "bg-emerald-50/50 border-emerald-200 hover:bg-emerald-100/40" :
+                          "bg-slate-50/70 border-slate-200 hover:bg-slate-100/60"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "p-2 rounded-lg",
+                            isToday ? "bg-amber-500 text-white" :
+                            isOverdue ? "bg-rose-500 text-white" :
+                            isThisWeek ? "bg-emerald-600 text-white" : "bg-slate-800 text-white"
+                          )}>
+                            <Calendar className="h-4 w-4" />
+                          </div>
+
+                          <div>
+                            <div className="flex items-center gap-2.5">
+                              <h3 className="font-bold text-slate-900 text-sm">
+                                {dateGroup.dateStr === 'unscheduled' ? 'Arrival Date Pending / Unscheduled' : formatDate(dateGroup.dateStr)}
+                              </h3>
+                              <span className={cn("px-2 py-0.5 rounded-md text-[10px] font-bold border", dateGroup.etaInfo.color)}>
+                                {dateGroup.etaInfo.text}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
+                              <span>Port ETA: <strong>{dateGroup.dateStr === 'unscheduled' ? 'TBD' : dateGroup.dateStr}</strong></span>
+                              <span>•</span>
+                              <span>Destination: <strong>{Array.from(new Set(dateGroup.lots.map(l => l.port))).join(', ') || 'N.S.'}</strong></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <div className="text-xs font-bold text-slate-900">
+                              {dateGroup.lots.length} {dateGroup.lots.length === 1 ? 'Lot' : 'Lots'}
+                            </div>
+                            <div className="text-xs font-mono font-bold text-blue-700">
+                              {formatWeight(dateGroup.totalWeight)}
+                            </div>
+                          </div>
+
+                          <div className="p-1 rounded-md text-slate-400 hover:text-slate-700 bg-white border border-slate-200">
+                            {isCollapsed ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronUp className="h-4 w-4" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Lots Arriving on this Date Table */}
+                      {!isCollapsed && (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse text-xs">
+                            <thead>
+                              <tr className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                                <th className="py-2.5 px-4">Lot Number</th>
+                                <th className="py-2.5 px-3">Linked PO</th>
+                                <th className="py-2.5 px-3">Supplier / Mill</th>
+                                <th className="py-2.5 px-3 text-center">Status</th>
+                                <th className="py-2.5 px-3 text-right">Cargo Weight</th>
+                                <th className="py-2.5 px-3">Discharge Port</th>
+                                <th className="py-2.5 px-3">Port of Load</th>
+                                <th className="py-2.5 px-3">Container No.</th>
+                                <th className="py-2.5 px-3">Items / Specs</th>
+                                <th className="py-2.5 px-4 text-right">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {dateGroup.lots.map((lot, lotIdx) => {
+                                const grades = Array.from(new Set(lot.items.map(it => it.grade).filter(Boolean))).join(', ');
+                                const dimensions = Array.from(new Set(lot.items.map(it => it.dimensions).filter(Boolean))).slice(0, 2).join(' • ');
+
+                                return (
+                                  <tr 
+                                    key={`${lot.lot_number || 'lot'}-${lotIdx}`}
+                                    className="hover:bg-blue-50/30 transition-colors cursor-pointer group"
+                                    onClick={() => {
+                                      if (lot.items.length > 0) {
+                                        setInspectingItem(lot.items[0]);
+                                      }
+                                    }}
+                                  >
+                                    <td className="py-2.5 px-4">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-mono font-bold text-xs bg-slate-900 text-white px-2 py-0.5 rounded shadow-2xs">
+                                          {lot.lot_number}
+                                        </span>
+                                      </div>
+                                    </td>
+
+                                    <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                                      {lot.linked_po_number ? (
+                                        <Link
+                                          href={`/purchasing/purchase-orders/${lot.linked_po_number}`}
+                                          className="font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                                        >
+                                          <span>PO {lot.linked_po_number}</span>
+                                          <ExternalLink className="h-3 w-3 opacity-60" />
+                                        </Link>
+                                      ) : (
+                                        <span className="text-slate-400 font-medium">Direct Cargo</span>
+                                      )}
+                                    </td>
+
+                                    <td className="py-2.5 px-3">
+                                      <span className="font-semibold text-slate-800 block truncate max-w-[140px]">{lot.supplier}</span>
+                                      {lot.make && (
+                                        <span className="text-[10px] text-slate-400 block truncate max-w-[140px]">Mill: {lot.make}</span>
+                                      )}
+                                    </td>
+
+                                    <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                      {renderShipmentStatusBadge(lot.status)}
+                                    </td>
+
+                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-700">
+                                      {formatWeight(lot.total_weight)}
+                                    </td>
+
+                                    <td className="py-2.5 px-3">
+                                      <span className="inline-flex items-center gap-1 font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[11px]">
+                                        <MapPin className="h-3 w-3 text-red-500" />
+                                        {lot.port || 'N.S.'}
+                                      </span>
+                                    </td>
+
+                                    <td className="py-2.5 px-3 text-slate-600 text-[11px]">
+                                      {lot.port_of_loading || '—'}
+                                    </td>
+
+                                    <td className="py-2.5 px-3">
+                                      {lot.container_no ? (
+                                        <span className="font-mono text-amber-800 text-[11px] font-semibold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 truncate max-w-[120px] inline-block">
+                                          {lot.container_no}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400">—</span>
+                                      )}
+                                    </td>
+
+                                    <td className="py-2.5 px-3">
+                                      <div className="text-[11px] font-semibold text-slate-800">{grades || 'Steel Grade'}</div>
+                                      {dimensions && (
+                                        <div className="text-[10px] font-mono text-slate-400 truncate max-w-[150px]">{dimensions}</div>
+                                      )}
+                                    </td>
+
+                                    <td className="py-2.5 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        {!isViewer && lot.status === 'In Transit' && lot.items.length > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setReceivingItem(lot.items[0]);
+                                              setWarehouseLocation(lot.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                                            }}
+                                            className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] shadow-2xs transition-colors flex items-center gap-1"
+                                            title="Receive this lot into warehouse inventory"
+                                          >
+                                            <CheckCircle2 className="h-3 w-3" />
+                                            <span>Receive</span>
+                                          </button>
+                                        )}
+                                        {lot.items.length > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setInspectingItem(lot.items[0])}
+                                            className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[10px] transition-colors"
+                                          >
+                                            Inspect Lot
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1226,9 +2250,9 @@ function ShipmentsContent() {
             </div>
 
             {/* Port Cargo Shipments Table */}
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
+            <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full rounded-xl border border-slate-200">
+              <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                <thead className="sticky top-0 z-10 bg-slate-50">
                   <tr>
                     <th className="table-header">Lot Number</th>
                     <th className="table-header">PO Number</th>
@@ -1249,10 +2273,10 @@ function ShipmentsContent() {
                       </td>
                     </tr>
                   ) : (
-                    filteredShipments.map((item) => {
+                    filteredShipments.map((item, idx) => {
                       const etaInfo = getEtaStatus(item.eta_seaport);
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                        <tr key={`${item.id || 'ship'}-${idx}`} className="hover:bg-slate-50 transition-colors">
                           <td className="table-cell font-mono font-bold text-slate-900">{item.lot_number}</td>
                           <td className="table-cell">
                             {item.linked_po_number ? (
@@ -1281,7 +2305,7 @@ function ShipmentsContent() {
                             </span>
                           </td>
                           <td className="table-cell text-right whitespace-nowrap">
-                            {item.status === 'In Transit' && (
+                            {!isViewer && item.status === 'In Transit' && (
                               <button
                                 onClick={() => {
                                   setReceivingItem(item);
@@ -1460,9 +2484,9 @@ function ShipmentsContent() {
 
             {/* VIEW 1: LOT-WISE SHIPMENT STATUS TABLE */}
             {ordersViewMode === 'lots' && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
+              <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
+                <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr>
                       <th className="table-header">Lot Number</th>
                       <th className="table-header">PO Number</th>
@@ -1487,15 +2511,20 @@ function ShipmentsContent() {
                         </td>
                       </tr>
                     ) : (
-                      filteredPoLots.map((lot) => {
+                      filteredPoLots.map((lot, idx) => {
                         const etaInfo = getEtaStatus(lot.etaSeaport);
 
                         return (
-                          <tr key={lot.id} className="hover:bg-blue-50/40 transition-colors">
+                          <tr key={`${lot.id || 'lot'}-${idx}`} className="hover:bg-blue-50/40 transition-colors">
                             <td className="table-cell">
                               <span className="font-mono font-bold text-xs bg-slate-900 text-white px-2 py-0.5 rounded shadow-2xs">
                                 {lot.lotNumber}
                               </span>
+                              {lot.containerNo && (
+                                <span className="block mt-0.5 text-[10px] font-mono text-amber-800 font-semibold truncate max-w-[120px]" title={`Container: ${lot.containerNo}`}>
+                                  Cont: {lot.containerNo}
+                                </span>
+                              )}
                               {!lot.hasExplicitLot && (
                                 <span className="block text-[10px] text-slate-400 mt-0.5">Item #{lot.lineNumber}</span>
                               )}
@@ -1545,10 +2574,13 @@ function ShipmentsContent() {
                                 <MapPin className="h-3 w-3 text-red-500" />
                                 {lot.port}
                               </span>
+                              {lot.portOfLoading && (
+                                <span className="text-[10px] text-slate-500 block mt-0.5">POL: {lot.portOfLoading}</span>
+                              )}
                               <span className="text-[10px] text-slate-500 block mt-0.5">{lot.deliveryTerms}</span>
                             </td>
                             <td className="table-cell text-right whitespace-nowrap">
-                              {lot.status === 'In Transit' && (
+                              {!isViewer && lot.status === 'In Transit' && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1609,9 +2641,9 @@ function ShipmentsContent() {
 
             {/* VIEW 2: GROUPED BY PURCHASE ORDER (WITH ACCORDION LOTS EXPANDER) */}
             {ordersViewMode === 'pos' && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
+              <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
+                <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr>
                       <th className="table-header w-12 text-center">Lots</th>
                       <th className="table-header">PO Number</th>
@@ -1626,7 +2658,7 @@ function ShipmentsContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {activePOs.map((po) => {
+                    {activePOs.map((po, idx) => {
                       const isExpanded = expandedPoIds.includes(po.id);
                       const poLots = allPoLots.filter(l => l.poId === po.id || l.poNumber === po.po_number);
                       const inTransitLots = poLots.filter(l => l.status === 'In Transit');
@@ -1635,7 +2667,7 @@ function ShipmentsContent() {
                       const receivedLots = poLots.filter(l => l.status === 'Received');
 
                       return (
-                        <React.Fragment key={po.id}>
+                        <React.Fragment key={`${po.id}-${po.po_number || idx}`}>
                           <tr className={cn("hover:bg-slate-50 transition-colors", isExpanded && "bg-blue-50/20")}>
                             <td className="table-cell text-center">
                               <button
@@ -1749,8 +2781,8 @@ function ShipmentsContent() {
                                           </td>
                                         </tr>
                                       ) : (
-                                        poLots.map(lot => (
-                                        <tr key={lot.id} className="hover:bg-slate-50/80">
+                                        poLots.map((lot, idx) => (
+                                        <tr key={`${lot.id || 'lot'}-${idx}`} className="hover:bg-slate-50/80">
                                           <td className="py-2">
                                             <span className="font-mono font-bold text-[11px] bg-slate-900 text-white px-2 py-0.5 rounded">
                                               {lot.lotNumber}
@@ -1766,23 +2798,27 @@ function ShipmentsContent() {
                                           <td className="py-2 font-semibold text-slate-800">{formatDate(lot.etaSeaport)}</td>
                                           <td className="py-2 text-right">
                                             {lot.status === 'In Transit' ? (
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setReceivingPoLot({
-                                                    po: lot.rawPo,
-                                                    item: lot.rawItem,
-                                                    lotNumber: lot.lotNumber,
-                                                    port: lot.port,
-                                                    grade: lot.gradeCode,
-                                                    weight: lot.readyQty > 0 ? lot.readyQty : lot.orderedQty
-                                                  });
-                                                  setWarehouseLocation(lot.port.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
-                                                }}
-                                                className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] ml-auto"
-                                              >
-                                                Receive
-                                              </button>
+                                              !isViewer ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setReceivingPoLot({
+                                                      po: lot.rawPo,
+                                                      item: lot.rawItem,
+                                                      lotNumber: lot.lotNumber,
+                                                      port: lot.port,
+                                                      grade: lot.gradeCode,
+                                                      weight: lot.readyQty > 0 ? lot.readyQty : lot.orderedQty
+                                                    });
+                                                    setWarehouseLocation(lot.port.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                                                  }}
+                                                  className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] ml-auto"
+                                                >
+                                                  Receive
+                                                </button>
+                                              ) : (
+                                                <span className="text-[10px] text-slate-400 italic font-medium">In Transit</span>
+                                              )
                                             ) : (
                                               <Link
                                                 href={`/purchasing/purchase-orders/${lot.poNumber}`}
@@ -1813,9 +2849,10 @@ function ShipmentsContent() {
 
       {/* Inspect Item Modal */}
       {inspectingItem && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between border-b pb-3">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-6 overflow-y-auto space-y-4">
+              <div className="flex items-center justify-between border-b pb-3">
               <div className="flex items-center gap-2.5 text-blue-600">
                 <div className="p-2 rounded-lg bg-blue-100">
                   <Ship className="h-5 w-5" />
@@ -1870,6 +2907,28 @@ function ShipmentsContent() {
                 <span className="text-slate-400 block text-[10px] font-semibold">Payment Terms</span>
                 <span className="font-semibold text-slate-800">{inspectingItem.payment_terms || '—'}</span>
               </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-semibold">Grade & Dimensions</span>
+                <span className="font-bold text-slate-800">{inspectingItem.grade || '—'} {inspectingItem.dimensions ? `• ${inspectingItem.dimensions}` : ''}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-semibold">Heat Number</span>
+                <span className="font-mono font-bold text-slate-800">{inspectingItem.heat_no || '—'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-semibold">Container Number</span>
+                <span className="font-mono font-bold text-amber-800">{inspectingItem.container_no || '—'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-semibold">Port of Loading (POL)</span>
+                <span className="font-semibold text-slate-800">{inspectingItem.port_of_loading || '—'}</span>
+              </div>
+              {inspectingItem.sims && (
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-semibold">SIMS Registration</span>
+                  <span className="font-mono font-semibold text-slate-800">{inspectingItem.sims}</span>
+                </div>
+              )}
               {inspectingItem.make && (
                 <div>
                   <span className="text-slate-400 block text-[10px] font-semibold">Make / Mill</span>
@@ -1886,7 +2945,7 @@ function ShipmentsContent() {
               >
                 Close
               </button>
-              {inspectingItem.status === 'In Transit' && (
+              {!isViewer && inspectingItem.status === 'In Transit' && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1917,6 +2976,7 @@ function ShipmentsContent() {
                 </Link>
               )}
             </div>
+            </div>
           </div>
         </div>
       )}
@@ -1940,9 +3000,9 @@ function ShipmentsContent() {
         };
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
-              <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm overflow-hidden">
+            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-emerald-600 text-white">
                     <CheckCircle2 className="h-5 w-5" />
@@ -1967,7 +3027,7 @@ function ShipmentsContent() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-4 text-xs text-slate-700">
+              <div className="p-6 space-y-4 text-xs text-slate-700 overflow-y-auto flex-1">
                 {isReceivingSuccess ? (
                   <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 flex items-center gap-3 animate-in fade-in">
                     <Check className="h-5 w-5 text-emerald-600" />
@@ -2022,7 +3082,7 @@ function ShipmentsContent() {
                       Confirming moves the item in Incoming Stock to <strong>Received Stock (INCOMING CLOSE)</strong>, updates the linked PO line item to <strong>Received</strong>, and registers inventory lots.
                     </div>
 
-                    <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+                    <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
                       <button
                         type="button"
                         onClick={() => {

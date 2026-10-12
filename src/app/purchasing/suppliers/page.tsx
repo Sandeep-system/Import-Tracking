@@ -4,9 +4,11 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Building2, Search, Plus, MapPin, Globe, Phone, Mail, ShoppingBag, X, UserCheck } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
-import { formatWeight } from '@/lib/utils';
+import { formatWeight, canonicalSupplierKey } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 export default function SuppliersPage() {
+  const { isViewer } = useAuth();
   const [dataVersion, setDataVersion] = useState(0);
   const [search, setSearch] = useState('');
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -29,8 +31,22 @@ export default function SuppliersPage() {
     return () => window.removeEventListener('app:data-updated', handleUpdate);
   }, []);
 
-  const suppliers = dataStore.getSuppliers();
+  const rawSuppliers = dataStore.getSuppliers();
   const allPOs = dataStore.getPurchaseOrders();
+
+  const suppliers = React.useMemo(() => {
+    const seen = new Set<string>();
+    const list: typeof rawSuppliers = [];
+    for (const s of rawSuppliers) {
+      if (!s || !s.supplier_name) continue;
+      const key = canonicalSupplierKey(s.supplier_name);
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(s);
+      }
+    }
+    return list;
+  }, [rawSuppliers, dataVersion]);
 
   const filtered = suppliers.filter(s => 
     s.supplier_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -86,13 +102,15 @@ export default function SuppliersPage() {
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Overseas Suppliers & Mills</h1>
           <p className="text-xs text-slate-500">Manage international steel suppliers, terms, and purchase volumes</p>
         </div>
-        <button
-          onClick={() => setIsAddOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add Supplier</span>
-        </button>
+        {!isViewer && (
+          <button
+            onClick={() => setIsAddOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Supplier</span>
+          </button>
+        )}
       </div>
 
       {/* Search and Count Bar */}
@@ -114,13 +132,18 @@ export default function SuppliersPage() {
 
       {/* Suppliers Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((s) => {
-          const supplierPOs = allPOs.filter(p => p.supplier_id === s.id || p.supplier_name === s.supplier_name);
+        {filtered.map((s, idx) => {
+          const sCanon = canonicalSupplierKey(s.supplier_name);
+          const supplierPOs = allPOs.filter(p => 
+            p.supplier_id === s.id || 
+            p.supplier_name === s.supplier_name ||
+            (p.supplier_name && canonicalSupplierKey(p.supplier_name) === sCanon)
+          );
           const totalOrd = supplierPOs.reduce((acc, p) => acc + (p.total_ordered_qty || 0), 0);
           const totalPend = supplierPOs.reduce((acc, p) => acc + (p.total_balance_qty || 0), 0);
 
           return (
-            <div key={s.id} className="bg-white p-5 rounded-xl border border-slate-200 card-shadow flex flex-col justify-between space-y-4">
+            <div key={`${s.id || s.supplier_name}-${idx}`} className="bg-white p-5 rounded-xl border border-slate-200 card-shadow flex flex-col justify-between space-y-4">
               <div>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2.5">

@@ -108,38 +108,40 @@ export default function MovementsPage() {
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 card-shadow overflow-hidden">
-        <table className="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr>
-              <th className="table-header">Date</th>
-              <th className="table-header">Transaction Type</th>
-              <th className="table-header">Lot Number</th>
-              <th className="table-header">Reference Transaction</th>
-              <th className="table-header text-right">Movement Quantity</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filtered.map(t => (
-              <tr key={t.id} className="hover:bg-slate-50">
-                <td className="table-cell text-slate-600">{formatDate(t.transaction_date)}</td>
-                <td className="table-cell">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                    {t.transaction_type}
-                  </span>
-                </td>
-                <td className="table-cell">
-                  <Link href={`/inventory/lots?q=${t.lot_number}`} className="font-mono font-bold text-slate-900 hover:text-blue-600">
-                    {t.lot_number}
-                  </Link>
-                </td>
-                <td className="table-cell font-medium text-slate-700">{t.reference_display || t.remarks}</td>
-                <td className={`table-cell text-right font-bold text-sm ${t.quantity >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {t.quantity >= 0 ? `+${formatWeight(t.quantity)}` : formatWeight(t.quantity)}
-                </td>
+        <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
+          <table className="w-full text-left border-separate border-spacing-0 text-xs">
+            <thead className="sticky top-0 z-10 bg-slate-50">
+              <tr>
+                <th className="table-header">Date</th>
+                <th className="table-header">Transaction Type</th>
+                <th className="table-header">Lot Number</th>
+                <th className="table-header">Reference Transaction</th>
+                <th className="table-header text-right">Movement Quantity</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(t => (
+                <tr key={t.id} className="hover:bg-slate-50">
+                  <td className="table-cell text-slate-600">{formatDate(t.transaction_date)}</td>
+                  <td className="table-cell">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                      {t.transaction_type}
+                    </span>
+                  </td>
+                  <td className="table-cell">
+                    <Link href={`/inventory/lots?q=${t.lot_number}`} className="font-mono font-bold text-slate-900 hover:text-blue-600">
+                      {t.lot_number}
+                    </Link>
+                  </td>
+                  <td className="table-cell font-medium text-slate-700">{t.reference_display || t.remarks}</td>
+                  <td className={`table-cell text-right font-bold text-sm ${t.quantity >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {t.quantity >= 0 ? `+${formatWeight(t.quantity)}` : formatWeight(t.quantity)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

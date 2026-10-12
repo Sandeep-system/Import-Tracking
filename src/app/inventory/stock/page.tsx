@@ -258,8 +258,9 @@ export default function StockPage() {
 
       {/* Main Stock Table */}
       <div className="bg-white rounded-xl border border-slate-200 card-shadow overflow-hidden">
-        <table className="w-full text-left border-collapse text-xs">
-          <thead>
+        <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
+          <table className="w-full text-left border-separate border-spacing-0 text-xs">
+            <thead className="sticky top-0 z-10 bg-slate-50">
             <tr>
               <th className="table-header">Steel Grade</th>
               <th className="table-header">Section Profile</th>
@@ -326,6 +327,7 @@ export default function StockPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* MODAL: VIEW ALL LOTS OF THIS STOCK SPECIFICATION */}

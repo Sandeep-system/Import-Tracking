@@ -33,6 +33,7 @@ import * as XLSX from 'xlsx';
 function LotsContent() {
   const searchParams = useSearchParams();
 
+  const [mounted, setMounted] = useState(false);
   const [dataVersion, setDataVersion] = useState(0);
 
   // Filters initialized from URL parameters if available
@@ -57,6 +58,7 @@ function LotsContent() {
   const [lotItemSearch, setLotItemSearch] = useState('');
 
   useEffect(() => {
+    setMounted(true);
     const handleUpdate = () => setDataVersion(v => v + 1);
     window.addEventListener('app:data-updated', handleUpdate);
     return () => window.removeEventListener('app:data-updated', handleUpdate);
@@ -461,8 +463,18 @@ function LotsContent() {
     XLSX.writeFile(wb, `Lot_Inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  if (!mounted) {
+    return (
+      <div className="space-y-5 p-4 animate-pulse" suppressHydrationWarning>
+        <div className="h-10 bg-slate-100 rounded-lg w-1/3" />
+        <div className="h-20 bg-slate-100 rounded-xl" />
+        <div className="h-96 bg-slate-100 rounded-xl" />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" suppressHydrationWarning>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -615,9 +627,9 @@ function LotsContent() {
 
       {/* Lots Table */}
       <div className="bg-white rounded-xl border border-slate-200 card-shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
+        <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
+          <table className="w-full text-left border-separate border-spacing-0 text-xs">
+            <thead className="sticky top-0 z-10 bg-slate-50">
               <tr>
                 <th 
                   className="table-header cursor-pointer select-none hover:bg-slate-100 transition-colors"
@@ -631,10 +643,6 @@ function LotsContent() {
                     </span>
                   </div>
                 </th>
-                <th className="table-header">Material</th>
-                <th className="table-header">Grade</th>
-                <th className="table-header">Section</th>
-                <th className="table-header">Dimensions</th>
                 <th className="table-header text-right">Available / Landed Qty</th>
                 <th className="table-header">Arriving Date</th>
                 <th className="table-header">Payment Terms</th>
@@ -647,18 +655,18 @@ function LotsContent() {
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredLots.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <Truck className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                     <p className="font-semibold text-slate-600">No lots found matching your filter criteria.</p>
                     <p className="text-[11px] text-slate-400 mt-1">Try resetting your filters or adjusting your search term.</p>
                   </td>
                 </tr>
               ) : (
-                filteredLots.map((lot) => {
+                filteredLots.map((lot, idx) => {
                   const meta = lotMetaMap[lot.id];
                   return (
                     <tr 
-                      key={lot.id} 
+                      key={`${lot.id}-${idx}`} 
                       onClick={() => handleInspectLot(lot)}
                       className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
                     >
@@ -667,14 +675,6 @@ function LotsContent() {
                           {lot.lot_number}
                         </span>
                       </td>
-                      <td className="table-cell">
-                        <span className="font-semibold text-slate-800 block text-xs truncate max-w-[130px]" title={meta?.material}>
-                          {meta?.material || 'Tool Steel'}
-                        </span>
-                      </td>
-                      <td className="table-cell font-bold text-slate-900">{lot.grade_code}</td>
-                      <td className="table-cell text-slate-600">{lot.section_name}</td>
-                      <td className="table-cell font-mono text-slate-600 text-[11px]">{lot.dimensions_display || '—'}</td>
                       <td className="table-cell text-right">
                         <strong className="text-emerald-600 block font-mono text-xs">{formatWeight(lot.available_qty)}</strong>
                         <span className="text-[10px] text-slate-400 font-medium">Recd: {formatWeight(lot.total_received_qty)}</span>

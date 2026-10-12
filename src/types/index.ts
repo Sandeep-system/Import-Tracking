@@ -209,6 +209,8 @@ export interface PurchaseOrderItem {
   delivery_terms?: string | null;
   payment_terms?: string | null;
   destination_port?: string | null;
+  container_no?: string | null;
+  port_of_loading?: string | null;
   legacy_source_sheet?: string | null;
   legacy_excel_row?: number | null;
   receipts?: Receipt[];
@@ -228,6 +230,9 @@ export interface Receipt {
   unit: string;
   supplier_invoice_number?: string | null;
   supplier_invoice_date?: string | null;
+  container_no?: string | null;
+  port_of_loading?: string | null;
+  warehouse_location?: string | null;
   raw_formula?: string | null;
   remarks?: string | null;
   created_by?: string | null;
@@ -351,7 +356,7 @@ export interface IncomingStockItem {
   port?: string | null;
   date_of_shipment?: string | null;
   eta_seaport?: string | null;
-  received_status: 'IN_TRANSIT' | 'RECEIVED';
+  received_status: 'READY' | 'IN_TRANSIT' | 'RECEIVED';
   heat_no?: string | null;
   sec_weight?: number | null;
   delivery_terms?: string | null;
@@ -359,6 +364,8 @@ export interface IncomingStockItem {
   currency?: string | null;
   sims?: string | null;
   payment_terms?: string | null;
+  container_no?: string | null;
+  port_of_loading?: string | null;
   hsn_code?: string | null;
   bis?: string | null;
   source_sheet: 'INCOMING SE' | 'INCOMING CLOSE';
@@ -367,3 +374,16 @@ export interface IncomingStockItem {
   linked_receipt_id?: string | null;
 }
 
+export interface DataState {
+  purchaseOrders: PurchaseOrder[];
+  suppliers: Supplier[];
+  customers: Customer[];
+  lots: Lot[];
+  receipts: Receipt[];
+  inventoryTransactions: InventoryTransaction[];
+  customerAllocations: CustomerAllocation[];
+  sales: Sale[];
+  auditLogs: AuditLog[];
+  balanceResolutions: BalanceResolution[];
+  incomingStock: IncomingStockItem[];
+}
