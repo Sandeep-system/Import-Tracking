@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { ShieldCheck, Mail, ArrowRight, Lock, CheckCircle2, AlertCircle, Building2, Eye, EyeOff, Edit3, ShieldAlert, KeyRound } from 'lucide-react';
-import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from '@/lib/authService';
+import { DEFAULT_ADMIN_EMAIL } from '@/lib/authService';
 
 export const LoginScreen: React.FC = () => {
   const { login, isLoading } = useAuth();
@@ -36,13 +36,6 @@ export const LoginScreen: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleQuickLoginAdmin = () => {
-    setEmail(DEFAULT_ADMIN_EMAIL);
-    setPassword(DEFAULT_ADMIN_PASSWORD);
-    setErrorMessage('');
-    login(DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD);
   };
 
   return (
@@ -134,29 +127,6 @@ export const LoginScreen: React.FC = () => {
               <ArrowRight className="h-4 w-4" />
             </button>
           </form>
-
-          {/* Quick Admin Access Preset */}
-          <div className="pt-2 border-t border-slate-100">
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-              <span>Primary Tech Admin:</span>
-            </div>
-            <button
-              type="button"
-              onClick={handleQuickLoginAdmin}
-              className="w-full py-2.5 px-3 bg-slate-50 hover:bg-blue-50/60 border border-slate-200 hover:border-blue-300 rounded-xl text-xs font-semibold text-slate-800 hover:text-blue-700 transition-colors flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <div>
-                  <div className="font-mono text-slate-800 font-bold">{DEFAULT_ADMIN_EMAIL}</div>
-                  <div className="text-[10px] text-slate-400">Password: ••••••••••</div>
-                </div>
-              </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                1-Click Admin Sign-in
-              </span>
-            </button>
-          </div>
 
           {/* Role Permissions Reference */}
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 space-y-2 text-[11px] text-slate-600">
