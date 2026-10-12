@@ -2,23 +2,32 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { ShieldCheck, Mail, ArrowRight, Lock, CheckCircle2, AlertCircle, Building2, Eye, Edit3, ShieldAlert } from 'lucide-react';
-import { DEFAULT_ADMIN_EMAIL } from '@/lib/authService';
+import { ShieldCheck, Mail, ArrowRight, Lock, CheckCircle2, AlertCircle, Building2, Eye, EyeOff, Edit3, ShieldAlert, KeyRound } from 'lucide-react';
+import { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from '@/lib/authService';
 
 export const LoginScreen: React.FC = () => {
   const { login, isLoading } = useAuth();
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    if (!email.trim()) {
+      setErrorMessage('Please enter your work email address.');
+      return;
+    }
+    if (!password.trim()) {
+      setErrorMessage('Please enter your password.');
+      return;
+    }
 
     setErrorMessage('');
     setIsSubmitting(true);
     try {
-      const res = await login(email.trim());
+      const res = await login(email.trim(), password.trim());
       if (!res.success) {
         setErrorMessage(res.message);
       }
@@ -31,8 +40,9 @@ export const LoginScreen: React.FC = () => {
 
   const handleQuickLoginAdmin = () => {
     setEmail(DEFAULT_ADMIN_EMAIL);
+    setPassword(DEFAULT_ADMIN_PASSWORD);
     setErrorMessage('');
-    login(DEFAULT_ADMIN_EMAIL);
+    login(DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD);
   };
 
   return (
@@ -78,6 +88,36 @@ export const LoginScreen: React.FC = () => {
               </div>
             </div>
 
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Password
+                </label>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errorMessage) setErrorMessage('');
+                  }}
+                  placeholder="Enter your password"
+                  className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
             {errorMessage && (
               <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-800 animate-in fade-in duration-150">
                 <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
@@ -90,7 +130,7 @@ export const LoginScreen: React.FC = () => {
               disabled={isSubmitting || isLoading}
               className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md shadow-blue-600/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
-              <span>{isSubmitting ? 'Verifying Access...' : 'Sign In with Email'}</span>
+              <span>{isSubmitting ? 'Verifying Credentials...' : 'Sign In to Import Tracking'}</span>
               <ArrowRight className="h-4 w-4" />
             </button>
           </form>
@@ -98,18 +138,21 @@ export const LoginScreen: React.FC = () => {
           {/* Quick Admin Access Preset */}
           <div className="pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-              <span>Primary Admin Account:</span>
+              <span>Primary Tech Admin:</span>
             </div>
             <button
               type="button"
               onClick={handleQuickLoginAdmin}
-              className="w-full py-2 px-3 bg-slate-50 hover:bg-blue-50/60 border border-slate-200 hover:border-blue-300 rounded-xl text-xs font-semibold text-slate-800 hover:text-blue-700 transition-colors flex items-center justify-between group cursor-pointer"
+              className="w-full py-2.5 px-3 bg-slate-50 hover:bg-blue-50/60 border border-slate-200 hover:border-blue-300 rounded-xl text-xs font-semibold text-slate-800 hover:text-blue-700 transition-colors flex items-center justify-between group cursor-pointer"
             >
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-mono">{DEFAULT_ADMIN_EMAIL}</span>
+                <div>
+                  <div className="font-mono text-slate-800 font-bold">{DEFAULT_ADMIN_EMAIL}</div>
+                  <div className="text-[10px] text-slate-400">Password: ••••••••••</div>
+                </div>
               </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                 1-Click Admin Sign-in
               </span>
             </button>

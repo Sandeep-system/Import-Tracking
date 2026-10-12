@@ -4,7 +4,24 @@ import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { UserRole, AppUser } from '@/types/auth';
 import { DEFAULT_ADMIN_EMAIL } from '@/lib/authService';
-import { X, UserPlus, Shield, ShieldCheck, Edit3, Eye, Trash2, CheckCircle2, AlertCircle, Users, Mail, Clock } from 'lucide-react';
+import { 
+  X, 
+  UserPlus, 
+  Shield, 
+  ShieldCheck, 
+  Edit3, 
+  Eye, 
+  EyeOff, 
+  Trash2, 
+  CheckCircle2, 
+  AlertCircle, 
+  Users, 
+  Mail, 
+  Clock, 
+  KeyRound, 
+  Lock, 
+  Check 
+} from 'lucide-react';
 
 interface UserManagementModalProps {
   isOpen: boolean;
@@ -12,26 +29,41 @@ interface UserManagementModalProps {
 }
 
 export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen, onClose }) => {
-  const { user, users, addUser, updateUserRole, removeUser } = useAuth();
+  const { user, users, addUser, updateUserRole, updateUserPassword, removeUser } = useAuth();
   const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<UserRole>('editor');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Inline Password Change state for existing user
+  const [changingPassEmail, setChangingPassEmail] = useState<string | null>(null);
+  const [newPasswordValue, setNewPasswordValue] = useState('');
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
 
   if (!isOpen) return null;
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmail.trim()) return;
+    if (!newEmail.trim()) {
+      setFeedback({ type: 'error', message: 'Please enter a valid email address.' });
+      return;
+    }
+    if (!newPassword.trim() || newPassword.trim().length < 4) {
+      setFeedback({ type: 'error', message: 'Password must be at least 4 characters long.' });
+      return;
+    }
 
     setFeedback(null);
     setIsSubmitting(true);
     try {
-      const res = await addUser(newEmail.trim(), newRole, newName.trim());
+      const res = await addUser(newEmail.trim(), newPassword.trim(), newRole, newName.trim());
       if (res.success) {
         setFeedback({ type: 'success', message: res.message });
         setNewEmail('');
+        setNewPassword('');
         setNewName('');
         setNewRole('editor');
       } else {
@@ -49,6 +81,23 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
     const res = await updateUserRole(targetEmail, role);
     if (res.success) {
       setFeedback({ type: 'success', message: res.message });
+    } else {
+      setFeedback({ type: 'error', message: res.message });
+    }
+  };
+
+  const handleUpdatePassword = async (targetEmail: string) => {
+    if (!newPasswordValue.trim() || newPasswordValue.trim().length < 4) {
+      setFeedback({ type: 'error', message: 'Password must be at least 4 characters.' });
+      return;
+    }
+
+    setFeedback(null);
+    const res = await updateUserPassword(targetEmail, newPasswordValue.trim());
+    if (res.success) {
+      setFeedback({ type: 'success', message: res.message });
+      setChangingPassEmail(null);
+      setNewPasswordValue('');
     } else {
       setFeedback({ type: 'error', message: res.message });
     }
@@ -94,7 +143,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -103,7 +152,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
             </div>
             <div>
               <h2 className="text-base font-bold text-white tracking-tight">User Access & Role Management</h2>
-              <p className="text-xs text-slate-400">Grant Editor or Viewer access and manage team permissions</p>
+              <p className="text-xs text-slate-400">Set email & password for team members and assign Editor or Viewer access</p>
             </div>
           </div>
           <button
@@ -138,75 +187,107 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
           )}
 
           {/* Add User Section */}
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-            <div className="flex items-center gap-2 font-bold text-slate-800 text-sm">
-              <UserPlus className="h-4 w-4 text-blue-600" />
-              <span>Add New User / Grant Access</span>
+          <div className="bg-slate-50 p-4.5 rounded-xl border border-slate-200 space-y-3.5 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-bold text-slate-800 text-sm">
+                <UserPlus className="h-4 w-4 text-blue-600" />
+                <span>Add Authorized User & Set Credentials</span>
+              </div>
+              <span className="text-[11px] text-slate-500">All fields saved securely to cloud</span>
             </div>
 
-            <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-              <div className="md:col-span-5">
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  Email Address *
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <form onSubmit={handleAddUser} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* 1. Email */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Email Address *
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="email"
+                      required
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="user@sandeepedgetech.com"
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Password */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Password *
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Create user password"
+                      className="w-full pl-9 pr-8 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    >
+                      {showNewPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Role */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Access Role *
+                  </label>
+                  <select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value as UserRole)}
+                    className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
+                    <option value="editor">Editor (Create & Update Orders)</option>
+                    <option value="viewer">Viewer (Read-Only Dashboards)</option>
+                    <option value="admin">Admin (Full Control)</option>
+                  </select>
+                </div>
+
+                {/* 4. Name */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Full Name (Optional)
+                  </label>
                   <input
-                    type="email"
-                    required
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    placeholder="user@sandeepedgetech.com"
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="e.g. Operations Manager"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
 
-              <div className="md:col-span-3">
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  Full Name (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g. Sandeep Sharma"
-                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 border-t border-slate-200">
+                <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-3">
+                  <span><strong>Editor:</strong> Record receipts, create POs, track sea cargo</span>
+                  <span><strong>Viewer:</strong> View-only across all shipment & order pages</span>
+                </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  Role Permission *
-                </label>
-                <select
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value as UserRole)}
-                  className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                >
-                  <option value="editor">Editor (Create & Edit)</option>
-                  <option value="viewer">Viewer (Read-Only)</option>
-                  <option value="admin">Admin (Full Control)</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm shadow-blue-500/20 disabled:opacity-50 cursor-pointer"
+                  className="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm shadow-blue-500/20 disabled:opacity-50 cursor-pointer text-xs"
                 >
                   <UserPlus className="h-3.5 w-3.5" />
-                  <span>{isSubmitting ? 'Adding...' : 'Add User'}</span>
+                  <span>{isSubmitting ? 'Granting Access...' : 'Save User & Password'}</span>
                 </button>
               </div>
             </form>
-
-            <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-4 pt-1 border-t border-slate-200">
-              <span><strong>Editor:</strong> Can add receipts, create & edit POs, update status</span>
-              <span><strong>Viewer:</strong> Can view all shipments, orders & inventory reports</span>
-              <span><strong>Admin:</strong> Full access including user management</span>
-            </div>
           </div>
 
           {/* Current Users Table */}
@@ -216,7 +297,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                 <Shield className="h-4 w-4 text-slate-600" />
                 <span>Authorized Team Members ({users.length})</span>
               </h3>
-              <span className="text-[11px] text-slate-400">Synchronized with Supabase Cloud DB</span>
+              <span className="text-[11px] text-slate-400">Synced in Real-time via Supabase Cloud DB</span>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
@@ -225,6 +306,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                   <tr>
                     <th className="py-2.5 px-4 font-bold">User / Email</th>
                     <th className="py-2.5 px-3 font-bold">Current Role</th>
+                    <th className="py-2.5 px-3 font-bold">Password</th>
                     <th className="py-2.5 px-3 font-bold">Status</th>
                     <th className="py-2.5 px-3 font-bold">Last Sign-In</th>
                     <th className="py-2.5 px-4 font-bold text-right">Actions</th>
@@ -241,7 +323,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                             <span>{u.name || u.email.split('@')[0]}</span>
                             {isMasterAdmin && (
                               <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded font-bold">
-                                Master
+                                Master Admin
                               </span>
                             )}
                           </div>
@@ -261,6 +343,71 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
                               <option value="editor">Editor</option>
                               <option value="viewer">Viewer</option>
                             </select>
+                          )}
+                        </td>
+
+                        {/* Password Column */}
+                        <td className="py-3 px-3">
+                          {changingPassEmail === u.email ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={newPasswordValue}
+                                onChange={(e) => setNewPasswordValue(e.target.value)}
+                                placeholder="New password"
+                                className="w-28 px-2 py-1 bg-white border border-blue-400 rounded text-xs focus:outline-none font-mono"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleUpdatePassword(u.email)}
+                                className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                title="Save Password"
+                              >
+                                <Check className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setChangingPassEmail(null);
+                                  setNewPasswordValue('');
+                                }}
+                                className="p-1 text-slate-400 hover:text-slate-600"
+                                title="Cancel"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-slate-700 text-[11px]">
+                                {revealedPasswords[u.email] ? (u.password || '••••••••') : '••••••••'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRevealedPasswords(prev => ({
+                                    ...prev,
+                                    [u.email]: !prev[u.email]
+                                  }))
+                                }
+                                className="p-0.5 text-slate-400 hover:text-slate-600"
+                                title={revealedPasswords[u.email] ? 'Hide Password' : 'Show Password'}
+                              >
+                                {revealedPasswords[u.email] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setChangingPassEmail(u.email);
+                                  setNewPasswordValue(u.password || '');
+                                }}
+                                className="text-[10px] text-blue-600 hover:underline font-semibold ml-1 cursor-pointer"
+                                title="Change Password"
+                              >
+                                Change
+                              </button>
+                            </div>
                           )}
                         </td>
 
@@ -284,9 +431,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({ isOpen
 
                         <td className="py-3 px-4 text-right">
                           {isMasterAdmin ? (
-                            <span className="text-[10px] text-slate-400 italic">Protected</span>
+                            <span className="text-[10px] text-slate-400 italic font-medium">Protected</span>
                           ) : (
                             <button
+                              type="button"
                               onClick={() => handleDelete(u.email)}
                               className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded transition-colors cursor-pointer"
                               title={`Revoke access for ${u.email}`}
