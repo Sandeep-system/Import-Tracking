@@ -24,6 +24,37 @@ import { canonicalSupplierKey } from './utils';
 const STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V8';
 const PREV_STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V7';
 
+export function normalizeIncomingStockItem(raw: any, defaultSource: string = 'INCOMING SE'): IncomingStockItem {
+  if (!raw) return raw;
+  const grade = String(raw.grade || raw.grade_code || '').trim();
+  const gradeCode = String(raw.grade_code || raw.grade || grade).trim();
+  const supplier = String(raw.supplier || raw.supplier_name || '').trim();
+  const supplierName = String(raw.supplier_name || raw.supplier || supplier).trim();
+  const diaW = raw.dia_w !== undefined && raw.dia_w !== null ? raw.dia_w : (raw.width_diameter !== undefined && raw.width_diameter !== null ? raw.width_diameter : null);
+  const widthDiameter = raw.width_diameter !== undefined && raw.width_diameter !== null ? raw.width_diameter : diaW;
+  const t = raw.t !== undefined && raw.t !== null ? raw.t : (raw.thickness !== undefined && raw.thickness !== null ? raw.thickness : null);
+  const thickness = raw.thickness !== undefined && raw.thickness !== null ? raw.thickness : t;
+  const l = raw.l !== undefined && raw.l !== null ? raw.l : (raw.length !== undefined && raw.length !== null ? raw.length : null);
+  const length = raw.length !== undefined && raw.length !== null ? raw.length : l;
+  const heat = raw.heat_no || raw.heat_number || null;
+
+  return {
+    ...raw,
+    grade,
+    grade_code: gradeCode,
+    supplier,
+    supplier_name: supplierName,
+    dia_w: diaW,
+    width_diameter: widthDiameter,
+    t,
+    thickness,
+    l,
+    length,
+    heat_no: heat,
+    heat_number: heat,
+    source_sheet: raw.source_sheet || defaultSource
+  };
+}
 
 function getInitialState(): DataState {
   const rawSuppliers = (initialDataRaw.suppliers || []) as unknown as Supplier[];
@@ -64,7 +95,7 @@ function getInitialState(): DataState {
   for (const item of [...defaultIncomingTransit, ...defaultIncomingReceived]) {
     const key = item.id || `inc-${Math.random()}`;
     if (!initMap.has(key)) {
-      initMap.set(key, item);
+      initMap.set(key, normalizeIncomingStockItem(item));
     }
   }
   const defaultIncomingStock = Array.from(initMap.values());
@@ -236,7 +267,8 @@ class Store {
         for (const savedInc of remote.incomingStock) {
           if (savedInc.id) {
             const existing = incMap.get(savedInc.id);
-            incMap.set(savedInc.id, existing ? { ...existing, ...savedInc } : savedInc);
+            const merged = existing ? { ...existing, ...savedInc } : savedInc;
+            incMap.set(savedInc.id, normalizeIncomingStockItem(merged));
           }
         }
         this.state.incomingStock = Array.from(incMap.values());
@@ -2087,7 +2119,7 @@ class Store {
     }
 
     if (filters?.supplier && filters.supplier !== 'ALL') {
-      items = items.filter(i => (i.supplier || '').toLowerCase() === filters.supplier?.toLowerCase());
+      items = items.filter(i => (i.supplier || (i as any).supplier_name || '').toLowerCase() === filters.supplier?.toLowerCase());
     }
 
     if (filters?.lot) {
@@ -2098,11 +2130,11 @@ class Store {
       const q = filters.search.toLowerCase().trim();
       items = items.filter(i => 
         (i.lot_number && i.lot_number.toLowerCase().includes(q)) ||
-        (i.supplier && i.supplier.toLowerCase().includes(q)) ||
-        (i.grade && i.grade.toLowerCase().includes(q)) ||
+        ((i.supplier || (i as any).supplier_name) && (i.supplier || (i as any).supplier_name).toLowerCase().includes(q)) ||
+        ((i.grade || (i as any).grade_code) && (i.grade || (i as any).grade_code).toLowerCase().includes(q)) ||
         (i.make && i.make.toLowerCase().includes(q)) ||
         (i.port && i.port.toLowerCase().includes(q)) ||
-        (i.heat_no && i.heat_no.toLowerCase().includes(q)) ||
+        ((i.heat_no || (i as any).heat_number) && (i.heat_no || (i as any).heat_number).toLowerCase().includes(q)) ||
         (i.linked_po_number && i.linked_po_number.toLowerCase().includes(q))
       );
     }
@@ -2305,12 +2337,13 @@ class Store {
     let updated = 0;
 
     for (const newItem of items) {
-      const existingIdx = this.state.incomingStock.findIndex(i => i.id === newItem.id);
+      const normalized = normalizeIncomingStockItem(newItem);
+      const existingIdx = this.state.incomingStock.findIndex(i => i.id === normalized.id);
       if (existingIdx >= 0) {
-        this.state.incomingStock[existingIdx] = { ...this.state.incomingStock[existingIdx], ...newItem };
+        this.state.incomingStock[existingIdx] = { ...this.state.incomingStock[existingIdx], ...normalized };
         updated++;
       } else {
-        this.state.incomingStock.unshift(newItem);
+        this.state.incomingStock.unshift(normalized);
         added++;
       }
     }
@@ -2364,7 +2397,7 @@ class Store {
     if (Array.isArray(payload.incomingStock) && payload.incomingStock.length > 0) {
       const existingInc = new Map(this.state.incomingStock.map(i => [i.id, i]));
       for (const inc of payload.incomingStock) {
-        existingInc.set(inc.id, inc);
+        existingInc.set(inc.id, normalizeIncomingStockItem(inc));
       }
       this.state.incomingStock = Array.from(existingInc.values());
     }

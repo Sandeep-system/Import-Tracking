@@ -241,19 +241,35 @@ function ShipmentsContent() {
         stage = 'In Transit';
       }
 
+      const incomingGrade = (inc.grade || (inc as any).grade_code || '').trim();
+      const poGrade = (matchedItem?.grade_code || '').trim();
+      // If PO is not linked, pick grade from incoming sheet
+      const resolvedGrade = (!inc.linked_po_number)
+        ? (incomingGrade || poGrade || 'Standard Grade')
+        : (poGrade || incomingGrade || 'Standard Grade');
+
+      const diaVal = inc.dia_w ?? (inc as any).width_diameter;
+      const tVal = inc.t ?? (inc as any).thickness;
+      const lVal = inc.l ?? (inc as any).length;
+      const dimStr = [
+        diaVal ? `DIA ${diaVal}` : '',
+        tVal ? `T${tVal}` : '',
+        lVal ? `L${lVal}` : ''
+      ].filter(Boolean).join(' × ');
+
       list.push({
         id: inc.id,
         lot_number: inc.lot_number.trim(),
         linked_po_number: inc.linked_po_number || matchedPo?.po_number || null,
-        supplier: inc.supplier || matchedPo?.supplier_name || 'Standard Supplier',
+        supplier: inc.supplier || (inc as any).supplier_name || matchedPo?.supplier_name || 'Standard Supplier',
         make: inc.make || matchedPo?.origin || matchedPo?.origin_make_name || null,
-        grade: inc.grade || matchedItem?.grade_code || 'Standard Grade',
-        dimensions: [inc.dia_w ? `DIA ${inc.dia_w}` : '', inc.t ? `T${inc.t}` : '', inc.l ? `L${inc.l}` : ''].filter(Boolean).join(' × '),
+        grade: resolvedGrade,
+        dimensions: dimStr || (matchedItem ? [matchedItem.diameter_width ? `DIA ${matchedItem.diameter_width}` : '', matchedItem.thickness ? `T${matchedItem.thickness}` : '', matchedItem.length ? `L${matchedItem.length}` : ''].filter(Boolean).join(' × ') : ''),
         weight: Number(inc.weight) || Number(matchedItem?.ready_quantity ?? matchedItem?.received_quantity ?? matchedItem?.ordered_quantity ?? 0),
         port: inc.port || matchedItem?.destination_port || matchedPo?.destination || 'N.S.',
         date_of_shipment: inc.date_of_shipment || matchedItem?.date_of_shipment || null,
         eta_seaport: inc.eta_seaport || matchedItem?.eta_seaport || matchedPo?.expected_delivery_date || null,
-        heat_no: inc.heat_no || matchedItem?.heat_no || null,
+        heat_no: inc.heat_no || (inc as any).heat_number || matchedItem?.heat_no || null,
         sims: inc.sims || matchedItem?.sims || null,
         delivery_terms: inc.delivery_terms || matchedItem?.delivery_terms || matchedPo?.delivery_terms || 'FOB',
         payment_terms: inc.payment_terms || matchedItem?.payment_terms || matchedPo?.payment_terms || 'DP at sight',

@@ -174,12 +174,12 @@ export default function IncomingStockPage() {
       'Lot Number': i.lot_number,
       'Linked PO': i.linked_po_number || 'Direct Cargo',
       'Make / Mill': i.make,
-      'Supplier': i.supplier,
-      'Steel Grade': i.grade,
+      'Supplier': i.supplier || (i as any).supplier_name || '',
+      'Steel Grade': i.grade || (i as any).grade_code || '',
       'Condition': i.condition || '',
-      'DIA / Width (mm)': i.dia_w || '',
-      'Thickness (mm)': i.t || '',
-      'Length (mm)': i.l || '',
+      'DIA / Width (mm)': i.dia_w ?? (i as any).width_diameter ?? '',
+      'Thickness (mm)': i.t ?? (i as any).thickness ?? '',
+      'Length (mm)': i.l ?? (i as any).length ?? '',
       'Pieces': i.pieces || '',
       'Weight (KG)': i.weight,
       'Customer': i.customer || '',
@@ -187,7 +187,7 @@ export default function IncomingStockPage() {
       'Shipment Date': i.date_of_shipment || '',
       'Sea Port ETA': i.eta_seaport || '',
       'Status': i.received_status,
-      'Heat Number': i.heat_no || '',
+      'Heat Number': i.heat_no || (i as any).heat_number || '',
       'Delivery Terms': i.delivery_terms || '',
       'Price': i.price || '',
       'Currency': i.currency || '',
@@ -770,8 +770,8 @@ export default function IncomingStockPage() {
 
                       {/* Make & Supplier */}
                       <td className="table-cell">
-                        <div className="font-semibold text-slate-800 truncate max-w-[190px]" title={item.supplier}>
-                          {item.supplier}
+                        <div className="font-semibold text-slate-800 truncate max-w-[190px]" title={item.supplier || (item as any).supplier_name}>
+                          {item.supplier || (item as any).supplier_name}
                         </div>
                         <div className="text-[10px] text-slate-500">
                           Make: <span className="font-medium text-slate-700">{item.make || 'Standard'}</span>
@@ -780,7 +780,7 @@ export default function IncomingStockPage() {
 
                       {/* Grade & Condition */}
                       <td className="table-cell">
-                        <div className="font-bold text-slate-900">{item.grade}</div>
+                        <div className="font-bold text-slate-900">{item.grade || (item as any).grade_code || '—'}</div>
                         {item.condition && (
                           <div className="text-[10px] text-slate-500 uppercase tracking-tight">
                             {item.condition}
@@ -791,7 +791,7 @@ export default function IncomingStockPage() {
                       {/* Dimensions & Pieces */}
                       <td className="table-cell text-right">
                         <div className="font-mono text-slate-700">
-                          {[item.dia_w ? `W${item.dia_w}` : '', item.t ? `T${item.t}` : '', item.l ? `L${item.l}` : ''].filter(Boolean).join(' × ') || '—'}
+                          {[(item.dia_w ?? (item as any).width_diameter) ? `W${item.dia_w ?? (item as any).width_diameter}` : '', (item.t ?? (item as any).thickness) ? `T${item.t ?? (item as any).thickness}` : '', (item.l ?? (item as any).length) ? `L${item.l ?? (item as any).length}` : ''].filter(Boolean).join(' × ') || '—'}
                         </div>
                         {item.pieces && (
                           <div className="text-[10px] text-slate-500 font-medium">
@@ -961,7 +961,7 @@ export default function IncomingStockPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Grade</span>
-                  <div className="font-bold text-slate-900 text-xs mt-0.5">{inspectingItem.grade}</div>
+                  <div className="font-bold text-slate-900 text-xs mt-0.5">{inspectingItem.grade || (inspectingItem as any).grade_code || '—'}</div>
                 </div>
 
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
@@ -987,7 +987,7 @@ export default function IncomingStockPage() {
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Dimensions (DIA/W × T × L)</span>
                   <div className="font-bold text-slate-900 text-xs mt-0.5">
-                    {[inspectingItem.dia_w ? `W${inspectingItem.dia_w}` : '', inspectingItem.t ? `T${inspectingItem.t}` : '', inspectingItem.l ? `L${inspectingItem.l}` : ''].filter(Boolean).join(' × ') || '—'}
+                    {[(inspectingItem.dia_w ?? (inspectingItem as any).width_diameter) ? `W${inspectingItem.dia_w ?? (inspectingItem as any).width_diameter}` : '', (inspectingItem.t ?? (inspectingItem as any).thickness) ? `T${inspectingItem.t ?? (inspectingItem as any).thickness}` : '', (inspectingItem.l ?? (inspectingItem as any).length) ? `L${inspectingItem.l ?? (inspectingItem as any).length}` : ''].filter(Boolean).join(' × ') || '—'}
                   </div>
                 </div>
 
@@ -1008,7 +1008,7 @@ export default function IncomingStockPage() {
 
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Heat Number</span>
-                  <div className="font-bold font-mono text-slate-900 text-xs mt-0.5">{inspectingItem.heat_no || '—'}</div>
+                  <div className="font-bold font-mono text-slate-900 text-xs mt-0.5">{inspectingItem.heat_no || (inspectingItem as any).heat_number || '—'}</div>
                 </div>
 
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
@@ -1108,7 +1108,7 @@ export default function IncomingStockPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Grade & Make:</span>
-                    <span className="font-semibold text-slate-800">{receivingItem.grade} ({receivingItem.make || 'Standard'})</span>
+                    <span className="font-semibold text-slate-800">{receivingItem.grade || (receivingItem as any).grade_code} ({receivingItem.make || 'Standard'})</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Cargo Weight:</span>

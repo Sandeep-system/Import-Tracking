@@ -344,12 +344,18 @@ export interface IncomingStockItem {
   id: string;
   make: string;
   supplier: string;
+  supplier_name?: string | null;
+  supplier_id?: string | null;
   lot_number: string;
   grade: string;
+  grade_code?: string | null;
   condition?: string | null;
   dia_w?: number | string | null;
+  width_diameter?: number | string | null;
   t?: number | string | null;
+  thickness?: number | string | null;
   l?: number | string | null;
+  length?: number | string | null;
   pieces?: number | string | null;
   weight: number;
   customer?: string | null;
@@ -358,6 +364,7 @@ export interface IncomingStockItem {
   eta_seaport?: string | null;
   received_status: 'READY' | 'IN_TRANSIT' | 'RECEIVED';
   heat_no?: string | null;
+  heat_number?: string | null;
   sec_weight?: number | null;
   delivery_terms?: string | null;
   price?: number | null;
@@ -368,10 +375,11 @@ export interface IncomingStockItem {
   port_of_loading?: string | null;
   hsn_code?: string | null;
   bis?: string | null;
-  source_sheet: 'INCOMING SE' | 'INCOMING CLOSE';
+  source_sheet?: 'INCOMING SE' | 'INCOMING CLOSE' | string;
   linked_po_number?: string | null;
   linked_po_id?: string | null;
   linked_receipt_id?: string | null;
+  created_at?: string;
 }
 
 export interface DataState {
