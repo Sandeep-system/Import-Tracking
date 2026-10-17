@@ -1495,10 +1495,15 @@ class Store {
 
     const isPOFullyMatched = (po.total_ordered_qty > 0 || po.total_received_qty > 0) &&
       Math.abs(po.total_ordered_qty - po.total_received_qty) < 0.001;
-    if (isPOFullyMatched || po.is_closed) {
+    if (isPOFullyMatched) {
       po.total_physical_short_qty = 0;
       po.total_actionable_pending_qty = 0;
       po.total_balance_qty = 0;
+      po.total_pending_value = 0;
+    } else if (po.is_closed) {
+      po.total_physical_short_qty = 0;
+      po.total_actionable_pending_qty = 0;
+      // Preserve po.total_balance_qty so closed POs retain their under/over received variance
       po.total_pending_value = 0;
     }
 

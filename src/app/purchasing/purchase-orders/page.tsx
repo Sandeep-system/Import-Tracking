@@ -282,11 +282,13 @@ const STANDARD_ORIGINS = [
       'Status': po.status,
       'Total Items': po.total_items,
       'Ordered Qty (KG)': po.total_ordered_qty,
-      'Recd / Ready Qty (KG)': po.total_ready_qty ?? po.total_received_qty,
+      'Recd / Ready Qty (KG)': po.total_received_qty || po.total_ready_qty || 0,
       'Physical Short (KG)': po.total_physical_short_qty || 0,
       'Carried Forward (KG)': po.total_carried_forward_qty || 0,
       'Waived (KG)': po.total_waived_qty || 0,
-      'Pending Qty (KG)': po.total_actionable_pending_qty ?? po.total_balance_qty ?? 0,
+      'Pending Qty (KG)': po.is_closed 
+        ? (po.total_balance_qty ?? ((po.total_ordered_qty || 0) - (po.total_received_qty || 0)))
+        : (po.total_actionable_pending_qty ?? po.total_balance_qty ?? 0),
       'Currency': po.currency,
       'Payment Terms': po.payment_terms,
       'Destination': po.destination,
@@ -620,18 +622,22 @@ const STANDARD_ORIGINS = [
                       {formatWeight(po.total_ordered_qty)}
                     </td>
                     <td className="table-cell text-right font-semibold text-emerald-600">
-                      {formatWeight(po.total_ready_qty ?? po.total_received_qty)}
+                      {formatWeight(po.total_received_qty || po.total_ready_qty || 0)}
                     </td>
                     {(() => {
-                      const isSettled = po.is_closed || Math.abs((po.total_ordered_qty || 0) - (po.total_received_qty || 0)) < 0.001;
-                      const bal = isSettled ? 0 : (po.total_actionable_pending_qty ?? po.total_balance_qty ?? 0);
+                      const isSettled = Math.abs((po.total_ordered_qty || 0) - (po.total_received_qty || 0)) < 0.001;
+                      const bal = isSettled 
+                        ? 0 
+                        : (po.is_closed 
+                            ? (po.total_balance_qty ?? ((po.total_ordered_qty || 0) - (po.total_received_qty || 0)))
+                            : (po.total_actionable_pending_qty ?? po.total_balance_qty ?? 0));
                       const physShort = isSettled ? 0 : (po.total_physical_short_qty ?? 0);
                       return (
                         <td className={`table-cell text-right font-bold ${!isSettled && bal < 0 ? 'text-purple-700' : isSettled ? 'text-slate-400' : 'text-blue-700'}`}>
                           <div>{formatWeight(bal)}</div>
-                          {!isSettled && bal >= 0 && physShort > bal && (
-                            <span className="block text-[10px] font-normal text-slate-400">
-                              Short: {formatWeight(physShort)}
+                          {!isSettled && bal > 0 && (
+                            <span className={`block text-[10px] font-normal ${po.is_closed ? 'text-amber-700' : 'text-slate-400'}`}>
+                              Short: {formatWeight(po.is_closed ? bal : (physShort > bal ? physShort : bal))}
                             </span>
                           )}
                           {!isSettled && bal < 0 && (

@@ -959,13 +959,19 @@ const STANDARD_ORIGINS = [
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Recd / Ready Qty</span>
-              <span className="text-sm font-bold text-emerald-600">{formatWeight(po.total_ready_qty ?? po.total_received_qty)}</span>
+              <span className="text-sm font-bold text-emerald-600">{formatWeight(po.total_received_qty || po.total_ready_qty || 0)}</span>
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pending</span>
-              <span className={`text-sm font-bold ${(po.total_balance_qty || 0) < 0 ? 'text-purple-700' : 'text-blue-700'}`}>
-                {formatWeight(po.total_balance_qty)}
-              </span>
+              {(() => {
+                const isSettled = Math.abs((po.total_ordered_qty || 0) - (po.total_received_qty || 0)) < 0.001;
+                const bal = isSettled ? 0 : (po.total_balance_qty ?? ((po.total_ordered_qty || 0) - (po.total_received_qty || 0)));
+                return (
+                  <span className={`text-sm font-bold ${!isSettled && bal < 0 ? 'text-purple-700' : isSettled ? 'text-slate-400' : 'text-blue-700'}`}>
+                    {formatWeight(bal)}
+                  </span>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1191,7 +1197,14 @@ const STANDARD_ORIGINS = [
               {po.items?.map((item) => {
                 const dimStr = `${item.diameter_width || '—'} ${item.thickness ? 'x ' + item.thickness : ''} ${item.length ? 'x ' + item.length : ''} mm`;
                 const isFullySettled = Math.abs(item.ordered_quantity - (item.received_quantity || 0)) < 0.001;
-                const actionable = isFullySettled ? 0 : (item.actionable_pending_qty ?? item.balance_quantity ?? 0);
+                const itemBal = item.balance_quantity !== undefined && item.balance_quantity !== null
+                  ? item.balance_quantity
+                  : (item.ordered_quantity - (item.received_quantity || 0));
+                const actionable = isFullySettled
+                  ? 0
+                  : (item.actionable_pending_qty !== undefined && item.actionable_pending_qty !== 0
+                      ? item.actionable_pending_qty
+                      : itemBal);
                 const physicalShort = isFullySettled ? 0 : (item.physical_short_qty ?? Math.max(0, item.ordered_quantity - (item.received_quantity || 0)));
 
                 return (
@@ -1242,13 +1255,13 @@ const STANDARD_ORIGINS = [
                       {formatWeight(item.ordered_quantity)}
                     </td>
                     <td className="table-cell text-right font-bold text-emerald-600">
-                      {formatWeight(item.ready_quantity ?? item.received_quantity ?? 0)}
+                      {formatWeight((item.received_quantity ?? 0) > 0 ? item.received_quantity : (item.ready_quantity || 0))}
                     </td>
                     <td className={`table-cell text-right font-bold ${!isFullySettled && actionable < 0 ? 'text-purple-700' : isFullySettled ? 'text-slate-400' : 'text-blue-700'}`}>
                       <div>{formatWeight(isFullySettled ? 0 : actionable)}</div>
-                      {!isFullySettled && actionable >= 0 && physicalShort > actionable && (
+                      {!isFullySettled && actionable > 0 && (
                         <div className="text-[10px] text-amber-700 font-normal">
-                          Short: {formatWeight(physicalShort)}
+                          Short: {formatWeight(physicalShort > actionable ? physicalShort : actionable)}
                         </div>
                       )}
                       {!isFullySettled && actionable < 0 && (
@@ -1513,7 +1526,14 @@ const STANDARD_ORIGINS = [
                   {(() => {
                     const isSelectedSettled = Math.abs(selectedItem.ordered_quantity - (selectedItem.received_quantity || 0)) < 0.001;
                     const selPhysicalShort = isSelectedSettled ? 0 : (selectedItem.physical_short_qty ?? Math.max(0, selectedItem.ordered_quantity - (selectedItem.received_quantity || 0)));
-                    const selBal = isSelectedSettled ? 0 : (selectedItem.actionable_pending_qty ?? selectedItem.balance_quantity ?? 0);
+                    const selItemBal = selectedItem.balance_quantity !== undefined && selectedItem.balance_quantity !== null
+                      ? selectedItem.balance_quantity
+                      : (selectedItem.ordered_quantity - (selectedItem.received_quantity || 0));
+                    const selBal = isSelectedSettled
+                      ? 0
+                      : (selectedItem.actionable_pending_qty !== undefined && selectedItem.actionable_pending_qty !== 0
+                          ? selectedItem.actionable_pending_qty
+                          : selItemBal);
                     return (
                       <>
                         <div className="p-2.5 bg-white rounded-lg border border-slate-200">
@@ -1530,11 +1550,11 @@ const STANDARD_ORIGINS = [
                           <span className="text-[10px] text-slate-400 font-bold uppercase block">Waived / Short</span>
                           <span className="text-sm font-bold text-amber-600">{formatWeight(isSelectedSettled ? 0 : (selectedItem.waived_qty || 0))}</span>
                         </div>
-                        <div className={`p-2.5 rounded-lg border ${!isSelectedSettled && selBal < 0 ? 'bg-purple-50 border-purple-200' : 'bg-blue-50 border-blue-200'}`}>
-                          <span className={`text-[10px] font-bold uppercase block ${!isSelectedSettled && selBal < 0 ? 'text-purple-600' : 'text-blue-600'}`}>
-                            {!isSelectedSettled && selBal < 0 ? 'Over Received' : 'Pending Qty'}
+                        <div className={`p-2.5 rounded-lg border ${!isSelectedSettled && selBal < 0 ? 'bg-purple-50 border-purple-200' : isSelectedSettled ? 'bg-slate-50 border-slate-200' : 'bg-blue-50 border-blue-200'}`}>
+                          <span className={`text-[10px] font-bold uppercase block ${!isSelectedSettled && selBal < 0 ? 'text-purple-600' : isSelectedSettled ? 'text-slate-500' : 'text-blue-600'}`}>
+                            {!isSelectedSettled && selBal < 0 ? 'Over Received' : isSelectedSettled ? 'Settled' : 'Pending Qty'}
                           </span>
-                          <span className={`text-sm font-bold ${!isSelectedSettled && selBal < 0 ? 'text-purple-900' : 'text-blue-900'}`}>
+                          <span className={`text-sm font-bold ${!isSelectedSettled && selBal < 0 ? 'text-purple-900' : isSelectedSettled ? 'text-slate-600' : 'text-blue-900'}`}>
                             {formatWeight(selBal)}
                           </span>
                         </div>

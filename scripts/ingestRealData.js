@@ -554,6 +554,7 @@ for (let r = 2; r <= rangeClosed.e.r; r++) {
 const closedPurchaseOrders = Array.from(closedPoGroups.values()).map(po => {
   const totalOrd = po.items.reduce((s, it) => s + (it.ordered_quantity || 0), 0);
   const totalRecd = po.items.reduce((s, it) => s + (it.received_quantity || 0), 0);
+  const totalBal = po.items.reduce((s, it) => s + (it.balance_quantity || 0), 0);
 
   return {
     ...po,
@@ -563,7 +564,7 @@ const closedPurchaseOrders = Array.from(closedPoGroups.values()).map(po => {
     total_ordered_qty: totalOrd,
     total_received_qty: totalRecd,
     total_ready_qty: totalRecd,
-    total_balance_qty: 0,
+    total_balance_qty: totalBal,
     total_physical_short_qty: 0,
     total_actionable_pending_qty: 0,
     created_at: new Date().toISOString(),
