@@ -71,6 +71,7 @@ export interface LotShipmentGroup {
   supplier: string;
   make?: string | null;
   linked_po_number?: string | null;
+  linked_pos?: string[];
   port: string;
   date_of_shipment?: string | null;
   eta_seaport?: string | null;
@@ -194,17 +195,27 @@ function ShipmentsContent() {
       let matchedPo: PurchaseOrder | undefined;
       let matchedItem: PurchaseOrderItem | undefined;
 
+      const incCleanGrade = (inc.grade || (inc as any).grade_code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
       if (inc.linked_po_number) {
         matchedPo = activePOs.find(p => p.po_number === inc.linked_po_number || p.id === inc.linked_po_id);
         if (matchedPo && matchedPo.items) {
           matchedItem = matchedPo.items.find(pi => 
-            (inc.lot_number && pi.lot_number?.trim() === inc.lot_number.trim()) ||
-            inc.id.includes(pi.id)
+            !matchedPoItemIds.has(pi.id) && (
+              (inc.lot_number && pi.lot_number?.trim() === inc.lot_number.trim() &&
+               (pi.grade_code?.toLowerCase().replace(/[^a-z0-9]/g, '') === incCleanGrade || !incCleanGrade)) ||
+              (inc.id && inc.id.includes(pi.id)) ||
+              (inc.lot_number && pi.lot_number?.trim() === inc.lot_number.trim())
+            )
           );
         }
       } else if (inc.lot_number) {
         for (const po of activePOs) {
-          const pi = po.items?.find(item => item.lot_number?.trim() === inc.lot_number.trim());
+          const pi = po.items?.find(item => 
+            !matchedPoItemIds.has(item.id) && 
+            item.lot_number?.trim() === inc.lot_number.trim() &&
+            (item.grade_code?.toLowerCase().replace(/[^a-z0-9]/g, '') === incCleanGrade || !incCleanGrade)
+          );
           if (pi) {
             matchedPo = po;
             matchedItem = pi;
@@ -238,7 +249,14 @@ function ShipmentsContent() {
           stage = 'In Transit';
         }
       } else {
-        stage = 'In Transit';
+        // Unlinked incoming items: Option 2 rule
+        const shipDate = inc.date_of_shipment ? normalizeDateStr(inc.date_of_shipment) : null;
+        const nowStr = new Date().toISOString().split('T')[0];
+        if (inc.received_status === 'READY' || !shipDate || shipDate > nowStr) {
+          stage = 'Ready';
+        } else {
+          stage = 'In Transit';
+        }
       }
 
       const incomingGrade = (inc.grade || (inc as any).grade_code || '').trim();
@@ -355,6 +373,7 @@ function ShipmentsContent() {
       supplier: string;
       make?: string | null;
       linked_po_number?: string | null;
+      linked_pos: Set<string>;
       port: string;
       date_of_shipment?: string | null;
       eta_seaport?: string | null;
@@ -374,6 +393,7 @@ function ShipmentsContent() {
           supplier: item.supplier,
           make: item.make,
           linked_po_number: item.linked_po_number,
+          linked_pos: new Set<string>(),
           port: item.port,
           date_of_shipment: item.date_of_shipment,
           eta_seaport: item.eta_seaport,
@@ -385,12 +405,19 @@ function ShipmentsContent() {
         map.set(key, group);
       }
       group.items.push(item);
+      if (item.linked_po_number) group.linked_pos.add(item.linked_po_number);
       if (!group.container_no && item.container_no) group.container_no = item.container_no;
       if (!group.port_of_loading && item.port_of_loading) group.port_of_loading = item.port_of_loading;
       if (!group.date_of_shipment && item.date_of_shipment) group.date_of_shipment = item.date_of_shipment;
       if (!group.eta_seaport && item.eta_seaport) group.eta_seaport = item.eta_seaport;
       if (!group.make && item.make) group.make = item.make;
-      if (!group.linked_po_number && item.linked_po_number) group.linked_po_number = item.linked_po_number;
+
+      // Prioritize active PO over closed PO for primary group.linked_po_number
+      const isItemPoActive = activePOs.some(p => p.po_number === item.linked_po_number);
+      const isCurrentPoActive = activePOs.some(p => p.po_number === group.linked_po_number);
+      if (!group.linked_po_number || (!isCurrentPoActive && isItemPoActive)) {
+        group.linked_po_number = item.linked_po_number;
+      }
     }
 
     const list: LotShipmentGroup[] = [];
@@ -415,6 +442,7 @@ function ShipmentsContent() {
         supplier: g.supplier,
         make: g.make,
         linked_po_number: g.linked_po_number,
+        linked_pos: Array.from(g.linked_pos),
         port: g.port,
         date_of_shipment: g.date_of_shipment,
         eta_seaport: g.eta_seaport,
@@ -427,7 +455,7 @@ function ShipmentsContent() {
     }
 
     return list;
-  }, [allUnifiedShipments]);
+  }, [allUnifiedShipments, activePOs]);
 
   // Counts of unique lots across all 4 shipment stages
   const statusCounts = useMemo(() => {
@@ -1467,7 +1495,30 @@ function ShipmentsContent() {
                               )}
                             </td>
                             <td className="table-cell" onClick={(e) => e.stopPropagation()}>
-                              {group.linked_po_number ? (
+                              {group.linked_pos && group.linked_pos.length > 0 ? (
+                                <div className="flex flex-col gap-1">
+                                  {group.linked_pos.map((poNum) => {
+                                    const isActive = activePOs.some(p => p.po_number === poNum);
+                                    return (
+                                      <Link
+                                        key={poNum}
+                                        href={`/purchasing/purchase-orders/${poNum}`}
+                                        className={cn(
+                                          "font-bold hover:underline inline-flex items-center gap-1 text-[11px]",
+                                          isActive ? "text-blue-600 hover:text-blue-800" : "text-slate-500 hover:text-slate-700"
+                                        )}
+                                      >
+                                        <span>PO {poNum}</span>
+                                        {isActive ? (
+                                          <span className="text-[9px] bg-blue-50 text-blue-700 px-1 rounded font-semibold border border-blue-200">Active</span>
+                                        ) : (
+                                          <span className="text-[9px] bg-slate-100 text-slate-500 px-1 rounded font-normal border border-slate-200">Closed</span>
+                                        )}
+                                      </Link>
+                                    );
+                                  })}
+                                </div>
+                              ) : group.linked_po_number ? (
                                 <Link
                                   href={`/purchasing/purchase-orders/${group.linked_po_number}`}
                                   className="font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"

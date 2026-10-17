@@ -324,9 +324,12 @@ export default function DataImportPage() {
               const payTerms = String(row['PAYMENT TERMS'] || row['Payment Terms'] || 'DP at sight').trim();
               const linkedPo = String(row['ORDER NO.'] || row['ORDER NO'] || row['Linked PO'] || '').trim();
 
+              const nowStr = new Date().toISOString().split('T')[0];
+              const isReady = !dateOfShipment || dateOfShipment > nowStr;
               const stage: 'READY' | 'IN_TRANSIT' | 'RECEIVED' = 
                 recdStatusRaw.includes('REC') ? 'RECEIVED' : 
-                recdStatusRaw.includes('READY') ? 'READY' : 'IN_TRANSIT';
+                recdStatusRaw.includes('READY') ? 'READY' : 
+                (isReady ? 'READY' : 'IN_TRANSIT');
 
               extractedIncoming.push({
                 id: `inc-bulk-${lotNo}-${idx + 1}`,

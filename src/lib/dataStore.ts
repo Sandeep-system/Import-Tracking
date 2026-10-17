@@ -1729,35 +1729,86 @@ class Store {
 
   // --- Lots & Inventory ---
   public getLots(search?: string) {
-    // Ensure all PO items with an assigned lot number are reflected in lots
+    // Collect all lot aggregations from PO items
+    const poLotAgg = new Map<string, {
+      total_received_qty: number;
+      grade_codes: Set<string>;
+      po_numbers: Set<string>;
+      suppliers: Set<string>;
+      sections: Set<string>;
+      dimensions: Set<string>;
+      firstItemId: string;
+      primaryPo: string;
+      primarySup: string;
+      primaryGrade: string;
+      primarySection: string;
+    }>();
+
     for (const po of this.state.purchaseOrders) {
       if (!po.items) continue;
       for (const item of po.items) {
         if (item.lot_number && item.lot_number.trim()) {
           const lotNo = item.lot_number.trim();
-          if (!this.state.lots.some(l => l.lot_number.toLowerCase() === lotNo.toLowerCase())) {
-            this.state.lots.unshift({
-              id: `lot-${lotNo}`,
-              lot_number: lotNo,
-              purchase_order_item_id: item.id,
-              po_number: po.po_number,
-              supplier_name: po.supplier_name,
-              grade_code: item.grade_code,
-              section_name: item.section_name,
-              dimensions_display: [
-                item.diameter_width ? `DIA ${item.diameter_width}` : '',
-                item.thickness ? `T${item.thickness}` : '',
-                item.length ? `L${item.length}` : ''
-              ].filter(Boolean).join(' × ') || 'Standard Spec',
-              total_received_qty: Number(item.ready_quantity ?? item.received_quantity ?? 0),
-              total_allocated_sold_qty: 0,
-              available_qty: Number(item.ready_quantity ?? item.received_quantity ?? 0),
-              warehouse_location: 'Nhava Sheva Yard',
-              status: (item.ready_quantity || item.received_quantity) ? 'Available' : 'Allocated',
-              created_at: new Date().toISOString()
+          const lotKey = lotNo.toLowerCase();
+          const itemQty = Number(item.ready_quantity ?? item.received_quantity ?? 0);
+          
+          if (!poLotAgg.has(lotKey)) {
+            poLotAgg.set(lotKey, {
+              total_received_qty: 0,
+              grade_codes: new Set(),
+              po_numbers: new Set(),
+              suppliers: new Set(),
+              sections: new Set(),
+              dimensions: new Set(),
+              firstItemId: item.id,
+              primaryPo: po.po_number,
+              primarySup: po.supplier_name || 'Standard Supplier',
+              primaryGrade: item.grade_code,
+              primarySection: item.section_name || 'Standard'
             });
           }
+          const agg = poLotAgg.get(lotKey)!;
+          agg.total_received_qty += itemQty;
+          if (item.grade_code) agg.grade_codes.add(item.grade_code);
+          if (po.po_number) agg.po_numbers.add(po.po_number);
+          if (po.supplier_name) agg.suppliers.add(po.supplier_name);
+          if (item.section_name) agg.sections.add(item.section_name);
+          const dimStr = [
+            item.diameter_width ? `DIA ${item.diameter_width}` : '',
+            item.thickness ? `T${item.thickness}` : '',
+            item.length ? `L${item.length}` : ''
+          ].filter(Boolean).join(' × ');
+          if (dimStr) agg.dimensions.add(dimStr);
         }
+      }
+    }
+
+    for (const [lotKey, agg] of poLotAgg.entries()) {
+      const existing = this.state.lots.find(l => l.lot_number.toLowerCase() === lotKey);
+      if (existing) {
+        existing.total_received_qty = agg.total_received_qty;
+        existing.available_qty = Math.max(0, agg.total_received_qty - (existing.total_allocated_sold_qty || 0));
+        existing.status = existing.available_qty > 0 ? 'Available' : 'Allocated';
+      } else {
+        const lotOrig = Array.from(this.state.purchaseOrders)
+          .flatMap(p => p.items || [])
+          .find(i => i.lot_number && i.lot_number.trim().toLowerCase() === lotKey)?.lot_number?.trim() || lotKey;
+        this.state.lots.unshift({
+          id: `lot-${lotOrig}`,
+          lot_number: lotOrig,
+          purchase_order_item_id: agg.firstItemId,
+          po_number: agg.primaryPo,
+          supplier_name: agg.primarySup,
+          grade_code: agg.primaryGrade,
+          section_name: agg.primarySection,
+          dimensions_display: Array.from(agg.dimensions).slice(0, 3).join(', ') || 'Standard Spec',
+          total_received_qty: agg.total_received_qty,
+          total_allocated_sold_qty: 0,
+          available_qty: agg.total_received_qty,
+          warehouse_location: 'Nhava Sheva Yard',
+          status: agg.total_received_qty > 0 ? 'Available' : 'Allocated',
+          created_at: new Date().toISOString()
+        });
       }
     }
 
@@ -2067,25 +2118,76 @@ class Store {
       return;
     }
 
-    const lotToPo = new Map<string, { po_number: string; po_id: string }>();
+    function canonicalGradeKey(g?: string | null): string {
+      if (!g) return '';
+      const clean = String(g).toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (clean === 'c45' || clean === 'c50' || clean === '1045' || clean === '1050' || clean === 'en8' || clean === 'en9') {
+        return 'c45_c50';
+      }
+      return clean;
+    }
+
+    const activeGradeMap = new Map<string, { po_number: string; po_id: string; is_closed: boolean }>();
+    const activeLotMap = new Map<string, { po_number: string; po_id: string; is_closed: boolean }>();
+    const closedGradeMap = new Map<string, { po_number: string; po_id: string; is_closed: boolean }>();
+    const closedLotMap = new Map<string, { po_number: string; po_id: string; is_closed: boolean }>();
+
     for (const po of this.state.purchaseOrders) {
+      const isClosed = Boolean(po.is_closed);
       if (po.items) {
         for (const item of po.items) {
           if (item.lot_number) {
-            lotToPo.set(String(item.lot_number).trim(), { po_number: po.po_number, po_id: po.id });
+            const lot = String(item.lot_number).trim();
+            const gKey = canonicalGradeKey(item.grade_code);
+            const entry = { po_number: po.po_number, po_id: po.id, is_closed: isClosed };
+            if (isClosed) {
+              if (gKey) closedGradeMap.set(`${lot}:::${gKey}`, entry);
+              if (!closedLotMap.has(lot)) closedLotMap.set(lot, entry);
+            } else {
+              if (gKey) activeGradeMap.set(`${lot}:::${gKey}`, entry);
+              if (!activeLotMap.has(lot)) activeLotMap.set(lot, entry);
+            }
           }
         }
       }
     }
+
     for (const rc of this.state.receipts) {
       if (rc.lot_number && rc.po_number) {
+        const lot = String(rc.lot_number).trim();
         const foundPo = this.state.purchaseOrders.find(p => p.po_number === rc.po_number);
-        lotToPo.set(String(rc.lot_number).trim(), { po_number: rc.po_number, po_id: foundPo?.id || '' });
+        const isClosed = Boolean(foundPo?.is_closed);
+        const entry = { po_number: rc.po_number, po_id: foundPo?.id || '', is_closed: isClosed };
+        if (isClosed) {
+          if (!closedLotMap.has(lot)) closedLotMap.set(lot, entry);
+        } else {
+          if (!activeLotMap.has(lot)) activeLotMap.set(lot, entry);
+        }
       }
     }
 
     for (const inc of this.state.incomingStock) {
-      const match = lotToPo.get(String(inc.lot_number).trim());
+      const lot = String(inc.lot_number || '').trim();
+      const gKey = canonicalGradeKey(inc.grade || (inc as any).grade_code);
+      let match: { po_number: string; po_id: string; is_closed: boolean } | undefined;
+
+      // 1. Prioritize active PO with matching lot and grade
+      if (gKey && activeGradeMap.has(`${lot}:::${gKey}`)) {
+        match = activeGradeMap.get(`${lot}:::${gKey}`);
+      }
+      // 2. Closed PO with matching lot and grade
+      else if (gKey && closedGradeMap.has(`${lot}:::${gKey}`)) {
+        match = closedGradeMap.get(`${lot}:::${gKey}`);
+      }
+      // 3. Active PO with matching lot only
+      else if (activeLotMap.has(lot)) {
+        match = activeLotMap.get(lot);
+      }
+      // 4. Closed PO with matching lot only
+      else if (closedLotMap.has(lot)) {
+        match = closedLotMap.get(lot);
+      }
+
       if (match) {
         inc.linked_po_number = match.po_number;
         inc.linked_po_id = match.po_id;
@@ -2094,7 +2196,7 @@ class Store {
   }
 
   public getIncomingStock(filters?: { 
-    status?: 'IN_TRANSIT' | 'RECEIVED' | 'ALL'; 
+    status?: 'IN_TRANSIT' | 'READY' | 'RECEIVED' | 'ALL'; 
     search?: string; 
     port?: string; 
     supplier?: string; 
@@ -2209,10 +2311,17 @@ class Store {
       }
     }
 
+    const ready = all.filter(i => i.received_status === 'READY');
+    const totalReadyWeight = ready.reduce((acc, i) => acc + (Number(i.weight) || 0), 0);
+    const readyLots = Array.from(new Set(ready.map(i => i.lot_number))).filter(Boolean);
+
     return {
       totalInTransitItems: inTransit.length,
       totalInTransitWeight: totalTransitWeight,
       uniqueTransitLots: transitLots.length,
+      totalReadyItems: ready.length,
+      totalReadyWeight: totalReadyWeight,
+      uniqueReadyLots: readyLots.length,
       totalReceivedItems: received.length,
       totalReceivedWeight: totalReceivedWeight,
       uniqueReceivedLots: receivedLots.length,

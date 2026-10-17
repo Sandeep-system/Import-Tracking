@@ -35,7 +35,7 @@ import { useAuth } from '@/context/AuthContext';
 export default function IncomingStockPage() {
   const { isViewer } = useAuth();
   const [dataVersion, setDataVersion] = useState(0);
-  const [activeTab, setActiveTab] = useState<'IN_TRANSIT' | 'RECEIVED' | 'PORTS'>('IN_TRANSIT');
+  const [activeTab, setActiveTab] = useState<'IN_TRANSIT' | 'READY' | 'RECEIVED' | 'PORTS'>('IN_TRANSIT');
   
   // Filters
   const [search, setSearch] = useState('');
@@ -241,23 +241,36 @@ export default function IncomingStockPage() {
           for (let r = 2; r < rows.length; r++) {
             const row = rows[r];
             if (!row || !row[2]) continue; // col 2 is LOT
-            importedItems.push({
-              id: `inc-se-up-${r}-${Date.now()}`,
-              make: String(row[0] || '').trim(),
-              supplier: String(row[1] || '').trim(),
-              lot_number: String(row[2]).trim(),
-              grade: String(row[3] || '').trim(),
-              condition: String(row[4] || '').trim(),
-              dia_w: row[5] || null,
-              t: row[6] || null,
-              l: row[7] || null,
-              pieces: row[8] || null,
-              weight: Number(row[9]) || 0,
-              customer: String(row[10] || '').trim(),
-              port: String(row[11] || '').trim(),
-              date_of_shipment: row[12] ? String(row[12]) : null,
-              eta_seaport: row[13] ? String(row[13]) : null,
-              received_status: 'IN_TRANSIT',
+              const rawShip = row[12];
+              let shipDateStr: string | null = null;
+              if (rawShip) {
+                if (typeof rawShip === 'number') {
+                  const d = new Date(Math.round((rawShip - 25569) * 86400 * 1000));
+                  if (!isNaN(d.getTime())) shipDateStr = d.toISOString().split('T')[0];
+                } else {
+                  shipDateStr = String(rawShip).trim() || null;
+                }
+              }
+              const nowStr = new Date().toISOString().split('T')[0];
+              const isReady = !shipDateStr || shipDateStr > nowStr;
+
+              importedItems.push({
+                id: `inc-se-up-${r}-${Date.now()}`,
+                make: String(row[0] || '').trim(),
+                supplier: String(row[1] || '').trim(),
+                lot_number: String(row[2]).trim(),
+                grade: String(row[3] || '').trim(),
+                condition: String(row[4] || '').trim(),
+                dia_w: row[5] || null,
+                t: row[6] || null,
+                l: row[7] || null,
+                pieces: row[8] || null,
+                weight: Number(row[9]) || 0,
+                customer: String(row[10] || '').trim(),
+                port: String(row[11] || '').trim(),
+                date_of_shipment: shipDateStr,
+                eta_seaport: row[13] ? String(row[13]) : null,
+                received_status: isReady ? 'READY' : 'IN_TRANSIT',
               heat_no: row[15] ? String(row[15]).trim() : null,
               sec_weight: Number(row[16]) || null,
               delivery_terms: String(row[17] || '').trim(),
@@ -413,6 +426,22 @@ export default function IncomingStockPage() {
               <span>In-Transit Stock (INCOMING SE)</span>
               <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 text-blue-800 font-extrabold">
                 {summary.totalInTransitItems}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('READY')}
+              className={cn(
+                "px-4 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-2",
+                activeTab === 'READY'
+                  ? "border-amber-600 text-amber-700 bg-white shadow-sm"
+                  : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60"
+              )}
+            >
+              <Clock className="h-3.5 w-3.5" />
+              <span>Ready to Ship (Waiting Departure)</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-extrabold">
+                {(summary as any).totalReadyItems || 0}
               </span>
             </button>
 
