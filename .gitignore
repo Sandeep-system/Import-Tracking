@@ -36,3 +36,6 @@ next-env.d.ts
 # excel temp files
 ~$*.xlsx
 ~$*.xls
+*- Backup.xlsx
+*- Copy*.xlsx
+scripts/comparison_results.json

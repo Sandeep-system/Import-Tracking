@@ -24,7 +24,8 @@ import {
   RefreshCw,
   FileSpreadsheet,
   Info,
-  Anchor
+  Anchor,
+  Pencil
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { dataStore } from '@/lib/dataStore';
@@ -54,6 +55,97 @@ export default function IncomingStockPage() {
   // Sync / Upload Modal
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadStats, setUploadStats] = useState<{ added: number; updated: number } | null>(null);
+
+  // Edit Incoming Stock Item State
+  const [editingItem, setEditingItem] = useState<IncomingStockItem | null>(null);
+  const [editGrade, setEditGrade] = useState('');
+  const [editCondition, setEditCondition] = useState('');
+  const [editMake, setEditMake] = useState('');
+  const [editWeight, setEditWeight] = useState('');
+  const [editPieces, setEditPieces] = useState('');
+  const [editDiaW, setEditDiaW] = useState('');
+  const [editThk, setEditThk] = useState('');
+  const [editLen, setEditLen] = useState('');
+  const [editPort, setEditPort] = useState('N.S.');
+  const [editPol, setEditPol] = useState('');
+  const [editEta, setEditEta] = useState('');
+  const [editShipDate, setEditShipDate] = useState('');
+  const [editHeatNo, setEditHeatNo] = useState('');
+  const [editSims, setEditSims] = useState('');
+  const [editContainer, setEditContainer] = useState('');
+  const [editDelivTerms, setEditDelivTerms] = useState('FOB');
+  const [editPayTerms, setEditPayTerms] = useState('DP at sight');
+  const [editHsn, setEditHsn] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editCurrency, setEditCurrency] = useState('USD');
+  const [editLinkedPo, setEditLinkedPo] = useState('');
+  const [editStatus, setEditStatus] = useState<'READY' | 'IN_TRANSIT' | 'RECEIVED'>('IN_TRANSIT');
+
+  const handleOpenEditItem = (item: IncomingStockItem) => {
+    setEditingItem(item);
+    setEditGrade(item.grade || (item as any).grade_code || '');
+    setEditCondition(item.condition || 'BLACK ROLLED');
+    setEditMake(item.make || '');
+    setEditWeight(String(item.weight || 0));
+    setEditPieces(item.pieces !== null && item.pieces !== undefined ? String(item.pieces) : '');
+    setEditDiaW(item.dia_w !== null && item.dia_w !== undefined ? String(item.dia_w) : ((item as any).width_diameter ? String((item as any).width_diameter) : ''));
+    setEditThk(item.t !== null && item.t !== undefined ? String(item.t) : ((item as any).thickness ? String((item as any).thickness) : ''));
+    setEditLen(item.l !== null && item.l !== undefined ? String(item.l) : ((item as any).length ? String((item as any).length) : ''));
+    setEditPort(item.port || 'N.S.');
+    setEditPol(item.port_of_loading || '');
+    setEditEta(item.eta_seaport ? item.eta_seaport.split('T')[0] : '');
+    setEditShipDate(item.date_of_shipment ? item.date_of_shipment.split('T')[0] : '');
+    setEditHeatNo(item.heat_no || (item as any).heat_number || '');
+    setEditSims(item.sims || '');
+    setEditContainer(item.container_no || '');
+    setEditDelivTerms(item.delivery_terms || 'FOB');
+    setEditPayTerms(item.payment_terms || 'DP at sight');
+    setEditHsn(item.hsn_code || '');
+    setEditPrice(item.price !== null && item.price !== undefined ? String(item.price) : '');
+    setEditCurrency(item.currency || 'USD');
+    setEditLinkedPo(item.linked_po_number || '');
+    setEditStatus(item.received_status || 'IN_TRANSIT');
+  };
+
+  const handleSaveIncomingEdits = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem) return;
+
+    const updated = dataStore.updateIncomingStockItem(editingItem.id, {
+      grade: editGrade.trim() || 'Standard Grade',
+      condition: editCondition.trim() || null,
+      make: editMake.trim() || 'Standard',
+      weight: parseFloat(editWeight) || 0,
+      pieces: editPieces !== '' ? parseFloat(editPieces) : null,
+      dia_w: editDiaW !== '' ? parseFloat(editDiaW) : null,
+      t: editThk !== '' ? parseFloat(editThk) : null,
+      l: editLen !== '' ? parseFloat(editLen) : null,
+      port: editPort.trim() || null,
+      port_of_loading: editPol.trim() || null,
+      eta_seaport: editEta || null,
+      date_of_shipment: editShipDate || null,
+      heat_no: editHeatNo.trim() || null,
+      sims: editSims.trim() || null,
+      container_no: editContainer.trim() || null,
+      delivery_terms: editDelivTerms,
+      payment_terms: editPayTerms,
+      hsn_code: editHsn.trim() || null,
+      price: editPrice !== '' ? parseFloat(editPrice) : null,
+      currency: editCurrency,
+      linked_po_number: editLinkedPo.trim() || null,
+      received_status: editStatus
+    });
+
+    if (inspectingItem && inspectingItem.id === editingItem.id) {
+      setInspectingItem(updated);
+    }
+
+    setEditingItem(null);
+    setDataVersion(v => v + 1);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('app:data-updated'));
+    }
+  };
 
   useEffect(() => {
     const handleUpdate = () => setDataVersion(v => v + 1);
@@ -910,6 +1002,15 @@ export default function IncomingStockPage() {
                                 Receive
                               </button>
                             )}
+                            {!isViewer && (
+                              <button
+                                onClick={() => handleOpenEditItem(item)}
+                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Edit Item Specifications & Details"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                             <Link
                               href={`/purchasing/shipments?tab=ports&search=${encodeURIComponent(item.lot_number)}`}
                               className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
@@ -919,12 +1020,23 @@ export default function IncomingStockPage() {
                             </Link>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => setInspectingItem(item)}
-                            className="px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200 transition-colors"
-                          >
-                            Details
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => setInspectingItem(item)}
+                              className="px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-md border border-slate-200 transition-colors"
+                            >
+                              Details
+                            </button>
+                            {!isViewer && (
+                              <button
+                                onClick={() => handleOpenEditItem(item)}
+                                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Edit Item Specifications & Details"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -956,12 +1068,24 @@ export default function IncomingStockPage() {
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setInspectingItem(null)} 
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                {!isViewer && (
+                  <button
+                    onClick={() => handleOpenEditItem(inspectingItem)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors cursor-pointer"
+                    title="Edit Item Details"
+                  >
+                    <Pencil className="h-3.5 w-3.5 text-blue-600" />
+                    <span>Edit Item Details</span>
+                  </button>
+                )}
+                <button 
+                  onClick={() => setInspectingItem(null)} 
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="p-5 space-y-4 overflow-y-auto text-xs">
@@ -1100,6 +1224,330 @@ export default function IncomingStockPage() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT INCOMING STOCK ITEM MODAL */}
+      {editingItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] my-6">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+              <div className="flex items-center gap-2 text-blue-600">
+                <Pencil className="h-5 w-5" />
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    Edit Incoming Item — Lot {editingItem.lot_number}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Update material specifications, logistics, port of discharge, and tracking details
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setEditingItem(null)} 
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveIncomingEdits} className="p-5 space-y-4 overflow-y-auto text-xs text-slate-700 flex-1">
+              {/* Section 1: Material Specification */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
+                  1. Material Specification
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Steel Grade *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editGrade}
+                      onChange={(e) => setEditGrade(e.target.value)}
+                      placeholder="e.g. 1.2311"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Condition</label>
+                    <input
+                      type="text"
+                      value={editCondition}
+                      onChange={(e) => setEditCondition(e.target.value)}
+                      placeholder="e.g. BLACK ROLLED"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Make / Mill</label>
+                    <input
+                      type="text"
+                      value={editMake}
+                      onChange={(e) => setEditMake(e.target.value)}
+                      placeholder="e.g. Baosteel / Standard"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Dia / Width (mm)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editDiaW}
+                      onChange={(e) => setEditDiaW(e.target.value)}
+                      placeholder="e.g. 610"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Thickness (mm)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editThk}
+                      onChange={(e) => setEditThk(e.target.value)}
+                      placeholder="e.g. 50"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Length (mm)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editLen}
+                      onChange={(e) => setEditLen(e.target.value)}
+                      placeholder="e.g. 5800"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Pieces</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editPieces}
+                      onChange={(e) => setEditPieces(e.target.value)}
+                      placeholder="e.g. 1"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Cargo & Commercials */}
+              <div className="p-3 bg-blue-50/50 border border-blue-200/80 rounded-xl space-y-3">
+                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
+                  2. Cargo Weight & Commercials
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Cargo Weight (KG) *</label>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      value={editWeight}
+                      onChange={(e) => setEditWeight(e.target.value)}
+                      placeholder="e.g. 5200"
+                      className="w-full p-2 bg-white border border-blue-400 rounded-lg font-bold text-slate-900 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Price</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editPrice}
+                      onChange={(e) => setEditPrice(e.target.value)}
+                      placeholder="e.g. 850"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Currency</label>
+                    <select
+                      value={editCurrency}
+                      onChange={(e) => setEditCurrency(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                    >
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="INR">INR (₹)</option>
+                      <option value="YEN">YEN (¥)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">HSN Code</label>
+                    <input
+                      type="text"
+                      value={editHsn}
+                      onChange={(e) => setEditHsn(e.target.value)}
+                      placeholder="e.g. 72283029"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Maritime Logistics & Port */}
+              <div className="p-3 bg-amber-50/40 border border-amber-200/80 rounded-xl space-y-3">
+                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
+                  3. Shipping & Port Logistics
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Port of Discharge (POD)</label>
+                    <input
+                      type="text"
+                      value={editPort}
+                      onChange={(e) => setEditPort(e.target.value)}
+                      placeholder="e.g. N.S. / Nhava Sheva"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Port of Loading (POL)</label>
+                    <input
+                      type="text"
+                      value={editPol}
+                      onChange={(e) => setEditPol(e.target.value)}
+                      placeholder="e.g. Shanghai"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Container Number</label>
+                    <input
+                      type="text"
+                      value={editContainer}
+                      onChange={(e) => setEditContainer(e.target.value)}
+                      placeholder="e.g. MEDU1234567"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Shipment Date (ETD / BL Date)</label>
+                    <input
+                      type="date"
+                      value={editShipDate}
+                      onChange={(e) => setEditShipDate(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Sea Port Arrival ETA</label>
+                    <input
+                      type="date"
+                      value={editEta}
+                      onChange={(e) => setEditEta(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4: Traceability & Terms */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
+                  4. Traceability & Terms
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Heat Number</label>
+                    <input
+                      type="text"
+                      value={editHeatNo}
+                      onChange={(e) => setEditHeatNo(e.target.value)}
+                      placeholder="e.g. HT-2026-A1"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">SIMS</label>
+                    <input
+                      type="text"
+                      value={editSims}
+                      onChange={(e) => setEditSims(e.target.value)}
+                      placeholder="e.g. SIMS-889"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Linked PO Number</label>
+                    <input
+                      type="text"
+                      value={editLinkedPo}
+                      onChange={(e) => setEditLinkedPo(e.target.value)}
+                      placeholder="e.g. PO-108 or 108"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Delivery Terms</label>
+                    <select
+                      value={editDelivTerms}
+                      onChange={(e) => setEditDelivTerms(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                    >
+                      <option value="FOB">FOB</option>
+                      <option value="CFR">CFR</option>
+                      <option value="CIF">CIF</option>
+                      <option value="Ex-Works">Ex-Works</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Payment Terms</label>
+                    <input
+                      type="text"
+                      value={editPayTerms}
+                      onChange={(e) => setEditPayTerms(e.target.value)}
+                      placeholder="e.g. DP at sight"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Stock Status</label>
+                    <select
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value as any)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold"
+                    >
+                      <option value="IN_TRANSIT">IN_TRANSIT (At Sea)</option>
+                      <option value="READY">READY (Ready to Ship)</option>
+                      <option value="RECEIVED">RECEIVED (Landed / Port Yard)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t flex items-center justify-end gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setEditingItem(null)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm cursor-pointer"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

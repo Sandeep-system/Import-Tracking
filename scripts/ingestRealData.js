@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
 
-// Reference Date for Option 2: 2026-10-07
-const TODAY_STR = '2026-10-07';
+// Reference Date for Option 2: 2026-10-19
+const TODAY_STR = '2026-10-19';
 
 // Date parser helper
 function parseExcelDate(val) {
@@ -59,8 +59,9 @@ function canonicalSupplierKey(name) {
   return str || name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-console.log('--- Step 1: Parsing INCOMING STOCK.xlsx ---');
-const wbStock = xlsx.readFile('INCOMING STOCK.xlsx', { cellDates: true });
+const stockFile = fs.existsSync('INCOMING STOCK - Copy (2).xlsx') ? 'INCOMING STOCK - Copy (2).xlsx' : 'INCOMING STOCK.xlsx';
+console.log(`--- Step 1: Parsing ${stockFile} ---`);
+const wbStock = xlsx.readFile(stockFile, { cellDates: true });
 
 // 1A: Parse INCOMING CLOSE (Received in warehouse lots)
 const sheetCloseStock = wbStock.Sheets['INCOMING CLOSE'];
@@ -219,9 +220,9 @@ for (let r = 2; r <= rangeSe.e.r; r++) {
 console.log(`Unique Lots in INCOMING SE: ${incomingSeLots.size}`);
 console.log(`Total INCOMING SE Stock Items: ${incomingInTransitStock.length}`);
 
-// Step 2: Parsing Import Pending New.xlsx
-console.log('\n--- Step 2: Parsing Import Pending New.xlsx ---');
-const wbPending = xlsx.readFile('Import Pending New.xlsx', { cellStyles: true, cellDates: true });
+const pendingFile = fs.existsSync('Import Pending New - Copy (2).xlsx') ? 'Import Pending New - Copy (2).xlsx' : 'Import Pending New.xlsx';
+console.log(`\n--- Step 2: Parsing ${pendingFile} ---`);
+const wbPending = xlsx.readFile(pendingFile, { cellStyles: true, cellDates: true });
 
 // 2A: Parse Pending Order
 const sheetPending = wbPending.Sheets['Pending Order'];
@@ -245,17 +246,18 @@ for (let r = 2; r <= rangePending.e.r; r++) {
   const supplier = String(getV(4) || 'Standard Supplier').trim();
   const origin = String(getV(5) || '').trim();
   const itemNo = Number(getV(6)) || (pendingPoGroups.get(orderNo)?.items?.length || 0) + 1;
-  const grade = String(getV(7) || 'Standard Grade').trim();
+  const orQty = Number(getV(15)) || 0;
+  const recdQty = Number(getV(16)) || 0;
+  const balQty = Number(getV(17)) || 0;
+  const isDraft = !getV(7) && orQty === 0 && recdQty === 0;
+  const grade = isDraft ? 'Pending Specification' : String(getV(7) || 'Standard Grade').trim();
   const gradeDoc = String(getV(8) || '').trim();
-  const section = String(getV(9) || 'Round').trim();
+  const section = isDraft ? 'Pending' : String(getV(9) || 'Round').trim();
   const diaW = getV(10) !== undefined && getV(10) !== '' ? Number(getV(10)) || null : null;
   const t = getV(11) !== undefined && getV(11) !== '' ? Number(getV(11)) || null : null;
   const length = getV(12) !== undefined && getV(12) !== '' ? Number(getV(12)) || null : null;
   const treatment = String(getV(13) || '').trim();
   const condition = String(getV(14) || '').trim();
-  const orQty = Number(getV(15)) || 0;
-  const recdQty = Number(getV(16)) || 0;
-  const balQty = Number(getV(17)) || 0;
   const price = Number(getV(18)) || 0;
   const currency = String(getV(19) || 'USD').trim();
   const ocNo = String(getV(20) || '').trim();
@@ -267,7 +269,10 @@ for (let r = 2; r <= rangePending.e.r; r++) {
   const invDate = parseExcelDate(getV(28));
   const lotNo = getV(29) ? String(getV(29)).trim() : '';
   const customer = String(getV(30) || 'SE').trim();
-  const remarks = String(getV(32) || '').trim();
+  let remarks = String(getV(32) || getV(31) || '').trim();
+  if (isDraft && !remarks) {
+    remarks = 'Draft PO - Pending Item Specifications';
+  }
 
   // --- DETERMINE ITEM STATUS (OPTION A: EXACT EXCEL FIDELITY + OPTION 2 LOT TRACKING) ---
   let itemStatus = 'Open';
