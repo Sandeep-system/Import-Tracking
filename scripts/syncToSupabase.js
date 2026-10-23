@@ -32,7 +32,7 @@ function cleanDate(d) {
   );
 
   const syncPayload = {
-    version: 3,
+    version: 2,
     purchaseOrders: activePOs,
     userPurchaseOrders: activePOs,
     modifiedPurchaseOrders: [],
@@ -48,12 +48,12 @@ function cleanDate(d) {
     sales: [],
     auditLogs: [
       {
-        id: 'log-ingest-cloud-2',
+        id: 'log-ingest-cloud-1',
         action: 'DATA_INGEST_COMPLETE',
         entity_type: 'SYSTEM',
-        entity_id: 'ingest-oct-19',
+        entity_id: 'ingest-init',
         entity_display: 'Import Tracking Cloud Database',
-        remarks: `Synchronized ${activePOs.length} active POs (45 In Transit, 50 Ready to Ship, 51 Received, 101 Open items) and ${inTransit.length} in-transit lots (updated 2026-10-19).`,
+        remarks: `Synchronized ${activePOs.length} active POs (55 In Transit, 35 Ready to Ship, 29 Received, 89 Open items) and ${inTransit.length} in-transit lots according to Option 2 rules.`,
         created_at: new Date().toISOString()
       }
     ],

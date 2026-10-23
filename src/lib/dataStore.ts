@@ -21,8 +21,8 @@ import incomingStockRaw from './incomingStockData.json';
 import { supabaseSync } from './supabaseSync';
 import { canonicalSupplierKey } from './utils';
 
-const STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V9';
-const PREV_STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V8';
+const STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V8';
+const PREV_STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V7';
 
 export function normalizeIncomingStockItem(raw: any, defaultSource: string = 'INCOMING SE'): IncomingStockItem {
   if (!raw) return raw;
@@ -102,12 +102,12 @@ function getInitialState(): DataState {
 
   const defaultAuditLogs: AuditLog[] = [
     {
-      id: 'log-ingest-2',
+      id: 'log-ingest-1',
       action: 'SYSTEM_INGEST',
       entity_type: 'SYSTEM',
       entity_id: 'excel-ingest',
       entity_display: 'Import Tracking System',
-      remarks: 'Ingested 27 active POs, 373 closed POs, 7,725 receipts, and 128 in-transit stock items (updated 2026-10-19).',
+      remarks: 'Ingested 22 active POs, 372 closed POs, 7,709 receipts, and 126 in-transit lots according to exact status coloring rules.',
       created_at: new Date().toISOString()
     }
   ];
@@ -664,95 +664,6 @@ class Store {
     );
     this.save();
     return newItem;
-  }
-
-  public updatePurchaseOrderItem(
-    poIdOrNumber: string,
-    itemId: string,
-    updates: Partial<PurchaseOrderItem>
-  ): PurchaseOrderItem {
-    const po = this.state.purchaseOrders.find(
-      p => p.id === poIdOrNumber || p.po_number === poIdOrNumber
-    );
-    if (!po) throw new Error(`Purchase order ${poIdOrNumber} not found`);
-    if (!po.items) po.items = [];
-
-    const item = po.items.find(i => i.id === itemId);
-    if (!item) throw new Error(`PO Line Item ${itemId} not found in PO ${po.po_number}`);
-
-    if (updates.grade_code !== undefined) item.grade_code = String(updates.grade_code).trim();
-    if (updates.grade_doc !== undefined) item.grade_doc = updates.grade_doc ? String(updates.grade_doc).trim() : null;
-    if (updates.section_name !== undefined) item.section_name = String(updates.section_name).trim();
-    if (updates.diameter_width !== undefined) item.diameter_width = updates.diameter_width !== null && updates.diameter_width !== ('' as any) ? Number(updates.diameter_width) : null;
-    if (updates.thickness !== undefined) item.thickness = updates.thickness !== null && updates.thickness !== ('' as any) ? Number(updates.thickness) : null;
-    if (updates.length !== undefined) item.length = updates.length !== null && updates.length !== ('' as any) ? Number(updates.length) : null;
-    if (updates.treatment !== undefined) item.treatment = updates.treatment ? String(updates.treatment).trim() : null;
-    if (updates.condition_name !== undefined) item.condition_name = updates.condition_name ? String(updates.condition_name).trim() : null;
-    if (updates.ordered_quantity !== undefined) item.ordered_quantity = Number(updates.ordered_quantity) || 0;
-    if (updates.purchase_price !== undefined) item.purchase_price = Number(updates.purchase_price) || 0;
-    if (updates.currency !== undefined) item.currency = updates.currency;
-    if (updates.lot_number !== undefined) item.lot_number = updates.lot_number ? String(updates.lot_number).trim() : null;
-    if (updates.container_no !== undefined) item.container_no = updates.container_no ? String(updates.container_no).trim() : null;
-    if (updates.port_of_loading !== undefined) item.port_of_loading = updates.port_of_loading ? String(updates.port_of_loading).trim() : null;
-    if (updates.destination_port !== undefined) item.destination_port = updates.destination_port ? String(updates.destination_port).trim() : null;
-    if (updates.delivery_terms !== undefined) item.delivery_terms = updates.delivery_terms;
-    if (updates.payment_terms !== undefined) item.payment_terms = updates.payment_terms;
-    if (updates.heat_no !== undefined) item.heat_no = updates.heat_no ? String(updates.heat_no).trim() : null;
-    if (updates.sims !== undefined) item.sims = updates.sims ? String(updates.sims).trim() : null;
-    if (updates.date_of_shipment !== undefined) item.date_of_shipment = updates.date_of_shipment || null;
-    if (updates.eta_seaport !== undefined) item.eta_seaport = updates.eta_seaport || null;
-    if (updates.expected_delivery_date !== undefined) item.expected_delivery_date = updates.expected_delivery_date || null;
-    if (updates.status !== undefined) item.status = updates.status;
-    if (updates.remarks !== undefined) item.remarks = updates.remarks ? String(updates.remarks).trim() : null;
-
-    // Recalculate balance and aggregates
-    this.computeItemQuantities(item);
-    this.recomputePOAggregates(po);
-
-    this.addAuditLog(
-      'PO_ITEM_UPDATE',
-      'purchase_order_items',
-      item.id,
-      `Updated item #${item.line_number} (${item.grade_code} ${item.section_name}, ${item.ordered_quantity} KG) in PO ${po.po_number}`
-    );
-
-    this.save();
-    return item;
-  }
-
-  public deletePurchaseOrderItem(poIdOrNumber: string, itemId: string): boolean {
-    const po = this.state.purchaseOrders.find(
-      p => p.id === poIdOrNumber || p.po_number === poIdOrNumber
-    );
-    if (!po) throw new Error(`Purchase order ${poIdOrNumber} not found`);
-    if (!po.items) return false;
-
-    const itemIndex = po.items.findIndex(i => i.id === itemId);
-    if (itemIndex === -1) return false;
-
-    const removedItem = po.items[itemIndex];
-
-    // Remove associated receipts for this item if any
-    this.state.receipts = this.state.receipts.filter(r => r.purchase_order_item_id !== itemId);
-
-    po.items.splice(itemIndex, 1);
-
-    // Re-index remaining line numbers
-    po.items.forEach((item, idx) => {
-      item.line_number = idx + 1;
-    });
-
-    this.recomputePOAggregates(po);
-
-    this.addAuditLog(
-      'PO_ITEM_DELETE',
-      'purchase_order_items',
-      itemId,
-      `Deleted item #${removedItem.line_number} (${removedItem.grade_code}) from PO ${po.po_number}`
-    );
-
-    this.save();
-    return true;
   }
 
   // --- Add Receipt Workflow ---
@@ -2529,78 +2440,6 @@ class Store {
 
     this.save();
     return { success: true, item, receipt: createdReceipt };
-  }
-
-  public updateIncomingStockItem(
-    id: string,
-    updates: Partial<IncomingStockItem>
-  ): IncomingStockItem {
-    const item = (this.state.incomingStock || []).find(i => i.id === id);
-    if (!item) throw new Error(`Incoming stock item ${id} not found`);
-
-    if (updates.grade !== undefined) {
-      item.grade = String(updates.grade).trim();
-      item.grade_code = item.grade;
-    }
-    if (updates.make !== undefined) item.make = String(updates.make).trim();
-    if (updates.supplier !== undefined) {
-      item.supplier = String(updates.supplier).trim();
-      item.supplier_name = item.supplier;
-    }
-    if (updates.lot_number !== undefined) item.lot_number = String(updates.lot_number).trim();
-    if (updates.condition !== undefined) item.condition = updates.condition ? String(updates.condition).trim() : null;
-    if (updates.dia_w !== undefined) item.dia_w = updates.dia_w !== null && updates.dia_w !== ('' as any) ? Number(updates.dia_w) : null;
-    if (updates.t !== undefined) item.t = updates.t !== null && updates.t !== ('' as any) ? Number(updates.t) : null;
-    if (updates.l !== undefined) item.l = updates.l !== null && updates.l !== ('' as any) ? Number(updates.l) : null;
-    if (updates.pieces !== undefined) item.pieces = updates.pieces !== null && updates.pieces !== ('' as any) ? Number(updates.pieces) : null;
-    if (updates.weight !== undefined) item.weight = Number(updates.weight) || 0;
-    if (updates.port !== undefined) item.port = updates.port ? String(updates.port).trim() : null;
-    if (updates.date_of_shipment !== undefined) item.date_of_shipment = updates.date_of_shipment || null;
-    if (updates.eta_seaport !== undefined) item.eta_seaport = updates.eta_seaport || null;
-    if (updates.received_status !== undefined) item.received_status = updates.received_status;
-    if (updates.heat_no !== undefined) {
-      item.heat_no = updates.heat_no ? String(updates.heat_no).trim() : null;
-      item.heat_number = item.heat_no;
-    }
-    if (updates.sims !== undefined) item.sims = updates.sims ? String(updates.sims).trim() : null;
-    if (updates.delivery_terms !== undefined) item.delivery_terms = updates.delivery_terms;
-    if (updates.payment_terms !== undefined) item.payment_terms = updates.payment_terms;
-    if (updates.container_no !== undefined) item.container_no = updates.container_no ? String(updates.container_no).trim() : null;
-    if (updates.port_of_loading !== undefined) item.port_of_loading = updates.port_of_loading ? String(updates.port_of_loading).trim() : null;
-    if (updates.hsn_code !== undefined) item.hsn_code = updates.hsn_code ? String(updates.hsn_code).trim() : null;
-    if (updates.price !== undefined) item.price = updates.price !== null && updates.price !== ('' as any) ? Number(updates.price) : null;
-    if (updates.currency !== undefined) item.currency = updates.currency;
-    if (updates.linked_po_number !== undefined) {
-      item.linked_po_number = updates.linked_po_number ? String(updates.linked_po_number).trim() : null;
-    }
-
-    this.linkIncomingStockWithPOs();
-
-    this.addAuditLog(
-      'INCOMING_STOCK_UPDATE',
-      'INCOMING_STOCK',
-      item.id,
-      `Updated incoming stock item Lot ${item.lot_number} (${item.grade}, ${item.weight} KG, port ${item.port || 'N.S.'})`
-    );
-
-    this.save();
-    return item;
-  }
-
-  public deleteIncomingStockItem(id: string): boolean {
-    const idx = (this.state.incomingStock || []).findIndex(i => i.id === id);
-    if (idx === -1) return false;
-    const removed = this.state.incomingStock[idx];
-    this.state.incomingStock.splice(idx, 1);
-    this.linkIncomingStockWithPOs();
-    this.addAuditLog(
-      'INCOMING_STOCK_DELETE',
-      'INCOMING_STOCK',
-      id,
-      `Deleted incoming stock item Lot ${removed.lot_number} (${removed.grade})`
-    );
-    this.save();
-    return true;
   }
 
   public importIncomingStock(items: IncomingStockItem[]): { added: number; updated: number } {

@@ -173,31 +173,9 @@ const STANDARD_ORIGINS = [
   const [isEditCustomPaymentTerms, setIsEditCustomPaymentTerms] = useState(false);
   const [editOcNumber, setEditOcNumber] = useState('');
   const [editOcDate, setEditOcDate] = useState('');
-  const [editContractDelivery, setEditContractDelivery] = useState('');
   const [editExpDelivery, setEditExpDelivery] = useState('');
   const [editStatus, setEditStatus] = useState<PurchaseOrder['status']>('Open');
   const [editRemarks, setEditRemarks] = useState('');
-  const [editPoActiveTab, setEditPoActiveTab] = useState<'po_header' | 'items'>('po_header');
-  const [editPoItems, setEditPoItems] = useState<{
-    id: string;
-    line_number: number;
-    grade_code: string;
-    grade_doc: string;
-    section_name: string;
-    diameter_width: string;
-    thickness: string;
-    length: string;
-    treatment: string;
-    condition_name: string;
-    lot_number: string;
-    container_no: string;
-    ordered_quantity: string;
-    purchase_price: string;
-    status: PurchaseOrderItem['status'];
-    remarks: string;
-    isNew?: boolean;
-    isDeleted?: boolean;
-  }[]>([]);
 
   // Add Item to existing PO Modal State
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
@@ -213,33 +191,6 @@ const STANDARD_ORIGINS = [
   const [itemQty, setItemQty] = useState('');
   const [itemPrice, setItemPrice] = useState('');
   const [itemExpDelivery, setItemExpDelivery] = useState('');
-
-  // Edit Item Modal State
-  const [isEditItemOpen, setIsEditItemOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<PurchaseOrderItem | null>(null);
-  const [editItemGrade, setEditItemGrade] = useState('');
-  const [editItemGradeDoc, setEditItemGradeDoc] = useState('');
-  const [editItemSection, setEditItemSection] = useState('Plate');
-  const [editItemDiaW, setEditItemDiaW] = useState('');
-  const [editItemThk, setEditItemThk] = useState('');
-  const [editItemLen, setEditItemLen] = useState('');
-  const [editItemTreatment, setEditItemTreatment] = useState('Annealed');
-  const [editItemCondition, setEditItemCondition] = useState('BLACK ROLLED');
-  const [editItemLotNo, setEditItemLotNo] = useState('');
-  const [editItemContainerNo, setEditItemContainerNo] = useState('');
-  const [editItemPol, setEditItemPol] = useState('');
-  const [editItemDestination, setEditItemDestination] = useState('');
-  const [editItemDeliveryTerms, setEditItemDeliveryTerms] = useState('FOB');
-  const [editItemPaymentTerms, setEditItemPaymentTerms] = useState('DP at sight');
-  const [editItemHeatNo, setEditItemHeatNo] = useState('');
-  const [editItemSims, setEditItemSims] = useState('');
-  const [editItemQty, setEditItemQty] = useState('');
-  const [editItemPrice, setEditItemPrice] = useState('');
-  const [editItemCurrency, setEditItemCurrency] = useState('USD');
-  const [editItemExpDelivery, setEditItemExpDelivery] = useState('');
-  const [editItemStatus, setEditItemStatus] = useState<PurchaseOrderItem['status']>('Open');
-  const [editItemRemarks, setEditItemRemarks] = useState('');
-  const [itemToDelete, setItemToDelete] = useState<PurchaseOrderItem | null>(null);
 
   // Multi-item Selection & Bulk Receipt State
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
@@ -743,7 +694,7 @@ const STANDARD_ORIGINS = [
     }
   };
 
-  const handleOpenEditPO = (initialTab: 'po_header' | 'items' = 'po_header') => {
+  const handleOpenEditPO = () => {
     if (!po) return;
     setEditOrderDate(po.order_date ? po.order_date.split('T')[0] : '');
     setEditSupplierName(po.supplier_name || '');
@@ -758,83 +709,10 @@ const STANDARD_ORIGINS = [
     setIsEditCustomPaymentTerms(!STANDARD_PAYMENT_TERMS.slice(0, -1).includes(po.payment_terms || ''));
     setEditOcNumber(po.oc_number || '');
     setEditOcDate(po.oc_date ? po.oc_date.split('T')[0] : '');
-    setEditContractDelivery(po.contract_delivery_date ? po.contract_delivery_date.split('T')[0] : '');
     setEditExpDelivery(po.expected_delivery_date ? po.expected_delivery_date.split('T')[0] : '');
     setEditStatus(po.status || 'Open');
     setEditRemarks(po.remarks || '');
-
-    setEditPoItems(
-      (po.items || []).map(i => ({
-        id: i.id,
-        line_number: i.line_number,
-        grade_code: i.grade_code || '',
-        grade_doc: i.grade_doc || '',
-        section_name: i.section_name || 'Plate',
-        diameter_width: i.diameter_width !== null && i.diameter_width !== undefined ? String(i.diameter_width) : '',
-        thickness: i.thickness !== null && i.thickness !== undefined ? String(i.thickness) : '',
-        length: i.length !== null && i.length !== undefined ? String(i.length) : '',
-        treatment: i.treatment || 'Annealed',
-        condition_name: i.condition_name || 'BLACK ROLLED',
-        lot_number: i.lot_number || '',
-        container_no: i.container_no || '',
-        ordered_quantity: i.ordered_quantity !== null && i.ordered_quantity !== undefined ? String(i.ordered_quantity) : '0',
-        purchase_price: i.purchase_price !== null && i.purchase_price !== undefined ? String(i.purchase_price) : '0',
-        status: i.status || 'Open',
-        remarks: i.remarks || '',
-        isNew: false,
-        isDeleted: false
-      }))
-    );
-    setEditPoActiveTab(initialTab);
     setIsEditPoOpen(true);
-  };
-
-  const handleAddEditPoItem = () => {
-    const nextLineNum = editPoItems.filter(i => !i.isDeleted).length + 1;
-    setEditPoItems(prev => [
-      ...prev,
-      {
-        id: `draft-${Date.now()}-${Math.random()}`,
-        line_number: nextLineNum,
-        grade_code: '1.2311',
-        grade_doc: '',
-        section_name: 'Plate',
-        diameter_width: '',
-        thickness: '',
-        length: '',
-        treatment: 'Annealed',
-        condition_name: 'BLACK ROLLED',
-        lot_number: '',
-        container_no: '',
-        ordered_quantity: '1000',
-        purchase_price: '750',
-        status: 'Open',
-        remarks: '',
-        isNew: true,
-        isDeleted: false
-      }
-    ]);
-  };
-
-  const handleUpdateEditPoItem = (index: number, field: string, val: any) => {
-    setEditPoItems(prev => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: val };
-      return next;
-    });
-  };
-
-  const handleRemoveEditPoItem = (index: number) => {
-    setEditPoItems(prev => {
-      const item = prev[index];
-      if (item.isNew) {
-        return prev.filter((_, idx) => idx !== index);
-      } else {
-        const next = [...prev];
-        next[index] = { ...next[index], isDeleted: true };
-        return next;
-      }
-    });
   };
 
   const handleSavePOEdits = (e: React.FormEvent) => {
@@ -856,54 +734,10 @@ const STANDARD_ORIGINS = [
       payment_terms: editPaymentTerms,
       oc_number: editOcNumber.trim() || undefined,
       oc_date: editOcDate || undefined,
-      contract_delivery_date: editContractDelivery || undefined,
       expected_delivery_date: editExpDelivery || undefined,
       status: editStatus,
       remarks: editRemarks
     });
-
-    // Save line items changes
-    for (const draft of editPoItems) {
-      if (draft.isDeleted) {
-        if (!draft.isNew) {
-          dataStore.deletePurchaseOrderItem(po.id, draft.id);
-        }
-      } else if (draft.isNew) {
-        dataStore.addPurchaseOrderItem(po.id, {
-          grade_code: draft.grade_code.trim() || 'Standard Grade',
-          grade_doc: draft.grade_doc.trim() || undefined,
-          section_name: draft.section_name,
-          diameter_width: draft.diameter_width !== '' ? parseFloat(draft.diameter_width) : undefined,
-          thickness: draft.thickness !== '' ? parseFloat(draft.thickness) : undefined,
-          length: draft.length !== '' ? parseFloat(draft.length) : undefined,
-          treatment: draft.treatment.trim() || undefined,
-          condition_name: draft.condition_name.trim() || undefined,
-          lot_number: draft.lot_number.trim() || undefined,
-          container_no: draft.container_no.trim() || undefined,
-          ordered_quantity: parseFloat(draft.ordered_quantity) || 0,
-          purchase_price: parseFloat(draft.purchase_price) || 0,
-          currency: editCurrency
-        });
-      } else {
-        dataStore.updatePurchaseOrderItem(po.id, draft.id, {
-          grade_code: draft.grade_code.trim() || 'Standard Grade',
-          grade_doc: draft.grade_doc.trim() || null,
-          section_name: draft.section_name,
-          diameter_width: draft.diameter_width !== '' ? parseFloat(draft.diameter_width) : null,
-          thickness: draft.thickness !== '' ? parseFloat(draft.thickness) : null,
-          length: draft.length !== '' ? parseFloat(draft.length) : null,
-          treatment: draft.treatment.trim() || null,
-          condition_name: draft.condition_name.trim() || null,
-          lot_number: draft.lot_number.trim() || null,
-          container_no: draft.container_no.trim() || null,
-          ordered_quantity: parseFloat(draft.ordered_quantity) || 0,
-          purchase_price: parseFloat(draft.purchase_price) || 0,
-          currency: editCurrency,
-          status: draft.status,
-          remarks: draft.remarks.trim() || null
-        });
-      }
-    }
 
     setIsEditPoOpen(false);
     loadData();
@@ -1029,89 +863,6 @@ const STANDARD_ORIGINS = [
     }
   };
 
-  const handleOpenEditItem = (item: PurchaseOrderItem) => {
-    setEditingItem(item);
-    setEditItemGrade(item.grade_code || '');
-    setEditItemGradeDoc(item.grade_doc || '');
-    setEditItemSection(item.section_name || 'Plate');
-    setEditItemDiaW(item.diameter_width !== null && item.diameter_width !== undefined ? String(item.diameter_width) : '');
-    setEditItemThk(item.thickness !== null && item.thickness !== undefined ? String(item.thickness) : '');
-    setEditItemLen(item.length !== null && item.length !== undefined ? String(item.length) : '');
-    setEditItemTreatment(item.treatment || 'Annealed');
-    setEditItemCondition(item.condition_name || 'BLACK ROLLED');
-    setEditItemLotNo(item.lot_number || '');
-    setEditItemContainerNo(item.container_no || '');
-    setEditItemPol(item.port_of_loading || '');
-    setEditItemDestination(item.destination_port || po?.destination || 'N.S.');
-    setEditItemDeliveryTerms(item.delivery_terms || po?.delivery_terms || 'FOB');
-    setEditItemPaymentTerms(item.payment_terms || po?.payment_terms || 'DP at sight');
-    setEditItemHeatNo(item.heat_no || '');
-    setEditItemSims(item.sims || '');
-    setEditItemQty(item.ordered_quantity !== undefined && item.ordered_quantity !== null ? String(item.ordered_quantity) : '0');
-    setEditItemPrice(item.purchase_price !== undefined && item.purchase_price !== null ? String(item.purchase_price) : '0');
-    setEditItemCurrency(item.currency || po?.currency || 'USD');
-    setEditItemExpDelivery(item.expected_delivery_date ? item.expected_delivery_date.split('T')[0] : '');
-    setEditItemStatus(item.status || 'Open');
-    setEditItemRemarks(item.remarks || '');
-    setIsEditItemOpen(true);
-  };
-
-  const handleSaveItemEdits = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!po || !editingItem) return;
-
-    const updated = dataStore.updatePurchaseOrderItem(po.id, editingItem.id, {
-      grade_code: editItemGrade.trim() || 'Standard Grade',
-      grade_doc: editItemGradeDoc.trim() || null,
-      section_name: editItemSection,
-      diameter_width: editItemDiaW !== '' ? parseFloat(editItemDiaW) : null,
-      thickness: editItemThk !== '' ? parseFloat(editItemThk) : null,
-      length: editItemLen !== '' ? parseFloat(editItemLen) : null,
-      treatment: editItemTreatment.trim() || null,
-      condition_name: editItemCondition.trim() || null,
-      lot_number: editItemLotNo.trim() || null,
-      container_no: editItemContainerNo.trim() || null,
-      port_of_loading: editItemPol.trim() || null,
-      destination_port: editItemDestination.trim() || null,
-      delivery_terms: editItemDeliveryTerms,
-      payment_terms: editItemPaymentTerms,
-      heat_no: editItemHeatNo.trim() || null,
-      sims: editItemSims.trim() || null,
-      ordered_quantity: parseFloat(editItemQty) || 0,
-      purchase_price: parseFloat(editItemPrice) || 0,
-      currency: editItemCurrency,
-      expected_delivery_date: editItemExpDelivery || null,
-      status: editItemStatus,
-      remarks: editItemRemarks.trim() || null
-    });
-
-    if (selectedItem?.id === editingItem.id) {
-      setSelectedItem(updated);
-    }
-
-    setIsEditItemOpen(false);
-    setEditingItem(null);
-    loadData();
-    setDataVersion(v => v + 1);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('app:data-updated'));
-    }
-  };
-
-  const handleDeleteItemConfirm = () => {
-    if (!po || !itemToDelete) return;
-    dataStore.deletePurchaseOrderItem(po.id, itemToDelete.id);
-    if (selectedItem?.id === itemToDelete.id) {
-      setSelectedItem(null);
-    }
-    setItemToDelete(null);
-    loadData();
-    setDataVersion(v => v + 1);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('app:data-updated'));
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Breadcrumb & Navigation */}
@@ -1127,25 +878,13 @@ const STANDARD_ORIGINS = [
 
         <div className="flex items-center gap-2.5">
           {!isViewer && (
-            <>
-              <button
-                onClick={() => handleOpenEditPO('po_header')}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg card-shadow transition-colors cursor-pointer"
-                title="Edit supplier, dates, terms, and purchase order header details"
-              >
-                <Pencil className="h-3.5 w-3.5 text-slate-600" />
-                <span>Edit PO Details</span>
-              </button>
-
-              <button
-                onClick={() => handleOpenEditPO('items')}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg card-shadow transition-colors cursor-pointer"
-                title="Edit material line item specifications, quantities, prices, and status"
-              >
-                <Package className="h-3.5 w-3.5 text-blue-600" />
-                <span>Edit Items Details</span>
-              </button>
-            </>
+            <button
+              onClick={handleOpenEditPO}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg card-shadow transition-colors cursor-pointer"
+            >
+              <Pencil className="h-3.5 w-3.5 text-slate-600" />
+              <span>Edit PO Details</span>
+            </button>
           )}
 
           {isAdmin && (
@@ -1412,20 +1151,9 @@ const STANDARD_ORIGINS = [
                 </button>
               </div>
             )}
-            {!isViewer && (
-              <button
-                type="button"
-                onClick={() => handleOpenEditPO('items')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold border border-slate-200 shadow-2xs transition-colors cursor-pointer"
-                title="Edit all items specifications & details"
-              >
-                <Pencil className="h-3.5 w-3.5 text-slate-500" />
-                <span>Edit Items</span>
-              </button>
-            )}
             <button
               onClick={() => setIsAddItemOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Add Material Item</span>
@@ -1643,29 +1371,6 @@ const STANDARD_ORIGINS = [
                               Resolve
                             </button>
                           )}
-
-                          {/* Edit Item button */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditItem(item)}
-                            className="px-2 py-1 rounded bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 border border-blue-200 font-semibold text-[11px] transition-colors flex items-center gap-1 shadow-sm cursor-pointer"
-                            title="Edit Item Specifications & Details"
-                          >
-                            <Pencil className="h-3 w-3" />
-                            <span>Edit</span>
-                          </button>
-
-                          {/* Delete Item button (Admin) */}
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              onClick={() => setItemToDelete(item)}
-                              className="p-1 rounded bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 transition-colors shadow-sm"
-                              title="Delete Item"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          )}
                         </div>
                       )}
                     </td>
@@ -1694,33 +1399,9 @@ const STANDARD_ORIGINS = [
                   <p className="text-xs text-slate-400">PO {po.po_number} Line Item Specification & Fulfillment Timeline</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                {!isViewer && (
-                  <button
-                    onClick={() => {
-                      handleOpenEditItem(selectedItem);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors cursor-pointer"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    <span>Edit Item Details</span>
-                  </button>
-                )}
-                {isAdmin && (
-                  <button
-                    onClick={() => {
-                      setItemToDelete(selectedItem);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    <span>Delete</span>
-                  </button>
-                )}
-                <button onClick={() => setSelectedItem(null)} className="text-slate-400 hover:text-white p-1">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+              <button onClick={() => setSelectedItem(null)} className="text-slate-400 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
             </div>
 
             <div className="p-6 space-y-6 text-xs text-slate-700">
@@ -2091,375 +1772,6 @@ const STANDARD_ORIGINS = [
         </div>
       )}
 
-      {/* Edit Material Item Modal */}
-      {isEditItemOpen && editingItem && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 my-6 max-h-[92vh] flex flex-col">
-            <div className="flex items-center justify-between border-b pb-3 shrink-0">
-              <div className="flex items-center gap-2 text-blue-600">
-                <Pencil className="h-5 w-5" />
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    Edit Material Item #{editingItem.line_number} — PO {po.po_number}
-                  </h2>
-                  <p className="text-xs text-slate-500">Update material specifications, ordered weight, price, and logistics</p>
-                </div>
-              </div>
-              <button onClick={() => setIsEditItemOpen(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveItemEdits} className="space-y-4 text-xs text-slate-700 overflow-y-auto flex-1 pr-1">
-              {/* Section 1: Material Specification */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
-                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
-                  1. Material Specifications
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Steel Grade *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. 1.2311 / 1.2379"
-                      value={editItemGrade}
-                      onChange={(e) => setEditItemGrade(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Doc Grade Alias</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 1.2312 / 102Cr6"
-                      value={editItemGradeDoc}
-                      onChange={(e) => setEditItemGradeDoc(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Section</label>
-                    <select
-                      value={editItemSection}
-                      onChange={(e) => setEditItemSection(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
-                    >
-                      <option value="Plate">Plate</option>
-                      <option value="Round">Round</option>
-                      <option value="FLAT">FLAT</option>
-                      <option value="Block">Block</option>
-                      <option value="Square">Square</option>
-                      <option value="Hex">Hex</option>
-                      <option value="Pending">Pending / TBD</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Heat Treatment</label>
-                    <input
-                      type="text"
-                      placeholder="Annealed / Q+T / Normalized"
-                      value={editItemTreatment}
-                      onChange={(e) => setEditItemTreatment(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Width / Diameter (mm)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="e.g. 610 or 150"
-                      value={editItemDiaW}
-                      onChange={(e) => setEditItemDiaW(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Thickness (mm)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="e.g. 50 (empty if round)"
-                      value={editItemThk}
-                      onChange={(e) => setEditItemThk(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Length (mm)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="e.g. 5800"
-                      value={editItemLen}
-                      onChange={(e) => setEditItemLen(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Surface Condition</label>
-                    <input
-                      type="text"
-                      placeholder="BLACK ROLLED / Bright Forged"
-                      value={editItemCondition}
-                      onChange={(e) => setEditItemCondition(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Quantities & Commercials */}
-              <div className="p-3 bg-blue-50/50 border border-blue-200/80 rounded-lg space-y-3">
-                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
-                  2. Quantities & Commercial Pricing
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Ordered Quantity (KG) *</label>
-                    <input
-                      type="number"
-                      step="any"
-                      required
-                      min="0"
-                      placeholder="e.g. 10000"
-                      value={editItemQty}
-                      onChange={(e) => setEditItemQty(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Purchase Price *</label>
-                    <input
-                      type="number"
-                      step="any"
-                      required
-                      min="0"
-                      placeholder="e.g. 2150"
-                      value={editItemPrice}
-                      onChange={(e) => setEditItemPrice(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Currency</label>
-                    <select
-                      value={editItemCurrency}
-                      onChange={(e) => setEditItemCurrency(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="USD">USD ($)</option>
-                      <option value="EUR">EUR (€)</option>
-                      <option value="INR">INR (₹)</option>
-                      <option value="YEN">YEN (¥)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 3: Logistics & Shipment */}
-              <div className="p-3 bg-amber-50/40 border border-amber-200/80 rounded-lg space-y-3">
-                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
-                  3. Logistics & Traceability
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Lot Number</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 1872"
-                      value={editItemLotNo}
-                      onChange={(e) => setEditItemLotNo(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Container No.</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. MEDU1234567"
-                      value={editItemContainerNo}
-                      onChange={(e) => setEditItemContainerNo(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Heat No. / SIMS</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. HT-2026-A1"
-                      value={editItemHeatNo}
-                      onChange={(e) => setEditItemHeatNo(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Port of Loading (POL)</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Shanghai / Hamburg"
-                      value={editItemPol}
-                      onChange={(e) => setEditItemPol(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Port of Discharge (POD)</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Nhava Sheva (N.S.)"
-                      value={editItemDestination}
-                      onChange={(e) => setEditItemDestination(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Expected Delivery Date</label>
-                    <input
-                      type="date"
-                      value={editItemExpDelivery}
-                      onChange={(e) => setEditItemExpDelivery(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Delivery Terms</label>
-                    <select
-                      value={editItemDeliveryTerms}
-                      onChange={(e) => setEditItemDeliveryTerms(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="FOB">FOB</option>
-                      <option value="CFR">CFR</option>
-                      <option value="CIF">CIF</option>
-                      <option value="Ex-Works">Ex-Works</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-slate-800">Payment Terms</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. DP at sight / 100% TT"
-                      value={editItemPaymentTerms}
-                      onChange={(e) => setEditItemPaymentTerms(e.target.value)}
-                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 4: Lifecycle Status & Remarks */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold mb-1 text-slate-800">Item Lifecycle Status</label>
-                  <select
-                    value={editItemStatus}
-                    onChange={(e) => setEditItemStatus(e.target.value as PurchaseOrderItem['status'])}
-                    className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  >
-                    <option value="Open">Open</option>
-                    <option value="Ready to Ship">Ready to Ship</option>
-                    <option value="In Transit">In Transit</option>
-                    <option value="Partially Received">Partially Received</option>
-                    <option value="Received">Received</option>
-                    <option value="Over Received">Over Received</option>
-                    <option value="Closed">Closed</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1 text-slate-800">Remarks / Special Notes</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Specific tolerances or customer allocation"
-                    value={editItemRemarks}
-                    onChange={(e) => setEditItemRemarks(e.target.value)}
-                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 border-t flex items-center justify-between shrink-0">
-                {isAdmin ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsEditItemOpen(false);
-                      setItemToDelete(editingItem);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    <span>Delete Item</span>
-                  </button>
-                ) : <div />}
-
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditItemOpen(false)}
-                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Item Confirmation Modal */}
-      {itemToDelete && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="p-2.5 rounded-full bg-rose-100">
-                <AlertTriangle className="h-6 w-6" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Delete Material Item #{itemToDelete.line_number}</h2>
-                <p className="text-xs text-slate-500">PO {po.po_number} • {itemToDelete.grade_code} ({itemToDelete.section_name})</p>
-              </div>
-            </div>
-            <p className="text-xs text-slate-600">
-              Are you sure you want to delete this line item? This will remove <strong>{formatWeight(itemToDelete.ordered_quantity)}</strong> of ordered material and any associated receipt records.
-            </p>
-            <div className="pt-3 border-t flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setItemToDelete(null)}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteItemConfirm}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm"
-              >
-                Yes, Delete Item
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Add Material Item to PO Modal */}
       {isAddItemOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -2698,16 +2010,16 @@ const STANDARD_ORIGINS = [
         </div>
       )}
 
-      {/* Edit PO Details & Items Modal */}
+      {/* Edit PO Details Modal */}
       {isEditPoOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-4xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 my-6 max-h-[92vh] flex flex-col">
-            <div className="flex items-center justify-between border-b pb-3 shrink-0">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 my-6">
+            <div className="flex items-center justify-between border-b pb-3">
               <div className="flex items-center gap-2 text-blue-600">
                 <Pencil className="h-5 w-5" />
                 <div>
                   <h2 className="text-base font-bold text-slate-900">Edit Purchase Order {po.po_number}</h2>
-                  <p className="text-xs text-slate-500">Update supplier, order header terms, and material item specifications</p>
+                  <p className="text-xs text-slate-500">Update supplier, order confirmation, commercial terms, or dates</p>
                 </div>
               </div>
               <button onClick={() => setIsEditPoOpen(false)} className="text-slate-400 hover:text-slate-600">
@@ -2715,543 +2027,254 @@ const STANDARD_ORIGINS = [
               </button>
             </div>
 
-            {/* Modal Tabs: Header vs Line Items */}
-            <div className="flex items-center gap-2 border-b border-slate-200 shrink-0">
-              <button
-                type="button"
-                onClick={() => setEditPoActiveTab('po_header')}
-                className={`px-4 py-2 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
-                  editPoActiveTab === 'po_header'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                PO Header & Commercial Terms
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditPoActiveTab('items')}
-                className={`px-4 py-2 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
-                  editPoActiveTab === 'items'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <span>Material Line Items Details</span>
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-700 font-bold">
-                  {editPoItems.filter(i => !i.isDeleted).length}
-                </span>
-              </button>
-            </div>
+            <form onSubmit={handleSavePOEdits} className="space-y-4 text-xs text-slate-700">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">PO Number</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={po.po_number}
+                    className="w-full p-2 bg-slate-100 border border-slate-300 rounded-lg font-bold text-slate-500 cursor-not-allowed"
+                  />
+                  <span className="text-[10px] text-slate-400">PO Number cannot be modified once created</span>
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Order Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={editOrderDate}
+                    onChange={(e) => setEditOrderDate(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
 
-            <form onSubmit={handleSavePOEdits} className="space-y-4 text-xs text-slate-700 overflow-y-auto flex-1 pr-1">
-              {/* TAB 1: PO Header Fields */}
-              {editPoActiveTab === 'po_header' && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">PO Number</label>
-                      <input
-                        type="text"
-                        disabled
-                        value={po.po_number}
-                        className="w-full p-2 bg-slate-100 border border-slate-300 rounded-lg font-bold text-slate-500 cursor-not-allowed"
-                      />
-                      <span className="text-[10px] text-slate-400">PO Number cannot be modified once created</span>
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Order Date *</label>
-                      <input
-                        type="date"
-                        required
-                        value={editOrderDate}
-                        onChange={(e) => setEditOrderDate(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Supplier Name *</label>
+                  <select
+                    value={editSupplierName}
+                    onChange={(e) => setEditSupplierName(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                  >
+                    {suppliers.findIndex(s => s.supplier_name.toLowerCase() === (editSupplierName || '').toLowerCase()) === -1 && editSupplierName && (
+                      <option value={editSupplierName}>{editSupplierName}</option>
+                    )}
+                    {suppliers.map((s, idx) => (
+                      <option key={`${s.id || s.supplier_name}-${idx}`} value={s.supplier_name}>
+                        {s.supplier_name} ({s.country || 'Overseas'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Currency *</label>
+                  <select
+                    value={editCurrency}
+                    onChange={(e) => setEditCurrency(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">Euro (€)</option>
+                    <option value="INR">INR (₹)</option>
+                    <option value="YEN">Yen (¥)</option>
+                  </select>
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Supplier Name *</label>
-                      <select
-                        value={editSupplierName}
-                        onChange={(e) => setEditSupplierName(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
-                      >
-                        {suppliers.findIndex(s => s.supplier_name.toLowerCase() === (editSupplierName || '').toLowerCase()) === -1 && editSupplierName && (
-                          <option value={editSupplierName}>{editSupplierName}</option>
-                        )}
-                        {suppliers.map((s, idx) => (
-                          <option key={`${s.id || s.supplier_name}-${idx}`} value={s.supplier_name}>
-                            {s.supplier_name} ({s.country || 'Overseas'})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Currency *</label>
-                      <select
-                        value={editCurrency}
-                        onChange={(e) => setEditCurrency(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        <option value="USD">USD ($)</option>
-                        <option value="EUR">Euro (€)</option>
-                        <option value="INR">INR (₹)</option>
-                        <option value="YEN">Yen (¥)</option>
-                      </select>
-                    </div>
-                  </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Customer</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sandeep Edgetech (Self)"
+                    value={editCustomer}
+                    onChange={(e) => setEditCustomer(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Reference Person</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sandeep / Rep"
+                    value={editReferencePerson}
+                    onChange={(e) => setEditReferencePerson(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Customer</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Sandeep Edgetech (Self)"
-                        value={editCustomer}
-                        onChange={(e) => setEditCustomer(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Reference Person</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Sandeep / Rep"
-                        value={editReferencePerson}
-                        onChange={(e) => setEditReferencePerson(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Origin / Make</label>
-                      <div className="flex gap-1.5">
-                        <select
-                          value={STANDARD_ORIGINS.includes(editOrigin) ? editOrigin : (editOrigin ? '__custom__' : '')}
-                          onChange={(e) => {
-                            if (e.target.value !== '__custom__') {
-                              setEditOrigin(e.target.value);
-                            }
-                          }}
-                          className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg text-xs"
-                        >
-                          <option value="">Select Origin...</option>
-                          {STANDARD_ORIGINS.map(o => (
-                            <option key={o} value={o}>{o}</option>
-                          ))}
-                          <option value="__custom__">Custom / Other...</option>
-                        </select>
-                        <input
-                          type="text"
-                          placeholder="e.g. Germany"
-                          value={editOrigin}
-                          onChange={(e) => setEditOrigin(e.target.value)}
-                          className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Commission</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. $15/MT or 2%"
-                        value={editCommission}
-                        onChange={(e) => setEditCommission(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Delivery Terms</label>
-                      <select
-                        value={editDeliveryTerms}
-                        onChange={(e) => setEditDeliveryTerms(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        <option value="FOB">FOB</option>
-                        <option value="CFR">CFR</option>
-                        <option value="CIF">CIF</option>
-                        <option value="Ex-Works">Ex-Works</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Destination Port</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. N.S. / Nhava Sheva"
-                        value={editDestination}
-                        onChange={(e) => setEditDestination(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Payment Terms</label>
-                      <select
-                        value={isEditCustomPaymentTerms ? 'Custom...' : (STANDARD_PAYMENT_TERMS.includes(editPaymentTerms) ? editPaymentTerms : 'Custom...')}
-                        onChange={(e) => {
-                          if (e.target.value === 'Custom...') {
-                            setIsEditCustomPaymentTerms(true);
-                          } else {
-                            setIsEditCustomPaymentTerms(false);
-                            setEditPaymentTerms(e.target.value);
-                          }
-                        }}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
-                      >
-                        {STANDARD_PAYMENT_TERMS.map(t => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                      </select>
-                      {isEditCustomPaymentTerms && (
-                        <input
-                          type="text"
-                          placeholder="Enter custom payment terms"
-                          value={editPaymentTerms}
-                          onChange={(e) => setEditPaymentTerms(e.target.value)}
-                          className="mt-1.5 w-full p-2 bg-white border border-blue-400 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Order Confirmation (O/C No.)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. OC-24-901"
-                        value={editOcNumber}
-                        onChange={(e) => setEditOcNumber(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">O/C Date</label>
-                      <input
-                        type="date"
-                        value={editOcDate}
-                        onChange={(e) => setEditOcDate(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Contract Delivery Date</label>
-                      <input
-                        type="date"
-                        value={editContractDelivery}
-                        onChange={(e) => setEditContractDelivery(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Expected Delivery Date</label>
-                      <input
-                        type="date"
-                        value={editExpDelivery}
-                        onChange={(e) => setEditExpDelivery(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">PO Status</label>
-                      <select
-                        value={editStatus}
-                        onChange={(e) => setEditStatus(e.target.value as PurchaseOrder['status'])}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
-                      >
-                        <option value="Open">Open</option>
-                        <option value="Partially Received">Partially Received</option>
-                        <option value="Received">Received</option>
-                        <option value="Over Received">Over Received</option>
-                        <option value="Closed">Closed</option>
-                        <option value="Draft">Draft</option>
-                        <option value="Cancelled">Cancelled</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-semibold mb-1 text-slate-800">Remarks / Notes</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Special testing or dispatch instructions"
-                        value={editRemarks}
-                        onChange={(e) => setEditRemarks(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Origin / Make</label>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={STANDARD_ORIGINS.includes(editOrigin) ? editOrigin : (editOrigin ? '__custom__' : '')}
+                      onChange={(e) => {
+                        if (e.target.value !== '__custom__') {
+                          setEditOrigin(e.target.value);
+                        }
+                      }}
+                      className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                    >
+                      <option value="">Select Origin...</option>
+                      {STANDARD_ORIGINS.map(o => (
+                        <option key={o} value={o}>{o}</option>
+                      ))}
+                      <option value="__custom__">Custom / Other...</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="e.g. Germany"
+                      value={editOrigin}
+                      onChange={(e) => setEditOrigin(e.target.value)}
+                      className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg"
+                    />
                   </div>
                 </div>
-              )}
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Commission</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. $15/MT or 2%"
+                    value={editCommission}
+                    onChange={(e) => setEditCommission(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
 
-              {/* TAB 2: Material Line Items Details */}
-              {editPoActiveTab === 'items' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between pb-2 border-b">
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                        <Package className="h-4 w-4 text-blue-600" />
-                        Material Line Items ({editPoItems.filter(i => !i.isDeleted).length})
-                      </h3>
-                      <p className="text-[11px] text-slate-500">Edit grades, dimensions, ordered weights, lots, and specifications</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAddEditPoItem}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold border border-blue-200 transition-colors shadow-2xs"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      <span>Add Another Item</span>
-                    </button>
-                  </div>
-
-                  {editPoItems.filter(i => !i.isDeleted).length === 0 ? (
-                    <div className="text-center py-8 bg-slate-50 border border-dashed border-slate-300 rounded-xl">
-                      <Package className="h-8 w-8 text-slate-400 mx-auto mb-2" />
-                      <p className="text-xs font-bold text-slate-700">No line items in this order</p>
-                      <button
-                        type="button"
-                        onClick={handleAddEditPoItem}
-                        className="mt-2 text-xs font-semibold text-blue-600 hover:underline"
-                      >
-                        + Add first item
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
-                      {editPoItems.map((item, idx) => {
-                        if (item.isDeleted) return null;
-                        return (
-                          <div key={item.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
-                              <div className="flex items-center gap-2">
-                                <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-mono font-bold">
-                                  #{idx + 1}
-                                </span>
-                                <span className="font-bold text-xs text-slate-900">
-                                  {item.grade_code} • {item.section_name}
-                                </span>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200/70 text-slate-700 font-semibold uppercase">
-                                  {item.status}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {!item.isNew && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const orig = po.items?.find(it => it.id === item.id);
-                                      if (orig) {
-                                        handleOpenEditItem(orig);
-                                      }
-                                    }}
-                                    className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
-                                    title="Open full item specifications editor"
-                                  >
-                                    <Pencil className="h-3 w-3" /> Full Spec Editor
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveEditPoItem(idx)}
-                                  className="text-[11px] text-rose-600 hover:text-rose-800 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
-                                >
-                                  <Trash2 className="h-3 w-3" /> Remove
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Row 1: Grade, Section, Treatment */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Steel Grade *</label>
-                                <input
-                                  type="text"
-                                  required
-                                  value={item.grade_code}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'grade_code', e.target.value)}
-                                  placeholder="e.g. 1.2311"
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold"
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Doc Grade Alias</label>
-                                <input
-                                  type="text"
-                                  value={item.grade_doc}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'grade_doc', e.target.value)}
-                                  placeholder="e.g. 1.2312"
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg"
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Section</label>
-                                <select
-                                  value={item.section_name}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'section_name', e.target.value)}
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg"
-                                >
-                                  <option value="Plate">Plate</option>
-                                  <option value="Round">Round</option>
-                                  <option value="FLAT">FLAT</option>
-                                  <option value="Block">Block</option>
-                                  <option value="Square">Square</option>
-                                  <option value="Hex">Hex</option>
-                                  <option value="Pending">Pending / TBD</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Heat Treatment</label>
-                                <input
-                                  type="text"
-                                  value={item.treatment}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'treatment', e.target.value)}
-                                  placeholder="Annealed / Q&T"
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Row 2: Dimensions & Quantities */}
-                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Dia / Width (mm)</label>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  value={item.diameter_width}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'diameter_width', e.target.value)}
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Thickness (mm)</label>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  value={item.thickness}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'thickness', e.target.value)}
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Length (mm)</label>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  value={item.length}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'length', e.target.value)}
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Ordered Qty (KG) *</label>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  required
-                                  value={item.ordered_quantity}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'ordered_quantity', e.target.value)}
-                                  className="w-full p-2 bg-white border border-blue-400 rounded-lg font-bold text-slate-900"
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Unit Price ({editCurrency})</label>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  value={item.purchase_price}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'purchase_price', e.target.value)}
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Row 3: Logistics & Status */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Lot Number</label>
-                                <input
-                                  type="text"
-                                  value={item.lot_number}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'lot_number', e.target.value)}
-                                  placeholder="e.g. 1872"
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Container No.</label>
-                                <input
-                                  type="text"
-                                  value={item.container_no}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'container_no', e.target.value)}
-                                  placeholder="e.g. MEDU1234567"
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Item Status</label>
-                                <select
-                                  value={item.status}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'status', e.target.value)}
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold"
-                                >
-                                  <option value="Open">Open</option>
-                                  <option value="Ready to Ship">Ready to Ship</option>
-                                  <option value="In Transit">In Transit</option>
-                                  <option value="Partially Received">Partially Received</option>
-                                  <option value="Received">Received</option>
-                                  <option value="Over Received">Over Received</option>
-                                  <option value="Closed">Closed</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block font-semibold mb-1 text-slate-700">Remarks</label>
-                                <input
-                                  type="text"
-                                  value={item.remarks}
-                                  onChange={(e) => handleUpdateEditPoItem(idx, 'remarks', e.target.value)}
-                                  placeholder="Tolerances / notes"
-                                  className="w-full p-2 bg-white border border-slate-300 rounded-lg"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Delivery Terms</label>
+                  <select
+                    value={editDeliveryTerms}
+                    onChange={(e) => setEditDeliveryTerms(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="FOB">FOB</option>
+                    <option value="CFR">CFR</option>
+                    <option value="CIF">CIF</option>
+                    <option value="Ex-Works">Ex-Works</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Destination Port</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. N.S. / Nhava Sheva"
+                    value={editDestination}
+                    onChange={(e) => setEditDestination(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Payment Terms</label>
+                  <select
+                    value={isEditCustomPaymentTerms ? 'Custom...' : (STANDARD_PAYMENT_TERMS.includes(editPaymentTerms) ? editPaymentTerms : 'Custom...')}
+                    onChange={(e) => {
+                      if (e.target.value === 'Custom...') {
+                        setIsEditCustomPaymentTerms(true);
+                      } else {
+                        setIsEditCustomPaymentTerms(false);
+                        setEditPaymentTerms(e.target.value);
+                      }
+                    }}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                  >
+                    {STANDARD_PAYMENT_TERMS.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  {isEditCustomPaymentTerms && (
+                    <input
+                      type="text"
+                      placeholder="Enter custom payment terms"
+                      value={editPaymentTerms}
+                      onChange={(e) => setEditPaymentTerms(e.target.value)}
+                      className="mt-1.5 w-full p-2 bg-white border border-blue-400 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
                   )}
                 </div>
-              )}
+              </div>
 
-              <div className="pt-3 border-t flex items-center justify-between shrink-0">
-                <div className="text-[11px] text-slate-500">
-                  Total Items: <strong className="text-slate-800">{editPoItems.filter(i => !i.isDeleted).length}</strong> • 
-                  Total Ordered: <strong className="text-blue-700">{formatWeight(editPoItems.filter(i => !i.isDeleted).reduce((acc, i) => acc + (parseFloat(i.ordered_quantity) || 0), 0))}</strong>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Order Confirmation (O/C No.)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. OC-24-901"
+                    value={editOcNumber}
+                    onChange={(e) => setEditOcNumber(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                  />
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditPoOpen(false)}
-                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm"
-                  >
-                    Save Changes
-                  </button>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">O/C Date</label>
+                  <input
+                    type="date"
+                    value={editOcDate}
+                    onChange={(e) => setEditOcDate(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
                 </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Expected Delivery Date</label>
+                  <input
+                    type="date"
+                    value={editExpDelivery}
+                    onChange={(e) => setEditExpDelivery(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">PO Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as PurchaseOrder['status'])}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                  >
+                    <option value="Open">Open</option>
+                    <option value="Partially Received">Partially Received</option>
+                    <option value="Received">Received</option>
+                    <option value="Over Received">Over Received</option>
+                    <option value="Closed">Closed</option>
+                    <option value="Draft">Draft</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Remarks / Notes</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Special testing or dispatch instructions"
+                    value={editRemarks}
+                    onChange={(e) => setEditRemarks(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsEditPoOpen(false)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm"
+                >
+                  Save Changes
+                </button>
               </div>
             </form>
           </div>
