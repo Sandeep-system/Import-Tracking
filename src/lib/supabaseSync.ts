@@ -312,3 +312,12 @@ export const supabaseSync = {
     }
   }
 };
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    if (hasPendingChanges) {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabaseSync.executeSync();
+    }
+  });
+}

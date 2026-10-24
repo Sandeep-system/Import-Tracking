@@ -23,6 +23,8 @@ import { canonicalSupplierKey } from './utils';
 
 const STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V8';
 const PREV_STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V7';
+const RESOLUTIONS_STORAGE_KEY = 'IMPORT_TRACKING_RESOLUTIONS_V1';
+const OPERATIONAL_POS_STORAGE_KEY = 'IMPORT_TRACKING_OPERATIONAL_POS_V1';
 
 export function normalizeIncomingStockItem(raw: any, defaultSource: string = 'INCOMING SE'): IncomingStockItem {
   if (!raw) return raw;
@@ -143,6 +145,30 @@ class Store {
         localStorage.removeItem('sandeep_user_pos');
         localStorage.removeItem('sandeep_user_receipts');
       } catch (e) {}
+
+      // Load fast local caches so data persists instantly across page reloads
+      try {
+        const cachedRes = localStorage.getItem(RESOLUTIONS_STORAGE_KEY);
+        if (cachedRes) {
+          const parsedRes = JSON.parse(cachedRes);
+          if (Array.isArray(parsedRes) && parsedRes.length > 0) {
+            this.state.balanceResolutions = parsedRes;
+          }
+        }
+        const cachedPOs = localStorage.getItem(OPERATIONAL_POS_STORAGE_KEY);
+        if (cachedPOs) {
+          const parsedPOs = JSON.parse(cachedPOs);
+          if (Array.isArray(parsedPOs) && parsedPOs.length > 0) {
+            const poMap = new Map(this.state.purchaseOrders.map(p => [p.id || `po-${p.po_number}`, p]));
+            for (const po of parsedPOs) {
+              poMap.set(po.id || `po-${po.po_number}`, po);
+            }
+            this.state.purchaseOrders = Array.from(poMap.values());
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load local cached state:', e);
+      }
 
       // Link incoming stock to purchase orders on initial state
       this.linkIncomingStockWithPOs();
@@ -288,10 +314,30 @@ class Store {
         seCust.contact_person = 'Head Office / Self';
       }
 
+      // 8. Process Balance Resolutions from cloud database
+      if (Array.isArray(remote.balanceResolutions)) {
+        const resMap = new Map<string, BalanceResolution>();
+        for (const r of (this.state.balanceResolutions || [])) {
+          if (r && r.id) resMap.set(r.id, r);
+        }
+        for (const r of remote.balanceResolutions) {
+          if (r && r.id) {
+            resMap.set(r.id, r);
+          }
+        }
+        this.state.balanceResolutions = Array.from(resMap.values());
+      }
+
       this.linkIncomingStockWithPOs();
       for (const po of this.state.purchaseOrders) {
         this.recomputePOAggregates(po);
       }
+
+      // Keep local cache in sync with merged remote state
+      try {
+        localStorage.setItem(RESOLUTIONS_STORAGE_KEY, JSON.stringify(this.state.balanceResolutions || []));
+        localStorage.setItem(OPERATIONAL_POS_STORAGE_KEY, JSON.stringify(this.getOperationalPurchaseOrders()));
+      } catch (e) {}
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('app:data-updated'));
@@ -319,15 +365,28 @@ class Store {
     return this.state.purchaseOrders.filter(p => !baselineIds.has(p.id));
   }
 
-  public save(options: { skipAutoSync?: boolean } = {}) {
+  public save(options: { skipAutoSync?: boolean; immediateSync?: boolean } = {}) {
     if (typeof window !== 'undefined') {
       try {
+        // Persist local cache synchronously so immediate refresh is 100% resilient
+        try {
+          localStorage.setItem(RESOLUTIONS_STORAGE_KEY, JSON.stringify(this.state.balanceResolutions || []));
+          localStorage.setItem(OPERATIONAL_POS_STORAGE_KEY, JSON.stringify(this.getOperationalPurchaseOrders()));
+        } catch (e) {}
+
         window.dispatchEvent(new CustomEvent('app:data-updated'));
         if (!options.skipAutoSync) {
-          supabaseSync.queueSync(this.state, {
-            deletedPoIds: Array.from(this.deletedPoIds),
-            deletedReceiptIds: Array.from(this.deletedReceiptIds)
-          });
+          if (options.immediateSync) {
+            supabaseSync.pushAll(this.state, {
+              deletedPoIds: Array.from(this.deletedPoIds),
+              deletedReceiptIds: Array.from(this.deletedReceiptIds)
+            });
+          } else {
+            supabaseSync.queueSync(this.state, {
+              deletedPoIds: Array.from(this.deletedPoIds),
+              deletedReceiptIds: Array.from(this.deletedReceiptIds)
+            });
+          }
         }
       } catch (err) {
         console.error('Error dispatching update event:', err);
@@ -1837,7 +1896,7 @@ class Store {
       `Resolved ${totalToResolve} KG for PO ${po.po_number} Item #${item.line_number} (CF: ${cfQty} KG, Waived: ${wQty} KG. Reason: ${params.reason || 'N/A'})`
     );
 
-    this.save();
+    this.save({ immediateSync: true });
 
     return {
       resolutions: createdResolutions,
@@ -1884,7 +1943,7 @@ class Store {
       `Reversed resolution ${res.id} (${res.resolution_type}: ${res.quantity} KG) for PO ${res.po_number}`
     );
 
-    this.save();
+    this.save({ immediateSync: true });
     return true;
   }
 
@@ -2641,6 +2700,10 @@ class Store {
     this.deletedPoIds.clear();
     this.deletedReceiptIds.clear();
     this.state = getInitialState();
+    try {
+      localStorage.removeItem(RESOLUTIONS_STORAGE_KEY);
+      localStorage.removeItem(OPERATIONAL_POS_STORAGE_KEY);
+    } catch (e) {}
     this.addAuditLog(
       'DATABASE_PURGE',
       'SYSTEM',
