@@ -68,8 +68,10 @@ export interface LotShipmentGroup {
   items: UnifiedShipmentItem[];
   item_count: number;
   total_weight: number;
+  total_pieces?: number;
   supplier: string;
   make?: string | null;
+  customer?: string | null;
   linked_po_number?: string | null;
   linked_pos?: string[];
   port: string;
@@ -94,9 +96,9 @@ function ShipmentsContent() {
     setMounted(true);
   }, []);
 
-  // Tab State: 'shipments' | 'arrivals' | 'ports' | 'orders'
-  const initialTab = (searchParams.get('tab') as 'shipments' | 'arrivals' | 'ports' | 'orders') || 'shipments';
-  const [activeTab, setActiveTab] = useState<'shipments' | 'arrivals' | 'ports' | 'orders'>(initialTab);
+  // Tab State: 'shipments' | 'arrivals' | 'ports' | 'customers' | 'orders'
+  const initialTab = (searchParams.get('tab') as 'shipments' | 'arrivals' | 'ports' | 'customers' | 'orders') || 'shipments';
+  const [activeTab, setActiveTab] = useState<'shipments' | 'arrivals' | 'ports' | 'customers' | 'orders'>(initialTab);
 
   // Filters
   const initialSearch = searchParams.get('search') || '';
@@ -104,6 +106,7 @@ function ShipmentsContent() {
   const [search, setSearch] = useState(initialSearch);
   const [selectedPort, setSelectedPort] = useState(initialPort);
   const [selectedSupplier, setSelectedSupplier] = useState('ALL');
+  const [selectedCustomer, setSelectedCustomer] = useState('ALL');
   const [selectedTerms, setSelectedTerms] = useState('ALL');
   const [selectedShipmentStatus, setSelectedShipmentStatus] = useState<string>('ALL');
 
@@ -434,11 +437,16 @@ function ShipmentsContent() {
         stage = 'Pending';
       }
 
+      const custName = g.items.find(it => it.customer)?.customer || 'SE';
+      const totalPieces = g.items.reduce((acc, it) => acc + (Number(it.rawIncoming?.pieces || it.rawItem?.pieces) || 1), 0);
+
       list.push({
         lot_number: g.lot_number,
         items: g.items,
         item_count: g.items.length,
         total_weight: totalWeight,
+        total_pieces: totalPieces,
+        customer: custName,
         supplier: g.supplier,
         make: g.make,
         linked_po_number: g.linked_po_number,
@@ -487,6 +495,10 @@ function ShipmentsContent() {
       if (selectedSupplier !== 'ALL' && (group.supplier || '').toLowerCase() !== selectedSupplier.toLowerCase()) {
         return false;
       }
+      // Customer filter
+      if (selectedCustomer !== 'ALL' && (group.customer || '').toLowerCase() !== selectedCustomer.toLowerCase()) {
+        return false;
+      }
       // Delivery terms filter
       if (selectedTerms !== 'ALL' && (group.delivery_terms || '').toUpperCase() !== selectedTerms.toUpperCase()) {
         return false;
@@ -497,6 +509,7 @@ function ShipmentsContent() {
         const matchLot = group.lot_number.toLowerCase().includes(q);
         const matchPo = (group.linked_po_number || '').toLowerCase().includes(q);
         const matchSupplier = group.supplier.toLowerCase().includes(q);
+        const matchCustomer = (group.customer || '').toLowerCase().includes(q);
         const matchPort = (group.port || '').toLowerCase().includes(q);
         const matchStatus = group.status.toLowerCase().includes(q);
         const matchContainer = (group.container_no || '').toLowerCase().includes(q);
@@ -504,15 +517,16 @@ function ShipmentsContent() {
           (it.grade || '').toLowerCase().includes(q) ||
           (it.dimensions || '').toLowerCase().includes(q) ||
           (it.heat_no || '').toLowerCase().includes(q) ||
-          (it.container_no || '').toLowerCase().includes(q)
+          (it.container_no || '').toLowerCase().includes(q) ||
+          (it.customer || '').toLowerCase().includes(q)
         );
-        if (!matchLot && !matchPo && !matchSupplier && !matchPort && !matchStatus && !matchContainer && !matchItems) {
+        if (!matchLot && !matchPo && !matchSupplier && !matchCustomer && !matchPort && !matchStatus && !matchContainer && !matchItems) {
           return false;
         }
       }
       return true;
     });
-  }, [allGroupedShipments, selectedShipmentStatus, selectedPort, selectedSupplier, selectedTerms, search]);
+  }, [allGroupedShipments, selectedShipmentStatus, selectedPort, selectedSupplier, selectedCustomer, selectedTerms, search]);
 
   // Flattened filtered items for counts and exports
   const filteredShipments = useMemo(() => {
@@ -735,6 +749,68 @@ function ShipmentsContent() {
     const set = new Set(allUnifiedShipments.map(i => (i.delivery_terms || '').toUpperCase()).filter(Boolean));
     return Array.from(set).sort();
   }, [allUnifiedShipments]);
+
+  const uniqueCustomers = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of allUnifiedShipments) {
+      if (item.customer?.trim()) set.add(item.customer.trim());
+    }
+    if (set.size === 0) set.add('SE');
+    return Array.from(set).sort();
+  }, [allUnifiedShipments]);
+
+  const customerStats = useMemo(() => {
+    const map = new Map<string, {
+      customer: string;
+      lots: LotShipmentGroup[];
+      items: UnifiedShipmentItem[];
+      totalWeight: number;
+      totalPieces: number;
+      readyWeight: number;
+      transitWeight: number;
+      receivedWeight: number;
+      readyLots: number;
+      transitLots: number;
+      receivedLots: number;
+    }>();
+
+    for (const group of allGroupedShipments) {
+      const custName = group.customer || group.items[0]?.customer || 'SE';
+      let entry = map.get(custName);
+      if (!entry) {
+        entry = {
+          customer: custName,
+          lots: [],
+          items: [],
+          totalWeight: 0,
+          totalPieces: 0,
+          readyWeight: 0,
+          transitWeight: 0,
+          receivedWeight: 0,
+          readyLots: 0,
+          transitLots: 0,
+          receivedLots: 0,
+        };
+        map.set(custName, entry);
+      }
+      entry.lots.push(group);
+      entry.items.push(...group.items);
+      entry.totalWeight += group.total_weight || 0;
+      entry.totalPieces += group.total_pieces || group.items.length;
+      if (group.status === 'Ready') {
+        entry.readyWeight += group.total_weight || 0;
+        entry.readyLots++;
+      } else if (group.status === 'In Transit') {
+        entry.transitWeight += group.total_weight || 0;
+        entry.transitLots++;
+      } else if (group.status === 'Received') {
+        entry.receivedWeight += group.total_weight || 0;
+        entry.receivedLots++;
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.totalWeight - a.totalWeight);
+  }, [allGroupedShipments]);
 
   // Status Badge Renderer Helper
   const renderShipmentStatusBadge = (status: ShipmentStage | string) => {
@@ -1035,6 +1111,27 @@ function ShipmentsContent() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Arrivals Schedule');
       XLSX.writeFile(wb, `Port_Arrivals_Schedule_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } else if (activeTab === 'customers') {
+      const customerRows = customerStats.flatMap(cs => 
+        cs.lots.map(lot => ({
+          'Customer': cs.customer,
+          'Lot Number': lot.lot_number,
+          'PO Number': lot.linked_po_number ? `PO ${lot.linked_po_number}` : 'Direct Cargo',
+          'Supplier': lot.supplier,
+          'Make / Mill': lot.make || 'Standard',
+          'Pieces': lot.total_pieces || lot.items.length,
+          'Weight (KG)': lot.total_weight,
+          'Discharge Port': lot.port || 'N.S.',
+          'Date of Shipment': lot.date_of_shipment ? String(lot.date_of_shipment).split('T')[0] : '—',
+          'Sea Port ETA': lot.eta_seaport ? String(lot.eta_seaport).split('T')[0] : '—',
+          'SIMS Filing': lot.items[0]?.sims || '—',
+          'Status': lot.status
+        }))
+      );
+      const ws = XLSX.utils.json_to_sheet(customerRows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Customer Shipments');
+      XLSX.writeFile(wb, `Customer_Shipments_${new Date().toISOString().split('T')[0]}.xlsx`);
     } else {
       const exportRows = filteredShipments.map(i => ({
         'Lot Number': i.lot_number,
@@ -1265,6 +1362,22 @@ function ShipmentsContent() {
             </button>
 
             <button
+              onClick={() => setActiveTab('customers')}
+              className={cn(
+                "px-4 py-2.5 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-2",
+                activeTab === 'customers'
+                  ? "border-violet-600 text-violet-700 bg-white shadow-sm"
+                  : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60"
+              )}
+            >
+              <Building2 className="h-3.5 w-3.5 text-violet-600" />
+              <span>Customer Name</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-violet-100 text-violet-800 font-extrabold">
+                {uniqueCustomers.length} Customers
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('orders')}
               className={cn(
                 "px-4 py-2.5 text-xs font-bold rounded-t-lg border-b-2 transition-all flex items-center gap-2",
@@ -1384,6 +1497,18 @@ function ShipmentsContent() {
                   ))}
                 </select>
 
+                {/* Customer Filter */}
+                <select
+                  value={selectedCustomer}
+                  onChange={(e) => setSelectedCustomer(e.target.value)}
+                  className="py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500/20 max-w-[170px]"
+                >
+                  <option value="ALL">All Customers ({uniqueCustomers.length})</option>
+                  {uniqueCustomers.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+
                 {/* Delivery Terms Filter */}
                 <select
                   value={selectedTerms}
@@ -1396,13 +1521,14 @@ function ShipmentsContent() {
                   ))}
                 </select>
 
-                {(search || selectedShipmentStatus !== 'ALL' || selectedPort !== 'ALL' || selectedSupplier !== 'ALL' || selectedTerms !== 'ALL') && (
+                {(search || selectedShipmentStatus !== 'ALL' || selectedPort !== 'ALL' || selectedSupplier !== 'ALL' || selectedCustomer !== 'ALL' || selectedTerms !== 'ALL') && (
                   <button
                     onClick={() => {
                       setSearch('');
                       setSelectedShipmentStatus('ALL');
                       setSelectedPort('ALL');
                       setSelectedSupplier('ALL');
+                      setSelectedCustomer('ALL');
                       setSelectedTerms('ALL');
                     }}
                     className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
@@ -1425,6 +1551,7 @@ function ShipmentsContent() {
                   <tr>
                     <th className="table-header w-10 text-center"></th>
                     <th className="table-header">Lot Number</th>
+                    <th className="table-header">Customer</th>
                     <th className="table-header">Linked PO</th>
                     <th className="table-header">Supplier / Mill</th>
                     <th className="table-header text-center">Status</th>
@@ -1440,7 +1567,7 @@ function ShipmentsContent() {
                 <tbody className="divide-y divide-slate-100">
                   {filteredGroupedShipments.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="py-12 text-center text-slate-400">
+                      <td colSpan={13} className="py-12 text-center text-slate-400">
                         <Ship className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                         <p className="font-semibold text-slate-600">No shipment lots matching your filters.</p>
                         <p className="text-[11px] text-slate-400 mt-1">Try resetting filters or adjusting search criteria.</p>
@@ -1493,6 +1620,11 @@ function ShipmentsContent() {
                                   Cont: {group.container_no}
                                 </span>
                               )}
+                            </td>
+                            <td className="table-cell">
+                              <span className="font-semibold text-slate-800 text-xs px-2 py-0.5 rounded bg-slate-100 border border-slate-200">
+                                {group.customer || 'SE'}
+                              </span>
                             </td>
                             <td className="table-cell" onClick={(e) => e.stopPropagation()}>
                               {group.linked_pos && group.linked_pos.length > 0 ? (
@@ -1613,7 +1745,7 @@ function ShipmentsContent() {
                           {/* Expanded Items Sub-Table */}
                           {isExpanded && (
                             <tr className="bg-blue-50/20">
-                              <td colSpan={12} className="p-0 border-b border-slate-200">
+                              <td colSpan={13} className="p-0 border-b border-slate-200">
                                 <div className="p-4 bg-gradient-to-r from-blue-50/60 via-slate-50 to-indigo-50/50 border-l-4 border-l-blue-600 space-y-3">
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
@@ -1673,8 +1805,16 @@ function ShipmentsContent() {
                                                 <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-800 font-semibold">{item.heat_no}</span>
                                               ) : '—'}
                                             </td>
-                                            <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
-                                              {item.sims || '—'}
+                                            <td className="py-2.5 px-3 text-[11px]">
+                                              {item.sims ? (
+                                                item.sims === 'Done' ? (
+                                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Done</span>
+                                                ) : item.sims === 'Not Required' ? (
+                                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Not Required</span>
+                                                ) : (
+                                                  <span className="font-mono text-slate-700">{item.sims}</span>
+                                                )
+                                              ) : '—'}
                                             </td>
                                             <td className="py-2.5 px-3 font-mono text-amber-800 text-[11px] font-semibold">
                                               {item.container_no ? (
@@ -2418,7 +2558,287 @@ function ShipmentsContent() {
           </div>
         )}
 
-        {/* TAB 3: PO CONTRACTS & LOT-WISE SHIPMENT STATUS */}
+        {/* TAB: CUSTOMER NAME & CARGO ALLOCATION */}
+        {activeTab === 'customers' && (
+          <div className="p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-violet-600" />
+                  <span>Customer Cargo & Order Allocation Analysis</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Consolidated tracking of live inbound shipments, container cargo, and lot allocations by Customer Name.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  className="px-3 py-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-lg shadow-sm flex items-center gap-1.5 transition-colors"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Export Customer Report</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Customer Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {customerStats.map((custData) => {
+                const isSelected = selectedCustomer === custData.customer;
+                return (
+                  <div
+                    key={custData.customer}
+                    onClick={() => setSelectedCustomer(isSelected ? 'ALL' : custData.customer)}
+                    className={cn(
+                      "p-4 rounded-xl border transition-all cursor-pointer card-shadow flex flex-col justify-between space-y-3",
+                      isSelected
+                        ? "border-violet-600 ring-2 ring-violet-500/20 bg-violet-50/20"
+                        : "border-slate-200 bg-white hover:border-violet-300"
+                    )}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-lg bg-violet-50 text-violet-600 border border-violet-100">
+                          <Building2 className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900 text-xs">{custData.customer}</h3>
+                          <span className="text-[10px] text-slate-400 font-medium">Customer Account</span>
+                        </div>
+                      </div>
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                        isSelected
+                          ? "bg-violet-600 text-white border-violet-600"
+                          : "bg-slate-100 text-slate-700 border-slate-200"
+                      )}>
+                        {custData.lots.length} Lots
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-slate-500 text-[11px]">Total Cargo Weight:</span>
+                        <strong className="text-sm font-mono font-extrabold text-violet-700">
+                          {formatWeight(custData.totalWeight)}
+                        </strong>
+                      </div>
+                      <div className="flex items-baseline justify-between text-[11px] text-slate-500">
+                        <span>Total Pieces:</span>
+                        <span className="font-mono font-bold text-slate-700">{custData.totalPieces} PCS</span>
+                      </div>
+                    </div>
+
+                    {/* Stage breakdown */}
+                    <div className="pt-2 border-t border-slate-100 grid grid-cols-3 gap-1.5 text-center text-[10px]">
+                      <div className="bg-slate-50 p-1.5 rounded border border-slate-100">
+                        <span className="text-slate-400 block font-semibold">Ready</span>
+                        <span className="font-bold text-blue-600">{custData.readyLots} lots</span>
+                      </div>
+                      <div className="bg-amber-50/60 p-1.5 rounded border border-amber-100">
+                        <span className="text-amber-700 block font-semibold">Transit</span>
+                        <span className="font-bold text-amber-800">{custData.transitLots} lots</span>
+                      </div>
+                      <div className="bg-emerald-50/60 p-1.5 rounded border border-emerald-100">
+                        <span className="text-emerald-700 block font-semibold">Received</span>
+                        <span className="font-bold text-emerald-800">{custData.receivedLots} lots</span>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-violet-600 font-semibold text-right pt-0.5">
+                      {isSelected ? 'Click to show all customers' : 'Filter by this customer →'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Filter Toolbar for Customer Shipments Table */}
+            <div className="bg-white rounded-xl border border-slate-200 card-shadow overflow-hidden">
+              <div className="p-3.5 border-b border-slate-200 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+                  <div className="relative flex-1 min-w-[200px] max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search customer lots, PO, supplier, grade..."
+                      className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                    />
+                    {search && (
+                      <button
+                        onClick={() => setSearch('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <select
+                    value={selectedCustomer}
+                    onChange={(e) => setSelectedCustomer(e.target.value)}
+                    className="py-1.5 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-violet-500/20"
+                  >
+                    <option value="ALL">All Customers ({uniqueCustomers.length})</option>
+                    {uniqueCustomers.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={selectedShipmentStatus}
+                    onChange={(e) => setSelectedShipmentStatus(e.target.value)}
+                    className="py-1.5 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:ring-2 focus:ring-violet-500/20"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Ready">Ready</option>
+                    <option value="In Transit">In Transit</option>
+                    <option value="Received">Received</option>
+                  </select>
+
+                  {(search || selectedCustomer !== 'ALL' || selectedShipmentStatus !== 'ALL') && (
+                    <button
+                      onClick={() => {
+                        setSearch('');
+                        setSelectedCustomer('ALL');
+                        setSelectedShipmentStatus('ALL');
+                      }}
+                      className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      <span>Reset Filters</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="text-slate-500 font-medium">
+                  Showing <strong className="text-slate-900">{filteredGroupedShipments.length}</strong> lots ({formatWeight(filteredGroupedShipments.reduce((sum, g) => sum + g.total_weight, 0))})
+                </div>
+              </div>
+
+              {/* Customer Lots Breakdown Table */}
+              <div className="overflow-x-auto max-h-[500px]">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="sticky top-0 z-10 bg-slate-100 shadow-2xs">
+                    <tr>
+                      <th className="table-header">Customer</th>
+                      <th className="table-header">Lot Number</th>
+                      <th className="table-header">Linked PO</th>
+                      <th className="table-header">Supplier / Make</th>
+                      <th className="table-header">Grade & Spec</th>
+                      <th className="table-header text-right">Pieces</th>
+                      <th className="table-header text-right">Cargo Weight</th>
+                      <th className="table-header">Discharge Port</th>
+                      <th className="table-header">Shipment Date</th>
+                      <th className="table-header">Port ETA</th>
+                      <th className="table-header text-center">SIMS Filing</th>
+                      <th className="table-header text-center">Stage</th>
+                      <th className="table-header text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredGroupedShipments.length === 0 ? (
+                      <tr>
+                        <td colSpan={13} className="py-12 text-center text-slate-400">
+                          <Building2 className="h-8 w-8 mx-auto text-slate-300 mb-2" />
+                          <p className="font-semibold text-slate-600">No shipments found for customer filter.</p>
+                          <p className="text-[11px] text-slate-400 mt-1">Try selecting a different customer or resetting filters.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredGroupedShipments.map((group, idx) => {
+                        const firstItem = group.items[0];
+                        return (
+                          <tr 
+                            key={`${group.lot_number}-${idx}`} 
+                            onClick={() => firstItem && setInspectingItem(firstItem)}
+                            className="hover:bg-violet-50/40 cursor-pointer transition-colors group"
+                          >
+                            <td className="table-cell font-bold text-slate-900">
+                              <span className="px-2 py-0.5 rounded bg-violet-50 text-violet-800 font-bold border border-violet-200">
+                                {group.customer || 'SE'}
+                              </span>
+                            </td>
+                            <td className="table-cell font-mono font-bold text-slate-900">
+                              {group.lot_number}
+                              {group.container_no && (
+                                <span className="block text-[10px] text-amber-800 font-mono font-normal">
+                                  {group.container_no}
+                                </span>
+                              )}
+                            </td>
+                            <td className="table-cell" onClick={(e) => e.stopPropagation()}>
+                              {group.linked_po_number ? (
+                                <Link 
+                                  href={`/purchasing/purchase-orders/${group.linked_po_number}`}
+                                  className="font-bold text-blue-600 hover:underline"
+                                >
+                                  PO {group.linked_po_number}
+                                </Link>
+                              ) : (
+                                <span className="text-slate-400">Direct Cargo</span>
+                              )}
+                            </td>
+                            <td className="table-cell">
+                              <span className="font-semibold text-slate-800 block truncate max-w-[130px]">{group.supplier}</span>
+                              {group.make && (
+                                <span className="text-[10px] text-slate-400 block">{group.make}</span>
+                              )}
+                            </td>
+                            <td className="table-cell">
+                              <span className="font-bold text-slate-900 block">{firstItem?.grade || 'Steel Grade'}</span>
+                              <span className="text-[10px] text-slate-500 block truncate max-w-[120px]">{firstItem?.dimensions || 'Standard Spec'}</span>
+                            </td>
+                            <td className="table-cell text-right font-mono font-bold text-slate-700">
+                              {group.total_pieces || group.items.length}
+                            </td>
+                            <td className="table-cell text-right font-mono font-bold text-violet-700">
+                              {formatWeight(group.total_weight)}
+                            </td>
+                            <td className="table-cell font-medium text-slate-700">{group.port || 'N.S.'}</td>
+                            <td className="table-cell whitespace-nowrap text-slate-600">{formatDate(group.date_of_shipment)}</td>
+                            <td className="table-cell whitespace-nowrap font-medium text-slate-800">{formatDate(group.eta_seaport)}</td>
+                            <td className="table-cell text-center">
+                              {firstItem?.sims ? (
+                                firstItem.sims === 'Done' ? (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Done</span>
+                                ) : firstItem.sims === 'Not Required' ? (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Not Required</span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-50 text-blue-700">{firstItem.sims}</span>
+                                )
+                              ) : '—'}
+                            </td>
+                            <td className="table-cell text-center" onClick={(e) => e.stopPropagation()}>
+                              {renderShipmentStatusBadge(group.status)}
+                            </td>
+                            <td className="table-cell text-right" onClick={(e) => e.stopPropagation()}>
+                              {firstItem && (
+                                <button
+                                  type="button"
+                                  onClick={() => setInspectingItem(firstItem)}
+                                  className="px-2.5 py-1 text-xs font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-lg transition-colors border border-violet-200"
+                                >
+                                  Inspect
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
         {activeTab === 'orders' && (
           <div className="space-y-4">
             {/* Quick Metrics Bar for PO Lots */}
@@ -2990,10 +3410,26 @@ function ShipmentsContent() {
                 <span className="text-slate-400 block text-[10px] font-semibold">Port of Loading (POL)</span>
                 <span className="font-semibold text-slate-800">{inspectingItem.port_of_loading || '—'}</span>
               </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-semibold">Customer</span>
+                <span className="font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded border border-violet-200 inline-block mt-0.5">{inspectingItem.customer || 'SE'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px] font-semibold">Pieces</span>
+                <span className="font-bold font-mono text-slate-800">{inspectingItem.rawIncoming?.pieces || inspectingItem.rawItem?.pieces || 1} PCS</span>
+              </div>
               {inspectingItem.sims && (
                 <div>
-                  <span className="text-slate-400 block text-[10px] font-semibold">SIMS Registration</span>
-                  <span className="font-mono font-semibold text-slate-800">{inspectingItem.sims}</span>
+                  <span className="text-slate-400 block text-[10px] font-semibold">SIMS Filing</span>
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold inline-block mt-0.5 ${
+                    inspectingItem.sims === 'Done'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : inspectingItem.sims === 'Not Required'
+                      ? 'bg-slate-100 text-slate-700'
+                      : 'bg-blue-100 text-blue-800 font-mono'
+                  }`}>
+                    {inspectingItem.sims}
+                  </span>
                 </div>
               )}
               {inspectingItem.make && (

@@ -33,7 +33,7 @@ import {
   Anchor
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
-import { PurchaseOrder, PurchaseOrderItem, Receipt, BalanceResolution } from '@/types';
+import { PurchaseOrder, PurchaseOrderItem, Receipt, BalanceResolution, ItemStatus } from '@/types';
 import { formatWeight, formatCurrency, formatDate, getStatusBadgeClass } from '@/lib/utils';
 import { AddReceiptModal } from '@/components/AddReceiptModal';
 import { EditReceiptModal } from '@/components/EditReceiptModal';
@@ -148,8 +148,38 @@ const STANDARD_ORIGINS = [
   const [shipPort, setShipPort] = useState('N.S.');
   const [shipContainerNo, setShipContainerNo] = useState('');
   const [shipPortOfLoading, setShipPortOfLoading] = useState('');
+  const [shipHsnCode, setShipHsnCode] = useState('');
   const [isSubmittingShipment, setIsSubmittingShipment] = useState(false);
   const [shipmentError, setShipmentError] = useState<string | null>(null);
+
+  // Single Item Edit State
+  const [isEditItemOpen, setIsEditItemOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<PurchaseOrderItem | null>(null);
+  const [editItemGrade, setEditItemGrade] = useState('');
+  const [editItemGradeDoc, setEditItemGradeDoc] = useState('');
+  const [editItemSection, setEditItemSection] = useState('Plate');
+  const [editItemDia, setEditItemDia] = useState('');
+  const [editItemThickness, setEditItemThickness] = useState('');
+  const [editItemLength, setEditItemLength] = useState('');
+  const [editItemTreatment, setEditItemTreatment] = useState('');
+  const [editItemCondition, setEditItemCondition] = useState('');
+  const [editItemQty, setEditItemQty] = useState('');
+  const [editItemPrice, setEditItemPrice] = useState('');
+  const [editItemCurrency, setEditItemCurrency] = useState('USD');
+  const [editItemLot, setEditItemLot] = useState('');
+  const [editItemContainer, setEditItemContainer] = useState('');
+  const [editItemPOL, setEditItemPOL] = useState('');
+  const [editItemDestPort, setEditItemDestPort] = useState('N.S.');
+  const [editItemDeliveryTerms, setEditItemDeliveryTerms] = useState('FOB');
+  const [editItemPaymentTerms, setEditItemPaymentTerms] = useState('DP at sight');
+  const [editItemHeatNo, setEditItemHeatNo] = useState('');
+  const [editItemSims, setEditItemSims] = useState('');
+  const [editItemHsnCode, setEditItemHsnCode] = useState('');
+  const [editItemPieces, setEditItemPieces] = useState('');
+  const [editItemExpDelivery, setEditItemExpDelivery] = useState('');
+  const [editItemRemarks, setEditItemRemarks] = useState('');
+  const [editItemStatus, setEditItemStatus] = useState<ItemStatus>('Open');
+  const [editItemError, setEditItemError] = useState<string | null>(null);
 
   // Receive Cargo Modal State (In Transit -> Received)
   const [receivingItem, setReceivingItem] = useState<PurchaseOrderItem | null>(null);
@@ -202,6 +232,10 @@ const STANDARD_ORIGINS = [
   const [bulkRemarks, setBulkRemarks] = useState('');
   const [bulkMode, setBulkMode] = useState<'READY' | 'SHIP' | 'RECEIVE' | 'UPDATE'>('READY');
   const [bulkItemQuantities, setBulkItemQuantities] = useState<Record<string, number>>({});
+  const [bulkItemPieces, setBulkItemPieces] = useState<Record<string, number>>({});
+  const [bulkItemHeatNos, setBulkItemHeatNos] = useState<Record<string, string>>({});
+  const [bulkItemSims, setBulkItemSims] = useState<Record<string, string>>({});
+  const [bulkItemHsnCodes, setBulkItemHsnCodes] = useState<Record<string, string>>({});
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [isSubmittingBulk, setIsSubmittingBulk] = useState(false);
 
@@ -210,6 +244,7 @@ const STANDARD_ORIGINS = [
   const [bulkEtaSeaport, setBulkEtaSeaport] = useState('');
   const [bulkHeatNo, setBulkHeatNo] = useState('');
   const [bulkSims, setBulkSims] = useState('');
+  const [bulkHsnCode, setBulkHsnCode] = useState('');
   const [bulkDeliveryTerms, setBulkDeliveryTerms] = useState('FOB');
   const [bulkPaymentTerms, setBulkPaymentTerms] = useState('DP at sight');
   const [bulkDischargePort, setBulkDischargePort] = useState('N.S.');
@@ -230,6 +265,7 @@ const STANDARD_ORIGINS = [
     paymentTerms?: string;
     heatNo?: string;
     sims?: string;
+    hsnCode?: string;
     containerNo?: string;
     portOfLoading?: string;
   }>>({});
@@ -247,6 +283,7 @@ const STANDARD_ORIGINS = [
     paymentTerms: string;
     heatNo: string;
     sims: string;
+    hsnCode: string;
     containerNo: string;
     portOfLoading: string;
   }>) => {
@@ -357,6 +394,11 @@ const STANDARD_ORIGINS = [
     const simsToUse = existingSims || saved.sims || poSims || '';
     setBulkSims(simsToUse);
 
+    const existingHsn = selectedItems.find(i => i.hsn_code?.trim())?.hsn_code?.trim();
+    const poHsn = po.items?.find(i => i.hsn_code?.trim())?.hsn_code?.trim();
+    const hsnToUse = existingHsn || saved.hsnCode || poHsn || '';
+    setBulkHsnCode(hsnToUse);
+
     // 9. Delivery & Payment Terms, Discharge Port
     const existingDelivTerms = selectedItems.find(i => i.delivery_terms?.trim())?.delivery_terms?.trim();
     const delivTermsToUse = existingDelivTerms || saved.deliveryTerms || po.delivery_terms || 'FOB';
@@ -397,20 +439,33 @@ const STANDARD_ORIGINS = [
       paymentTerms: payTermsToUse,
       heatNo: heatToUse,
       sims: simsToUse,
+      hsnCode: hsnToUse,
       containerNo: containerToUse,
       portOfLoading: polToUse,
     };
 
-    // Auto-fill item quantities
+    // Auto-fill item quantities, pieces, item-wise heat numbers, sims, and hsn codes
     const qtys: Record<string, number> = {};
+    const pcs: Record<string, number> = {};
+    const itemHeatNos: Record<string, string> = {};
+    const itemSims: Record<string, string> = {};
+    const itemHsnCodes: Record<string, string> = {};
     for (const itemId of selectedItemIds) {
       const it = po.items?.find(i => i.id === itemId);
       if (it) {
         const fillQty = (it.actionable_pending_qty ?? it.balance_quantity ?? it.ordered_quantity);
         qtys[itemId] = fillQty > 0 ? fillQty : it.ordered_quantity;
+        pcs[itemId] = Number(it.pieces) || 1;
+        itemHeatNos[itemId] = it.heat_no || heatToUse || '';
+        itemSims[itemId] = it.sims || simsToUse || 'Not Required';
+        itemHsnCodes[itemId] = it.hsn_code || hsnToUse || '';
       }
     }
     setBulkItemQuantities(qtys);
+    setBulkItemPieces(pcs);
+    setBulkItemHeatNos(itemHeatNos);
+    setBulkItemSims(itemSims);
+    setBulkItemHsnCodes(itemHsnCodes);
     setIsBulkReceiptOpen(true);
   };
 
@@ -460,6 +515,7 @@ const STANDARD_ORIGINS = [
         paymentTerms: bulkPaymentTerms,
         heatNo: bulkHeatNo.trim(),
         sims: bulkSims.trim(),
+        hsnCode: bulkHsnCode.trim(),
         containerNo: bulkContainerNo.trim(),
         portOfLoading: bulkPortOfLoading.trim(),
       });
@@ -476,7 +532,8 @@ const STANDARD_ORIGINS = [
           remarks: bulkRemarks.trim() || undefined,
           containerNo: bulkContainerNo.trim() || undefined,
           portOfLoading: bulkPortOfLoading.trim() || undefined,
-          itemQuantities: bulkItemQuantities
+          itemQuantities: bulkItemQuantities,
+          itemPieces: bulkItemPieces
         });
       } else if (bulkMode === 'SHIP') {
         for (const itemId of selectedItemIds) {
@@ -486,8 +543,9 @@ const STANDARD_ORIGINS = [
             lotNumber: bulkLotNumber.trim() || undefined,
             dateOfShipment: bulkDateOfShipment,
             etaSeaport: bulkEtaSeaport,
-            heatNo: bulkHeatNo.trim() || undefined,
-            sims: bulkSims.trim() || undefined,
+            heatNo: bulkItemHeatNos[itemId]?.trim() || bulkHeatNo.trim() || undefined,
+            sims: bulkItemSims[itemId]?.trim() || bulkSims.trim() || undefined,
+            hsnCode: bulkItemHsnCodes[itemId]?.trim() || bulkHsnCode.trim() || undefined,
             deliveryTerms: bulkDeliveryTerms,
             paymentTerms: bulkPaymentTerms,
             port: bulkDischargePort,
@@ -583,8 +641,96 @@ const STANDARD_ORIGINS = [
   const customers = dataStore.getCustomers();
 
   const handleOpenReceiptForItem = (itemId: string) => {
-    setTargetItemId(itemId);
-    setIsAddReceiptOpen(true);
+    setSelectedItemIds([itemId]);
+    handleOpenBulkAction('READY');
+  };
+
+  const handleOpenEditItem = (item: PurchaseOrderItem) => {
+    setEditingItem(item);
+    setEditItemGrade(item.grade_code || '');
+    setEditItemGradeDoc(item.grade_doc || '');
+    setEditItemSection(item.section_name || 'Plate');
+    setEditItemDia(item.diameter_width !== null && item.diameter_width !== undefined ? String(item.diameter_width) : '');
+    setEditItemThickness(item.thickness !== null && item.thickness !== undefined ? String(item.thickness) : '');
+    setEditItemLength(item.length !== null && item.length !== undefined ? String(item.length) : '');
+    setEditItemTreatment(item.treatment || '');
+    setEditItemCondition(item.condition_name || '');
+    setEditItemQty(String(item.ordered_quantity || 0));
+    setEditItemPrice(String(item.purchase_price || 0));
+    setEditItemCurrency(item.currency || po?.currency || 'USD');
+    setEditItemLot(item.lot_number || '');
+    setEditItemContainer(item.container_no || '');
+    setEditItemPOL(item.port_of_loading || '');
+    setEditItemDestPort(item.destination_port || po?.destination || 'N.S.');
+    setEditItemDeliveryTerms(item.delivery_terms || po?.delivery_terms || 'FOB');
+    setEditItemPaymentTerms(item.payment_terms || po?.payment_terms || 'DP at sight');
+    setEditItemHeatNo(item.heat_no || '');
+    setEditItemSims(item.sims || '');
+    setEditItemHsnCode(item.hsn_code || '');
+    setEditItemPieces(item.pieces ? String(item.pieces) : '1');
+    setEditItemExpDelivery(item.expected_delivery_date || '');
+    setEditItemRemarks(item.remarks || '');
+    setEditItemStatus(item.status || 'Open');
+    setEditItemError(null);
+    setIsEditItemOpen(true);
+  };
+
+  const handleSaveItemEdits = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!po || !editingItem) return;
+
+    if (!editItemGrade.trim()) {
+      setEditItemError('Please enter a steel grade.');
+      return;
+    }
+    const numQty = parseFloat(editItemQty) || 0;
+    if (numQty <= 0) {
+      setEditItemError('Ordered quantity must be greater than 0 KG.');
+      return;
+    }
+
+    try {
+      const updated = dataStore.updatePurchaseOrderItem(po.id, editingItem.id, {
+        grade_code: editItemGrade.trim(),
+        grade_doc: editItemGradeDoc.trim() || null,
+        section_name: editItemSection,
+        diameter_width: editItemDia ? parseFloat(editItemDia) : null,
+        thickness: editItemThickness ? parseFloat(editItemThickness) : null,
+        length: editItemLength ? parseFloat(editItemLength) : null,
+        treatment: editItemTreatment.trim() || null,
+        condition_name: editItemCondition.trim() || null,
+        ordered_quantity: numQty,
+        purchase_price: parseFloat(editItemPrice) || 0,
+        currency: editItemCurrency,
+        lot_number: editItemLot.trim() || null,
+        container_no: editItemContainer.trim() || null,
+        port_of_loading: editItemPOL.trim() || null,
+        destination_port: editItemDestPort,
+        delivery_terms: editItemDeliveryTerms,
+        payment_terms: editItemPaymentTerms,
+        heat_no: editItemHeatNo.trim() || null,
+        sims: editItemSims.trim() || null,
+        hsn_code: editItemHsnCode.trim() || null,
+        pieces: editItemPieces ? parseInt(editItemPieces, 10) : null,
+        expected_delivery_date: editItemExpDelivery || null,
+        status: editItemStatus,
+        remarks: editItemRemarks.trim() || null
+      });
+
+      if (selectedItem?.id === editingItem.id) {
+        setSelectedItem(updated);
+      }
+
+      setIsEditItemOpen(false);
+      setEditingItem(null);
+      loadData();
+      setDataVersion(v => v + 1);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('app:data-updated'));
+      }
+    } catch (err: any) {
+      setEditItemError(err.message || 'Failed to update line item.');
+    }
   };
 
   const handleOpenShipmentModal = (item: PurchaseOrderItem) => {
@@ -603,6 +749,7 @@ const STANDARD_ORIGINS = [
     setEtaSeaport(defaultEta);
     setHeatNo(item.heat_no || '');
     setSims(item.sims || '');
+    setShipHsnCode(item.hsn_code || '');
     setShipDeliveryTerms(item.delivery_terms || po?.delivery_terms || 'FOB');
     const pTerms = item.payment_terms || po?.payment_terms || 'DP at sight';
     setShipPaymentTerms(pTerms);
@@ -635,6 +782,7 @@ const STANDARD_ORIGINS = [
         etaSeaport: etaSeaport,
         heatNo: heatNo.trim() || undefined,
         sims: sims.trim() || undefined,
+        hsnCode: shipHsnCode.trim() || undefined,
         deliveryTerms: shipDeliveryTerms,
         paymentTerms: shipPaymentTerms,
         port: shipPort,
@@ -1371,6 +1519,17 @@ const STANDARD_ORIGINS = [
                               Resolve
                             </button>
                           )}
+
+                          {/* Edit Item button */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditItem(item)}
+                            className="px-2 py-1 rounded bg-slate-50 hover:bg-slate-700 hover:text-white text-slate-700 border border-slate-200 font-semibold text-[11px] transition-colors flex items-center gap-1 shadow-sm cursor-pointer"
+                            title="Edit Item Details (Specs, Logistics, Heat #, SIMS, HSN)"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            <span>Edit</span>
+                          </button>
                         </div>
                       )}
                     </td>
@@ -1759,13 +1918,29 @@ const STANDARD_ORIGINS = [
                     );
                   })()}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedItem(null)}
-                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200"
-                >
-                  Close
-                </button>
+                <div className="flex items-center gap-2">
+                  {!isViewer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const it = selectedItem;
+                        setSelectedItem(null);
+                        handleOpenEditItem(it);
+                      }}
+                      className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      <span>Edit Item</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedItem(null)}
+                    className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2902,7 +3077,22 @@ const STANDARD_ORIGINS = [
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Heat Number(s) (Optional)</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold text-slate-700">Quick Fill Heat # (Optional)</label>
+                        {bulkHeatNo && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newHeats = { ...bulkItemHeatNos };
+                              selectedItemIds.forEach(id => { newHeats[id] = bulkHeatNo; });
+                              setBulkItemHeatNos(newHeats);
+                            }}
+                            className="text-[10px] text-indigo-600 hover:underline font-bold cursor-pointer"
+                          >
+                            Apply to All ({selectedItemIds.length})
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="text"
                         value={bulkHeatNo}
@@ -2910,7 +3100,7 @@ const STANDARD_ORIGINS = [
                           setBulkHeatNo(e.target.value);
                           updateSavedBulkValues({ heatNo: e.target.value });
                         }}
-                        placeholder="e.g. H-8831 / H-8832"
+                        placeholder="e.g. H-8831 (or edit per item below)"
                         className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       />
                     </div>
@@ -2943,18 +3133,108 @@ const STANDARD_ORIGINS = [
                       />
                     </div>
 
-                    <div className="sm:col-span-2">
-                      <label className="block font-semibold text-slate-700 mb-1">SIMS Registration (Optional)</label>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold text-slate-700">Quick Fill HSN Code (Optional)</label>
+                        {bulkHsnCode && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newHsns = { ...bulkItemHsnCodes };
+                              selectedItemIds.forEach(id => { newHsns[id] = bulkHsnCode; });
+                              setBulkItemHsnCodes(newHsns);
+                            }}
+                            className="text-[10px] text-indigo-600 hover:underline font-bold cursor-pointer"
+                          >
+                            Apply to All ({selectedItemIds.length})
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="text"
-                        value={bulkSims}
+                        value={bulkHsnCode}
                         onChange={(e) => {
-                          setBulkSims(e.target.value);
-                          updateSavedBulkValues({ sims: e.target.value });
+                          setBulkHsnCode(e.target.value);
+                          updateSavedBulkValues({ hsnCode: e.target.value });
                         }}
-                        placeholder="e.g. SIMS-2024-81920"
+                        placeholder="e.g. 722830 (or edit per item below)"
                         className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold text-slate-700">Quick Fill SIMS Status (Optional)</label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newSims = { ...bulkItemSims };
+                              selectedItemIds.forEach(id => { newSims[id] = 'Done'; });
+                              setBulkItemSims(newSims);
+                            }}
+                            className="text-[10px] text-emerald-600 hover:underline font-bold cursor-pointer"
+                          >
+                            Set All to Done
+                          </button>
+                          <span className="text-slate-300">•</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newSims = { ...bulkItemSims };
+                              selectedItemIds.forEach(id => { newSims[id] = 'Not Required'; });
+                              setBulkItemSims(newSims);
+                            }}
+                            className="text-[10px] text-slate-600 hover:underline font-bold cursor-pointer"
+                          >
+                            Set All to Not Required
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = bulkSims === 'Done' ? '' : 'Done';
+                            setBulkSims(val);
+                            updateSavedBulkValues({ sims: val });
+                            if (val) {
+                              const newSims = { ...bulkItemSims };
+                              selectedItemIds.forEach(id => { newSims[id] = val; });
+                              setBulkItemSims(newSims);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                            bulkSims === 'Done'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-emerald-50 hover:border-emerald-400'
+                          }`}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span>Done</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = bulkSims === 'Not Required' ? '' : 'Not Required';
+                            setBulkSims(val);
+                            updateSavedBulkValues({ sims: val });
+                            if (val) {
+                              const newSims = { ...bulkItemSims };
+                              selectedItemIds.forEach(id => { newSims[id] = val; });
+                              setBulkItemSims(newSims);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                            bulkSims === 'Not Required'
+                              ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 hover:border-slate-400'
+                          }`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          <span>Not Required</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3037,18 +3317,30 @@ const STANDARD_ORIGINS = [
                 <label className="block font-semibold text-slate-700 mb-1.5">
                   Selected Items ({selectedItemIds.length}) & Quantities
                 </label>
-                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 sticky top-0 border-b border-slate-200">
-                      <tr>
-                        <th className="py-2 px-3 font-semibold text-slate-600">Line</th>
-                        <th className="py-2 px-3 font-semibold text-slate-600">Grade & Dimensions</th>
-                        <th className="py-2 px-3 font-semibold text-slate-600 text-center">Status</th>
-                        <th className="py-2 px-3 font-semibold text-slate-600 text-right">Ordered</th>
-                        <th className="py-2 px-3 font-semibold text-slate-600 text-right">
-                          {bulkMode === 'READY' ? 'Ready Qty (KG)' : bulkMode === 'SHIP' ? 'Dispatch Qty' : bulkMode === 'RECEIVE' ? 'Yard Qty' : 'Current Qty'}
-                        </th>
-                      </tr>
+                      {bulkMode === 'SHIP' ? (
+                        <tr>
+                          <th className="py-2 px-3 font-semibold text-slate-600">Line</th>
+                          <th className="py-2 px-3 font-semibold text-slate-600">Material Spec</th>
+                          <th className="py-2 px-3 font-semibold text-slate-600 text-right">Dispatch Qty</th>
+                          <th className="py-2 px-3 font-semibold text-slate-600">Heat Number (Item-wise)</th>
+                          <th className="py-2 px-3 font-semibold text-slate-600">SIMS Status</th>
+                          <th className="py-2 px-3 font-semibold text-slate-600">HSN Code</th>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <th className="py-2 px-3 font-semibold text-slate-600">Line</th>
+                          <th className="py-2 px-3 font-semibold text-slate-600">Grade & Dimensions</th>
+                          <th className="py-2 px-3 font-semibold text-slate-600 text-center">Status</th>
+                          <th className="py-2 px-3 font-semibold text-slate-600 text-right">Ordered</th>
+                          <th className="py-2 px-3 font-semibold text-slate-600 text-right">Pieces (pc)</th>
+                          <th className="py-2 px-3 font-semibold text-slate-600 text-right">
+                            {bulkMode === 'READY' ? 'Ready Qty (KG)' : bulkMode === 'RECEIVE' ? 'Yard Qty' : 'Current Qty'}
+                          </th>
+                        </tr>
+                      )}
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {selectedItemIds.map(itemId => {
@@ -3057,6 +3349,91 @@ const STANDARD_ORIGINS = [
                         const qtyVal = bulkItemQuantities[itemId] !== undefined 
                           ? bulkItemQuantities[itemId] 
                           : (item.actionable_pending_qty ?? item.balance_quantity ?? item.ordered_quantity);
+                        const piecesVal = bulkItemPieces[itemId] !== undefined
+                          ? bulkItemPieces[itemId]
+                          : (Number(item.pieces) || 1);
+
+                        if (bulkMode === 'SHIP') {
+                          const itemHeat = bulkItemHeatNos[itemId] !== undefined ? bulkItemHeatNos[itemId] : (item.heat_no || '');
+                          const itemSims = bulkItemSims[itemId] !== undefined ? bulkItemSims[itemId] : (item.sims || 'Not Required');
+                          const itemHsn = bulkItemHsnCodes[itemId] !== undefined ? bulkItemHsnCodes[itemId] : (item.hsn_code || '');
+
+                          return (
+                            <tr key={item.id} className="hover:bg-slate-50/60">
+                              <td className="py-2 px-3 font-mono font-bold text-slate-500">#{item.line_number}</td>
+                              <td className="py-2 px-3">
+                                <span className="font-bold text-slate-800">{item.grade_code}</span>
+                                <span className="text-slate-400 block text-[10px]">
+                                  {item.diameter_width} x {item.thickness || '—'} x {item.length || '—'} mm
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                <span className="font-bold text-slate-800 block">
+                                  {formatWeight(item.ready_quantity || item.received_quantity || item.ordered_quantity)}
+                                </span>
+                                <span className="font-mono text-[10px] text-slate-500 block">
+                                  {piecesVal} pcs
+                                </span>
+                              </td>
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
+                                  value={itemHeat}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setBulkItemHeatNos(prev => ({ ...prev, [itemId]: val }));
+                                  }}
+                                  placeholder="e.g. H-8831"
+                                  className="w-32 p-1.5 bg-white border border-slate-300 rounded font-mono text-xs focus:ring-1 focus:ring-indigo-500"
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setBulkItemSims(prev => ({ ...prev, [itemId]: 'Done' }));
+                                    }}
+                                    className={`px-2.5 py-1 rounded text-[11px] font-bold border transition-colors flex items-center gap-1 cursor-pointer ${
+                                      itemSims === 'Done'
+                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-emerald-50'
+                                    }`}
+                                  >
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    <span>Done</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setBulkItemSims(prev => ({ ...prev, [itemId]: 'Not Required' }));
+                                    }}
+                                    className={`px-2.5 py-1 rounded text-[11px] font-bold border transition-colors flex items-center gap-1 cursor-pointer ${
+                                      itemSims === 'Not Required'
+                                        ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
+                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    <X className="h-3 w-3" />
+                                    <span>Not Required</span>
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
+                                  value={itemHsn}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setBulkItemHsnCodes(prev => ({ ...prev, [itemId]: val }));
+                                  }}
+                                  placeholder="e.g. 722830"
+                                  className="w-28 p-1.5 bg-white border border-slate-300 rounded font-mono text-xs focus:ring-1 focus:ring-indigo-500"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        }
 
                         return (
                           <tr key={item.id} className="hover:bg-slate-50/60">
@@ -3074,6 +3451,26 @@ const STANDARD_ORIGINS = [
                             </td>
                             <td className="py-2 px-3 text-right font-medium text-slate-600">
                               {formatWeight(item.ordered_quantity)}
+                            </td>
+                            <td className="py-2 px-3 text-right">
+                              {bulkMode === 'READY' ? (
+                                <input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={piecesVal || ''}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10) || 1;
+                                    setBulkItemPieces(prev => ({ ...prev, [itemId]: val }));
+                                  }}
+                                  placeholder="pc"
+                                  className="w-20 p-1.5 bg-white border border-slate-300 rounded font-bold text-right text-xs focus:ring-1 focus:ring-blue-500"
+                                />
+                              ) : (
+                                <span className="font-mono font-semibold text-slate-700">
+                                  {piecesVal} pcs
+                                </span>
+                              )}
                             </td>
                             <td className="py-2 px-3 text-right">
                               {bulkMode === 'READY' ? (
@@ -3109,25 +3506,34 @@ const STANDARD_ORIGINS = [
               {/* Total Summary */}
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="font-semibold text-slate-600">
-                  {bulkMode === 'READY' && 'Total Bulk Ready Quantity:'}
+                  {bulkMode === 'READY' && 'Total Bulk Ready Material:'}
                   {bulkMode === 'SHIP' && 'Total Weight to Dispatch:'}
                   {bulkMode === 'RECEIVE' && 'Total Quantity to Receive at Yard:'}
                   {bulkMode === 'UPDATE' && 'Total Selected Items Weight:'}
                 </span>
-                <span className="font-bold font-mono text-sm text-blue-700">
-                  {formatWeight(
-                    selectedItemIds.reduce((sum, itemId) => {
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-xs bg-white px-2 py-1 rounded border border-slate-200 text-slate-700 font-bold" title="Total Pieces">
+                    {selectedItemIds.reduce((sum, itemId) => {
                       const it = po.items?.find(i => i.id === itemId);
-                      if (bulkMode === 'READY') {
-                        const val = bulkItemQuantities[itemId] !== undefined 
-                          ? bulkItemQuantities[itemId] 
-                          : (it?.actionable_pending_qty ?? it?.balance_quantity ?? it?.ordered_quantity ?? 0);
-                        return sum + (Number(val) || 0);
-                      }
-                      return sum + (Number(it?.ready_quantity || it?.ordered_quantity) || 0);
-                    }, 0)
-                  )}
-                </span>
+                      const pcs = bulkItemPieces[itemId] !== undefined ? bulkItemPieces[itemId] : (Number(it?.pieces) || 1);
+                      return sum + pcs;
+                    }, 0)} PCS
+                  </span>
+                  <span className="font-bold font-mono text-sm text-blue-700">
+                    {formatWeight(
+                      selectedItemIds.reduce((sum, itemId) => {
+                        const it = po.items?.find(i => i.id === itemId);
+                        if (bulkMode === 'READY') {
+                          const val = bulkItemQuantities[itemId] !== undefined 
+                            ? bulkItemQuantities[itemId] 
+                            : (it?.actionable_pending_qty ?? it?.balance_quantity ?? it?.ordered_quantity ?? 0);
+                          return sum + (Number(val) || 0);
+                        }
+                        return sum + (Number(it?.ready_quantity || it?.ordered_quantity) || 0);
+                      }, 0)
+                    )}
+                  </span>
+                </div>
               </div>
 
               {bulkError && (
@@ -3318,8 +3724,8 @@ const STANDARD_ORIGINS = [
                 </div>
               </div>
 
-              {/* Heat & SIMS */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Heat, SIMS & HSN Code */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block font-semibold text-slate-800 mb-1">
                     Heat Number (Heat)
@@ -3335,16 +3741,48 @@ const STANDARD_ORIGINS = [
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-800 mb-1">
-                    SIMS
+                    SIMS Filing Status
+                  </label>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSims(sims === 'Done' ? '' : 'Done')}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 cursor-pointer ${
+                        sims === 'Done'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-emerald-50 hover:border-emerald-400'
+                      }`}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Done</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSims(sims === 'Not Required' ? '' : 'Not Required')}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 cursor-pointer ${
+                        sims === 'Not Required'
+                          ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 hover:border-slate-400'
+                      }`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      <span>Not Required</span>
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-1 block">SIMS filing done or not required</span>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    HSN Code (Item-wise)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. SIMS-882190 / Reg #"
-                    value={sims}
-                    onChange={(e) => setSims(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    placeholder="e.g. 722830 / 722540"
+                    value={shipHsnCode}
+                    onChange={(e) => setShipHsnCode(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Steel Import Monitoring System reference</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Customs tariff classification</span>
                 </div>
               </div>
 
@@ -3583,6 +4021,373 @@ const STANDARD_ORIGINS = [
                   <CheckCircle2 className="h-4 w-4" />
                   <span>{isSubmittingReceive ? 'Processing...' : 'Confirm Receipt'}</span>
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Line Item Modal */}
+      {isEditItemOpen && editingItem && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 space-y-4 animate-in fade-in zoom-in-95 my-6 max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between border-b pb-3 shrink-0">
+              <div className="flex items-center gap-2 text-blue-600">
+                <Pencil className="h-5 w-5" />
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">
+                    Edit Line Item #{editingItem.line_number} — PO {po?.po_number}
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Update material specifications, ordered weight, price, logistics, and compliance
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditItemOpen(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveItemEdits} className="space-y-4 text-xs text-slate-700 overflow-y-auto flex-1 pr-1">
+              {editItemError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>{editItemError}</span>
+                </div>
+              )}
+
+              {/* 1. Material Specifications */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
+                  1. Material Specifications
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Steel Grade *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 1.2311"
+                      value={editItemGrade}
+                      onChange={(e) => setEditItemGrade(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Doc Grade Alias</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 1.2312"
+                      value={editItemGradeDoc}
+                      onChange={(e) => setEditItemGradeDoc(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Section</label>
+                    <select
+                      value={editItemSection}
+                      onChange={(e) => setEditItemSection(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 font-medium"
+                    >
+                      <option value="Plate">Plate</option>
+                      <option value="Round">Round</option>
+                      <option value="FLAT">FLAT</option>
+                      <option value="Block">Block</option>
+                      <option value="Square">Square</option>
+                      <option value="Hex">Hex</option>
+                      <option value="Pending">Pending / TBD</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Heat Treatment</label>
+                    <input
+                      type="text"
+                      placeholder="Annealed / Q+T"
+                      value={editItemTreatment}
+                      onChange={(e) => setEditItemTreatment(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Condition</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. BLACK ROLLED / BRIGHT"
+                      value={editItemCondition}
+                      onChange={(e) => setEditItemCondition(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Diameter / Width (mm)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 250"
+                      value={editItemDia}
+                      onChange={(e) => setEditItemDia(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Thickness (mm)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 50"
+                      value={editItemThickness}
+                      onChange={(e) => setEditItemThickness(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Length (mm)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 3000"
+                      value={editItemLength}
+                      onChange={(e) => setEditItemLength(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Quantities & Commercials */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
+                  2. Quantities & Commercials
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Ordered Qty (KG) *</label>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      value={editItemQty}
+                      onChange={(e) => setEditItemQty(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold text-blue-700 focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Pieces (pc)</label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={editItemPieces}
+                      onChange={(e) => setEditItemPieces(e.target.value)}
+                      placeholder="1"
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Price / KG</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editItemPrice}
+                      onChange={(e) => setEditItemPrice(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Currency</label>
+                    <select
+                      value={editItemCurrency}
+                      onChange={(e) => setEditItemCurrency(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    >
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="INR">INR (₹)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Logistics & Identification */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
+                  3. Logistics & Identification
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Lot Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. LOT-24-001"
+                      value={editItemLot}
+                      onChange={(e) => setEditItemLot(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Container Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. MSKU1234567"
+                      value={editItemContainer}
+                      onChange={(e) => setEditItemContainer(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Port of Load (POL)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Shanghai"
+                      value={editItemPOL}
+                      onChange={(e) => setEditItemPOL(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Discharge Port</label>
+                    <input
+                      type="text"
+                      value={editItemDestPort}
+                      onChange={(e) => setEditItemDestPort(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Compliance & Metallurgy */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                <span className="font-bold text-slate-900 block text-xs uppercase tracking-wider">
+                  4. Compliance & Metallurgy
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">Heat Number</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. H-8831"
+                      value={editItemHeatNo}
+                      onChange={(e) => setEditItemHeatNo(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">SIMS Status</label>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditItemSims(editItemSims === 'Done' ? 'Not Required' : 'Done')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                          editItemSims === 'Done'
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                            : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-emerald-50'
+                        }`}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        <span>Done</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditItemSims(editItemSims === 'Not Required' ? 'Done' : 'Not Required')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                          editItemSims === 'Not Required'
+                            ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
+                            : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                        }`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        <span>Not Required</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1 text-slate-800">HSN Code</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 722830 / 722540"
+                      value={editItemHsnCode}
+                      onChange={(e) => setEditItemHsnCode(e.target.value)}
+                      className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. Terms & Remarks */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Delivery Terms</label>
+                  <input
+                    type="text"
+                    value={editItemDeliveryTerms}
+                    onChange={(e) => setEditItemDeliveryTerms(e.target.value)}
+                    placeholder="FOB / CIF / CFR"
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Expected Delivery Date</label>
+                  <input
+                    type="date"
+                    value={editItemExpDelivery}
+                    onChange={(e) => setEditItemExpDelivery(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold mb-1 text-slate-800">Item Remarks / Specs Notes</label>
+                  <input
+                    type="text"
+                    placeholder="Special requirements, inspection criteria, etc."
+                    value={editItemRemarks}
+                    onChange={(e) => setEditItemRemarks(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-between pt-3 border-t">
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Are you sure you want to delete item #${editingItem.line_number}?`)) {
+                        dataStore.deletePurchaseOrderItem(po.id, editingItem.id);
+                        setIsEditItemOpen(false);
+                        setEditingItem(null);
+                        loadData();
+                        setDataVersion(v => v + 1);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>Delete Item</span>
+                  </button>
+                )}
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditItemOpen(false)}
+                    className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    <span>Save Item Changes</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>

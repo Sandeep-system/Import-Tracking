@@ -201,11 +201,13 @@ export interface PurchaseOrderItem {
   is_overdue?: boolean;
   days_overdue?: number;
   receipt_count?: number;
+  pieces?: number | string | null;
   ready_quantity?: number;
   date_of_shipment?: string | null;
   eta_seaport?: string | null;
   heat_no?: string | null;
   sims?: string | null;
+  hsn_code?: string | null;
   delivery_terms?: string | null;
   payment_terms?: string | null;
   destination_port?: string | null;
@@ -227,6 +229,7 @@ export interface Receipt {
   receipt_number: string;
   receipt_date: string;
   received_quantity: number;
+  pieces?: number | string | null;
   unit: string;
   supplier_invoice_number?: string | null;
   supplier_invoice_date?: string | null;

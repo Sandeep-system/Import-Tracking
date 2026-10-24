@@ -666,12 +666,125 @@ class Store {
     return newItem;
   }
 
+  public updatePurchaseOrderItem(
+    poIdOrNumber: string,
+    itemId: string,
+    updates: Partial<PurchaseOrderItem>
+  ): PurchaseOrderItem {
+    const po = this.state.purchaseOrders.find(
+      p => p.id === poIdOrNumber || p.po_number === poIdOrNumber
+    );
+    if (!po) throw new Error(`Purchase order ${poIdOrNumber} not found`);
+    if (!po.items) po.items = [];
+
+    const item = po.items.find(i => i.id === itemId);
+    if (!item) throw new Error(`PO Line Item ${itemId} not found in PO ${po.po_number}`);
+
+    if (updates.grade_code !== undefined) item.grade_code = String(updates.grade_code).trim();
+    if (updates.grade_doc !== undefined) item.grade_doc = updates.grade_doc ? String(updates.grade_doc).trim() : null;
+    if (updates.section_name !== undefined) item.section_name = String(updates.section_name).trim();
+    if (updates.diameter_width !== undefined) item.diameter_width = updates.diameter_width !== null && updates.diameter_width !== ('' as any) ? Number(updates.diameter_width) : null;
+    if (updates.thickness !== undefined) item.thickness = updates.thickness !== null && updates.thickness !== ('' as any) ? Number(updates.thickness) : null;
+    if (updates.length !== undefined) item.length = updates.length !== null && updates.length !== ('' as any) ? Number(updates.length) : null;
+    if (updates.treatment !== undefined) item.treatment = updates.treatment ? String(updates.treatment).trim() : null;
+    if (updates.condition_name !== undefined) item.condition_name = updates.condition_name ? String(updates.condition_name).trim() : null;
+    if (updates.ordered_quantity !== undefined) item.ordered_quantity = Number(updates.ordered_quantity) || 0;
+    if (updates.purchase_price !== undefined) item.purchase_price = Number(updates.purchase_price) || 0;
+    if (updates.currency !== undefined) item.currency = updates.currency;
+    if (updates.lot_number !== undefined) item.lot_number = updates.lot_number ? String(updates.lot_number).trim() : null;
+    if (updates.container_no !== undefined) item.container_no = updates.container_no ? String(updates.container_no).trim() : null;
+    if (updates.port_of_loading !== undefined) item.port_of_loading = updates.port_of_loading ? String(updates.port_of_loading).trim() : null;
+    if (updates.destination_port !== undefined) item.destination_port = updates.destination_port ? String(updates.destination_port).trim() : null;
+    if (updates.delivery_terms !== undefined) item.delivery_terms = updates.delivery_terms;
+    if (updates.payment_terms !== undefined) item.payment_terms = updates.payment_terms;
+    if (updates.heat_no !== undefined) item.heat_no = updates.heat_no ? String(updates.heat_no).trim() : null;
+    if (updates.sims !== undefined) item.sims = updates.sims ? String(updates.sims).trim() : null;
+    if (updates.hsn_code !== undefined) item.hsn_code = updates.hsn_code ? String(updates.hsn_code).trim() : null;
+    if (updates.pieces !== undefined) item.pieces = updates.pieces !== null && updates.pieces !== ('' as any) ? Number(updates.pieces) : null;
+    if (updates.date_of_shipment !== undefined) item.date_of_shipment = updates.date_of_shipment || null;
+    if (updates.eta_seaport !== undefined) item.eta_seaport = updates.eta_seaport || null;
+    if (updates.expected_delivery_date !== undefined) item.expected_delivery_date = updates.expected_delivery_date || null;
+    if (updates.status !== undefined) item.status = updates.status;
+    if (updates.remarks !== undefined) item.remarks = updates.remarks ? String(updates.remarks).trim() : null;
+
+    // Recalculate balance and aggregates
+    this.computeItemQuantities(item);
+    this.recomputePOAggregates(po);
+
+    // Sync with corresponding incomingStock item if present
+    const incomingItem = (this.state.incomingStock || []).find(
+      i => i.linked_po_number === po.po_number && (i.id.includes(item.id) || (item.lot_number && i.lot_number === item.lot_number))
+    );
+    if (incomingItem) {
+      if (item.grade_code) incomingItem.grade = item.grade_code;
+      if (item.diameter_width !== undefined) incomingItem.dia_w = item.diameter_width;
+      if (item.thickness !== undefined) incomingItem.t = item.thickness;
+      if (item.length !== undefined) incomingItem.l = item.length;
+      if (item.pieces !== undefined) incomingItem.pieces = item.pieces;
+      if (item.heat_no !== undefined) incomingItem.heat_no = item.heat_no;
+      if (item.sims !== undefined) incomingItem.sims = item.sims;
+      if (item.hsn_code !== undefined) incomingItem.hsn_code = item.hsn_code;
+      if (item.container_no !== undefined) incomingItem.container_no = item.container_no;
+      if (item.port_of_loading !== undefined) incomingItem.port_of_loading = item.port_of_loading;
+      if (item.destination_port !== undefined) incomingItem.port = item.destination_port;
+      if (item.delivery_terms !== undefined) incomingItem.delivery_terms = item.delivery_terms;
+      if (item.payment_terms !== undefined) incomingItem.payment_terms = item.payment_terms;
+      if (item.date_of_shipment !== undefined) incomingItem.date_of_shipment = item.date_of_shipment;
+      if (item.eta_seaport !== undefined) incomingItem.eta_seaport = item.eta_seaport;
+    }
+
+    this.addAuditLog(
+      'PO_ITEM_UPDATE',
+      'purchase_order_items',
+      item.id,
+      `Updated item #${item.line_number} (${item.grade_code}) in PO ${po.po_number}`
+    );
+
+    this.save();
+    return item;
+  }
+
+  public deletePurchaseOrderItem(poIdOrNumber: string, itemId: string): boolean {
+    const po = this.state.purchaseOrders.find(
+      p => p.id === poIdOrNumber || p.po_number === poIdOrNumber
+    );
+    if (!po || !po.items) return false;
+
+    const itemIndex = po.items.findIndex(i => i.id === itemId);
+    if (itemIndex === -1) return false;
+
+    const removedItem = po.items[itemIndex];
+
+    // Remove associated receipts for this item if any
+    this.state.receipts = this.state.receipts.filter(r => r.purchase_order_item_id !== itemId);
+
+    po.items.splice(itemIndex, 1);
+
+    // Re-index remaining line numbers
+    po.items.forEach((item, idx) => {
+      item.line_number = idx + 1;
+    });
+
+    this.recomputePOAggregates(po);
+
+    this.addAuditLog(
+      'PO_ITEM_DELETE',
+      'purchase_order_items',
+      itemId,
+      `Deleted item #${removedItem.line_number} (${removedItem.grade_code}) from PO ${po.po_number}`
+    );
+
+    this.save();
+    return true;
+  }
+
   // --- Add Receipt Workflow ---
   public addReceipt(params: {
     poId: string;
     itemId: string;
     receiptDate: string;
     receivedQuantity: number;
+    pieces?: number;
     supplierInvoice: string;
     supplierInvoiceDate?: string;
     lotNumber: string;
@@ -725,6 +838,7 @@ class Store {
       receipt_number: receiptNumber,
       receipt_date: params.receiptDate,
       received_quantity: qty,
+      pieces: params.pieces || item.pieces || 1,
       unit: item.unit || 'KG',
       supplier_invoice_number: params.supplierInvoice,
       supplier_invoice_date: params.supplierInvoiceDate,
@@ -758,6 +872,7 @@ class Store {
     // Set item status to Ready to Ship and assign ready quantity, container, and port of loading
     item.status = 'Ready to Ship';
     item.ready_quantity = (item.ready_quantity || 0) + qty;
+    if (params.pieces) item.pieces = params.pieces;
     item.lot_number = lot.lot_number;
     if (params.containerNo !== undefined) item.container_no = params.containerNo.trim() || null;
     if (params.portOfLoading !== undefined) item.port_of_loading = params.portOfLoading.trim() || null;
@@ -785,6 +900,7 @@ class Store {
     lotNumber?: string;
     heatNo?: string;
     sims?: string;
+    hsnCode?: string;
     deliveryTerms?: string;
     paymentTerms?: string;
     port?: string;
@@ -804,6 +920,7 @@ class Store {
     item.eta_seaport = params.etaSeaport;
     item.heat_no = params.heatNo || item.heat_no || null;
     item.sims = params.sims || item.sims || null;
+    if (params.hsnCode !== undefined) item.hsn_code = params.hsnCode ? params.hsnCode.trim() : item.hsn_code || null;
     item.delivery_terms = params.deliveryTerms || po.delivery_terms || 'FOB';
     item.payment_terms = params.paymentTerms || po.payment_terms || null;
     item.destination_port = params.port || po.destination || 'N.S.';
@@ -840,6 +957,8 @@ class Store {
       incomingItem.received_status = 'IN_TRANSIT';
       incomingItem.source_sheet = 'INCOMING SE';
       incomingItem.weight = cargoWeight;
+      if (item.pieces) incomingItem.pieces = item.pieces;
+      if (params.hsnCode !== undefined) incomingItem.hsn_code = params.hsnCode ? params.hsnCode.trim() : incomingItem.hsn_code || null;
     } else {
       incomingItem = {
         id: incId,
@@ -851,7 +970,7 @@ class Store {
         dia_w: item.diameter_width,
         t: item.thickness,
         l: item.length,
-        pieces: item.receipts?.length || 1,
+        pieces: item.pieces || item.receipts?.length || 1,
         weight: cargoWeight,
         customer: po.customer_name || 'SE',
         port: params.port || po.destination || 'N.S.',
@@ -859,6 +978,7 @@ class Store {
         eta_seaport: params.etaSeaport,
         received_status: 'IN_TRANSIT',
         heat_no: params.heatNo || null,
+        hsn_code: params.hsnCode ? params.hsnCode.trim() : item.hsn_code || null,
         delivery_terms: params.deliveryTerms || po.delivery_terms || 'FOB',
         price: item.purchase_price,
         currency: item.currency || po.currency || 'USD',
@@ -980,6 +1100,7 @@ class Store {
     portOfLoading?: string;
     remarks?: string;
     itemQuantities?: Record<string, number>;
+    itemPieces?: Record<string, number>;
   }): { receipts: Receipt[]; updatedPO: PurchaseOrder } {
     const po = this.state.purchaseOrders.find(
       p => p.id === params.poIdOrNumber || p.po_number === params.poIdOrNumber
@@ -1040,6 +1161,10 @@ class Store {
       item.lot_number = lotNo;
       item.status = 'Ready to Ship';
       item.ready_quantity = qty;
+      const piecesVal = params.itemPieces && params.itemPieces[item.id] !== undefined
+        ? Number(params.itemPieces[item.id])
+        : (item.pieces || 1);
+      item.pieces = piecesVal;
       if (params.containerNo !== undefined) item.container_no = params.containerNo.trim() || null;
       if (params.portOfLoading !== undefined) item.port_of_loading = params.portOfLoading.trim() || null;
       if (params.warehouseLocation) item.destination_port = item.destination_port || params.warehouseLocation.trim();
@@ -1058,6 +1183,7 @@ class Store {
         receipt_number: receiptNumber,
         receipt_date: receiptDate,
         received_quantity: qty,
+        pieces: piecesVal,
         unit: item.unit || 'KG',
         supplier_invoice_number: invoiceNo,
         supplier_invoice_date: invoiceDate,
@@ -1082,6 +1208,7 @@ class Store {
       if (incomingItem) {
         incomingItem.lot_number = lotNo;
         incomingItem.weight = qty;
+        incomingItem.pieces = piecesVal;
         incomingItem.received_status = 'READY';
         if (params.containerNo) incomingItem.container_no = params.containerNo.trim();
         if (params.portOfLoading) incomingItem.port_of_loading = params.portOfLoading.trim();
@@ -1096,7 +1223,7 @@ class Store {
           dia_w: item.diameter_width,
           t: item.thickness,
           l: item.length,
-          pieces: item.receipts?.length || 1,
+          pieces: piecesVal,
           weight: qty,
           customer: po.customer_name || 'SE',
           port: po.destination || 'N.S.',

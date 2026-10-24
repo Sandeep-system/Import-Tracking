@@ -885,7 +885,13 @@ export default function IncomingStockPage() {
                         )}
                         <div className="flex items-center gap-1.5 mt-0.5">
                           {item.sims && item.sims !== 'NA' && (
-                            <span className="text-[9px] px-1 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 font-bold">
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold border ${
+                              item.sims === 'Done'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : item.sims === 'Not Required'
+                                ? 'bg-slate-100 text-slate-700 border-slate-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200 font-mono'
+                            }`}>
                               SIMS: {item.sims}
                             </span>
                           )}
@@ -1056,8 +1062,20 @@ export default function IncomingStockPage() {
                 </div>
 
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold">SIMS</span>
-                  <div className="font-bold text-slate-900 text-xs mt-0.5">{inspectingItem.sims || '—'}</div>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold">SIMS Filing</span>
+                  <div className="mt-0.5">
+                    {inspectingItem.sims ? (
+                      inspectingItem.sims === 'Done' ? (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Done</span>
+                      ) : inspectingItem.sims === 'Not Required' ? (
+                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Not Required</span>
+                      ) : (
+                        <span className="font-mono font-bold text-slate-900 text-xs">{inspectingItem.sims}</span>
+                      )
+                    ) : (
+                      <span className="text-slate-400 text-xs">—</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">

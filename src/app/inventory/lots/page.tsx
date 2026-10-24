@@ -297,12 +297,23 @@ function LotsContent() {
       grade: string;
       condition?: string | null;
       dimensions: string;
+      dia_w?: number | string | null;
+      t?: number | string | null;
+      l?: number | string | null;
       pieces: number;
       weight: number;
       status: string;
+      customer?: string | null;
       eta?: string | null;
+      date_of_shipment?: string | null;
       heat_no?: string | null;
+      sec_weight?: number | string | null;
+      delivery_terms?: string | null;
+      price?: number | string | null;
+      currency?: string | null;
       sims?: string | null;
+      payment_terms?: string | null;
+      hsn_code?: string | null;
       port?: string | null;
       make?: string | null;
       supplier?: string | null;
@@ -325,12 +336,23 @@ function LotsContent() {
           grade: inc.grade,
           condition: inc.condition,
           dimensions: dimStr || (selectedLot.dimensions_display || 'Standard Spec'),
+          dia_w: inc.dia_w,
+          t: inc.t,
+          l: inc.l,
           pieces: Number(inc.pieces) || 1,
           weight: Number(inc.weight) || 0,
-          status: inc.received_status === 'RECEIVED' ? 'Received at Yard' : 'In Transit',
+          status: inc.received_status === 'RECEIVED' ? 'Received at Yard' : (inc.received_status === 'READY' ? 'Ready to Ship' : 'In Transit'),
+          customer: inc.customer || 'SE',
           eta: inc.eta_seaport || inc.date_of_shipment,
+          date_of_shipment: inc.date_of_shipment,
           heat_no: inc.heat_no,
+          sec_weight: inc.sec_weight,
+          delivery_terms: inc.delivery_terms || 'FOB',
+          price: inc.price,
+          currency: inc.currency || 'USD',
           sims: inc.sims,
+          payment_terms: inc.payment_terms || 'DP at sight',
+          hsn_code: inc.hsn_code,
           port: inc.port || 'N.S.',
           make: inc.make || 'Standard',
           supplier: inc.supplier || selectedLot.supplier_name,
@@ -359,12 +381,23 @@ function LotsContent() {
               grade: it.grade_code,
               condition: it.condition_name || it.treatment || it.section_name,
               dimensions: dimStr || (selectedLot.dimensions_display || 'Standard Spec'),
-              pieces: it.receipt_count || 1,
+              dia_w: it.diameter_width,
+              t: it.thickness,
+              l: it.length,
+              pieces: Number(it.pieces) || it.receipt_count || 1,
               weight: Number(it.ready_quantity ?? it.received_quantity ?? it.ordered_quantity) || 0,
               status: it.status === 'Received' ? 'Received at Yard' : (it.status || selectedLot.status || 'Available'),
+              customer: po.customer_name || 'SE',
               eta: it.eta_seaport || it.date_of_shipment || po.expected_delivery_date,
+              date_of_shipment: it.date_of_shipment,
               heat_no: it.heat_no,
+              sec_weight: null,
+              delivery_terms: it.delivery_terms || po.delivery_terms || 'FOB',
+              price: it.purchase_price,
+              currency: it.currency || po.currency || 'USD',
               sims: it.sims,
+              payment_terms: it.payment_terms || po.payment_terms || 'DP at sight',
+              hsn_code: null,
               port: it.destination_port || po.destination || 'N.S.',
               make: po.origin || po.origin_make_name || 'Standard',
               supplier: po.supplier_name || selectedLot.supplier_name,
@@ -382,12 +415,23 @@ function LotsContent() {
           grade: selectedLot.grade_code || 'Standard Grade',
           condition: selectedLot.section_name,
           dimensions: selectedLot.dimensions_display || 'Standard Spec',
+          dia_w: null,
+          t: null,
+          l: null,
           pieces: 1,
           weight: selectedLot.total_received_qty || selectedLot.available_qty,
           status: selectedLot.status === 'Available' ? 'Received at Yard' : (selectedLot.status || 'Available'),
+          customer: 'SE',
           eta: lotMetaMap[selectedLot.id]?.arrivingDate,
+          date_of_shipment: null,
           heat_no: null,
+          sec_weight: null,
+          delivery_terms: 'FOB',
+          price: null,
+          currency: 'USD',
           sims: null,
+          payment_terms: lotMetaMap[selectedLot.id]?.paymentTerms || 'DP at sight',
+          hsn_code: null,
           port: 'N.S.',
           make: 'Standard',
           supplier: selectedLot.supplier_name,
@@ -412,55 +456,108 @@ function LotsContent() {
     );
   }, [selectedLotItems, lotItemSearch]);
 
+  const getLotIncomingData = (lot: Lot) => {
+    const incItems = dataStore.getIncomingStockByLot(lot.lot_number);
+    const allPOs = dataStore.getPurchaseOrders();
+    const po = allPOs.find(p => p.po_number === lot.po_number);
+    const item = po?.items?.find(it => it.lot_number === lot.lot_number || it.id === lot.purchase_order_item_id);
+    const inc = incItems[0];
+    const meta = lotMetaMap[lot.id];
+
+    return {
+      make: inc?.make || po?.origin || (po as any)?.origin_make_name || 'Standard',
+      supplier: lot.supplier_name || inc?.supplier || po?.supplier_name || '—',
+      lot_number: lot.lot_number,
+      grade: inc?.grade || lot.grade_code || item?.grade_code || '—',
+      condition: inc?.condition || item?.condition_name || item?.treatment || lot.section_name || '—',
+      dia_w: inc?.dia_w !== undefined && inc?.dia_w !== null ? inc.dia_w : (item?.diameter_width ?? '—'),
+      t: inc?.t !== undefined && inc?.t !== null ? inc.t : (item?.thickness ?? '—'),
+      l: inc?.l !== undefined && inc?.l !== null ? inc.l : (item?.length ?? '—'),
+      pc: inc?.pieces ?? (item?.pieces ?? 1),
+      weight: lot.available_qty || inc?.weight || lot.total_received_qty || 0,
+      customer: inc?.customer || po?.customer_name || 'SE',
+      port: inc?.port || item?.destination_port || po?.destination || 'N.S.',
+      date_of_shipment: inc?.date_of_shipment || item?.date_of_shipment || '',
+      eta_seaport: inc?.eta_seaport || item?.eta_seaport || meta?.arrivingDate || '',
+      received: lot.warehouse_location || inc?.received_status || (lot.available_qty > 0 ? 'Received' : 'In Transit'),
+      heat_no: inc?.heat_no || item?.heat_no || '—',
+      sec_weight: inc?.sec_weight !== undefined && inc?.sec_weight !== null ? inc.sec_weight : '—',
+      del_terms: inc?.delivery_terms || item?.delivery_terms || po?.delivery_terms || 'FOB',
+      price: inc?.price !== undefined && inc?.price !== null ? inc.price : (item?.purchase_price ?? '—'),
+      currency: inc?.currency || item?.currency || po?.currency || 'USD',
+      sims: inc?.sims || item?.sims || '—',
+      payment_terms: inc?.payment_terms || meta?.paymentTerms || item?.payment_terms || po?.payment_terms || 'DP at sight',
+      hsn_code: inc?.hsn_code || '—'
+    };
+  };
+
   const handleExportLotItems = () => {
     if (!selectedLot || selectedLotItems.length === 0) return;
-    const exportRows = selectedLotItems.map((item, idx) => ({
-      '#': idx + 1,
-      'Lot Number': selectedLot.lot_number,
-      'PO Number': item.poNumber ? `PO ${item.poNumber}` : '—',
+    const exportRows = selectedLotItems.map((item) => ({
+      'Make': item.make || 'Standard',
       'Supplier': item.supplier || selectedLot.supplier_name || '—',
-      'Steel Grade': item.grade,
-      'Condition / Section': item.condition || '—',
-      'Dimensions': item.dimensions,
-      'Pieces': item.pieces || 1,
-      'Item Weight (KG)': item.weight,
-      'Status': item.status,
-      'Arriving Date / ETA': item.eta ? formatDate(item.eta) : '—',
-      'Heat Number': item.heat_no || '—',
+      'LOT': selectedLot.lot_number,
+      'Grade': item.grade,
+      'Condition': item.condition || '—',
+      'DIA/W': (item as any).dia_w ?? '',
+      'T': (item as any).t ?? '',
+      'L': (item as any).l ?? '',
+      'pc': item.pieces || 1,
+      'Weight': item.weight,
+      'customer': (item as any).customer || 'SE',
+      'Port': item.port || 'N.S.',
+      'Date of Shipment': (item as any).date_of_shipment ? String((item as any).date_of_shipment).split('T')[0] : '',
+      'ETA (sea port)': item.eta ? String(item.eta).split('T')[0] : '',
+      'RECEIVED': item.status,
+      'HEAT NO': item.heat_no || '—',
+      'SEC WEIGHT': (item as any).sec_weight ?? '',
+      'DEL TERMS': (item as any).delivery_terms || 'FOB',
+      'PRICE': (item as any).price ?? '',
+      'CURRENCY': (item as any).currency || 'USD',
       'SIMS': item.sims || '—',
-      'Discharge Port': item.port || '—',
-      'Make / Mill': item.make || '—'
+      'PAYMENT TERMS': (item as any).payment_terms || 'DP at sight',
+      'HSN Code': (item as any).hsn_code || '—'
     }));
     const ws = XLSX.utils.json_to_sheet(exportRows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `Lot_${selectedLot.lot_number}_Items`);
-    XLSX.writeFile(wb, `Lot_${selectedLot.lot_number}_Items_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, `INCOMING SE`);
+    XLSX.writeFile(wb, `Lot_${selectedLot.lot_number}_INCOMING_SE_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleExport = () => {
     const exportData = filteredLots.map(l => {
-      const meta = lotMetaMap[l.id];
+      const d = getLotIncomingData(l);
       return {
-        'Lot Number': l.lot_number,
-        'Material': meta?.material || l.section_name || 'Tool Steel',
-        'Steel Grade': l.grade_code,
-        'Section': l.section_name,
-        'Dimensions': l.dimensions_display,
-        'Landed Weight (KG)': l.total_received_qty,
-        'Available Weight (KG)': l.available_qty,
-        'Arriving Date': meta?.arrivingDate || '',
-        'Payment Terms': meta?.paymentTerms || 'DP at sight',
-        'PO Number': l.po_number || 'Direct',
-        'Supplier': l.supplier_name,
-        'Warehouse Location': l.warehouse_location,
-        'Status': l.status
+        'Make': d.make,
+        'Supplier': d.supplier,
+        'LOT': d.lot_number,
+        'Grade': d.grade,
+        'Condition': d.condition,
+        'DIA/W': d.dia_w,
+        'T': d.t,
+        'L': d.l,
+        'pc': d.pc,
+        'Weight': d.weight,
+        'customer': d.customer,
+        'Port': d.port,
+        'Date of Shipment': d.date_of_shipment ? String(d.date_of_shipment).split('T')[0] : '',
+        'ETA (sea port)': d.eta_seaport ? String(d.eta_seaport).split('T')[0] : '',
+        'RECEIVED': d.received,
+        'HEAT NO': d.heat_no,
+        'SEC WEIGHT': d.sec_weight,
+        'DEL TERMS': d.del_terms,
+        'PRICE': d.price,
+        'CURRENCY': d.currency,
+        'SIMS': d.sims,
+        'PAYMENT TERMS': d.payment_terms,
+        'HSN Code': d.hsn_code
       };
     });
 
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Lots Inventory');
-    XLSX.writeFile(wb, `Lot_Inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'INCOMING SE');
+    XLSX.writeFile(wb, `Lot_Directory_INCOMING_SE_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   if (!mounted) {
@@ -629,33 +726,49 @@ function LotsContent() {
       <div className="bg-white rounded-xl border border-slate-200 card-shadow overflow-hidden">
         <div className="overflow-auto max-h-[calc(100vh-285px)] min-h-[340px] relative w-full">
           <table className="w-full text-left border-separate border-spacing-0 text-xs">
-            <thead className="sticky top-0 z-10 bg-slate-50">
+            <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
               <tr>
+                <th className="table-header">Make</th>
+                <th className="table-header">Supplier</th>
                 <th 
                   className="table-header cursor-pointer select-none hover:bg-slate-100 transition-colors"
                   onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
                   title="Click to toggle sorting order"
                 >
                   <div className="flex items-center gap-1.5">
-                    <span>Lot Number</span>
+                    <span>LOT</span>
                     <span className="text-[10px] text-blue-700 bg-blue-50 font-bold px-1.5 py-0.5 rounded border border-blue-200">
-                      {sortDir === 'desc' ? 'Highest → Lowest ↓' : 'Lowest → Highest ↑'}
+                      {sortDir === 'desc' ? '↓' : '↑'}
                     </span>
                   </div>
                 </th>
-                <th className="table-header text-right">Available / Landed Qty</th>
-                <th className="table-header">Arriving Date</th>
-                <th className="table-header">Payment Terms</th>
-                <th className="table-header">PO & Supplier</th>
-                <th className="table-header">Warehouse Location</th>
-                <th className="table-header text-center">Status</th>
-                <th className="table-header text-right">Ledger</th>
+                <th className="table-header">Grade</th>
+                <th className="table-header">Condition</th>
+                <th className="table-header text-right">DIA/W</th>
+                <th className="table-header text-right">T</th>
+                <th className="table-header text-right">L</th>
+                <th className="table-header text-right">pc</th>
+                <th className="table-header text-right">Weight</th>
+                <th className="table-header">customer</th>
+                <th className="table-header">Port</th>
+                <th className="table-header">Date of Shipment</th>
+                <th className="table-header">ETA (sea port)</th>
+                <th className="table-header text-center">RECEIVED</th>
+                <th className="table-header">HEAT NO</th>
+                <th className="table-header text-right">SEC WEIGHT</th>
+                <th className="table-header">DEL TERMS</th>
+                <th className="table-header text-right">PRICE</th>
+                <th className="table-header">CURRENCY</th>
+                <th className="table-header text-center">SIMS</th>
+                <th className="table-header">PAYMENT TERMS</th>
+                <th className="table-header">HSN Code</th>
+                <th className="table-header text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredLots.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={24} className="py-12 text-center text-slate-400">
                     <Truck className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                     <p className="font-semibold text-slate-600">No lots found matching your filter criteria.</p>
                     <p className="text-[11px] text-slate-400 mt-1">Try resetting your filters or adjusting your search term.</p>
@@ -663,54 +776,56 @@ function LotsContent() {
                 </tr>
               ) : (
                 filteredLots.map((lot, idx) => {
-                  const meta = lotMetaMap[lot.id];
+                  const d = getLotIncomingData(lot);
                   return (
                     <tr 
                       key={`${lot.id}-${idx}`} 
                       onClick={() => handleInspectLot(lot)}
                       className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
                     >
+                      <td className="table-cell font-medium text-slate-800">{d.make}</td>
+                      <td className="table-cell font-medium text-slate-700 truncate max-w-[130px]" title={d.supplier}>{d.supplier}</td>
                       <td className="table-cell">
-                        <span className="px-2.5 py-1 rounded font-mono font-bold text-xs bg-slate-900 text-white shadow-sm">
-                          {lot.lot_number}
+                        <span className="px-2 py-0.5 rounded font-mono font-bold text-xs bg-slate-900 text-white shadow-sm">
+                          {d.lot_number}
                         </span>
                       </td>
+                      <td className="table-cell font-bold text-slate-900">{d.grade}</td>
+                      <td className="table-cell text-slate-600">{d.condition}</td>
+                      <td className="table-cell text-right font-mono text-slate-700">{d.dia_w}</td>
+                      <td className="table-cell text-right font-mono text-slate-700">{d.t}</td>
+                      <td className="table-cell text-right font-mono text-slate-700">{d.l}</td>
+                      <td className="table-cell text-right font-mono font-bold text-slate-800">{d.pc}</td>
                       <td className="table-cell text-right">
-                        <strong className="text-emerald-600 block font-mono text-xs">{formatWeight(lot.available_qty)}</strong>
-                        <span className="text-[10px] text-slate-400 font-medium">Recd: {formatWeight(lot.total_received_qty)}</span>
+                        <strong className="text-blue-700 block font-mono text-xs">{formatWeight(d.weight)}</strong>
                       </td>
-                      <td className="table-cell">
-                        <span className="font-medium text-slate-800 text-xs block whitespace-nowrap">
-                          {formatDate(meta?.arrivingDate)}
-                        </span>
-                      </td>
-                      <td className="table-cell">
-                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold text-[10px] border border-blue-200/60 whitespace-nowrap">
-                          {meta?.paymentTerms || 'DP at sight'}
-                        </span>
-                      </td>
-                      <td className="table-cell">
-                        {lot.po_number ? (
-                          <Link 
-                            href={`/purchasing/purchase-orders/${lot.po_number}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="font-bold text-blue-600 hover:underline block"
-                          >
-                            PO {lot.po_number}
-                          </Link>
-                        ) : (
-                          <span className="text-slate-400 block">—</span>
-                        )}
-                        <span className="text-[10px] text-slate-500 block truncate max-w-[120px]" title={lot.supplier_name || ''}>
-                          {lot.supplier_name || 'Overseas Supplier'}
-                        </span>
-                      </td>
-                      <td className="table-cell text-slate-600">{lot.warehouse_location || 'Main Yard'}</td>
+                      <td className="table-cell font-semibold text-slate-800">{d.customer}</td>
+                      <td className="table-cell font-medium text-slate-700">{d.port}</td>
+                      <td className="table-cell whitespace-nowrap text-slate-600">{formatDate(d.date_of_shipment)}</td>
+                      <td className="table-cell whitespace-nowrap font-medium text-slate-800">{formatDate(d.eta_seaport)}</td>
                       <td className="table-cell text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeClass(lot.status)}`}>
-                          {lot.status}
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeClass(d.received)}`}>
+                          {d.received}
                         </span>
                       </td>
+                      <td className="table-cell font-mono text-slate-700">{d.heat_no}</td>
+                      <td className="table-cell text-right font-mono text-slate-600">{d.sec_weight}</td>
+                      <td className="table-cell font-semibold text-slate-700">{d.del_terms}</td>
+                      <td className="table-cell text-right font-mono text-slate-800 font-semibold">{typeof d.price === 'number' ? d.price.toLocaleString() : d.price}</td>
+                      <td className="table-cell font-semibold text-slate-600">{d.currency}</td>
+                      <td className="table-cell text-center">
+                        {d.sims && d.sims !== '—' ? (
+                          d.sims === 'Done' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Done</span>
+                          ) : d.sims === 'Not Required' ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Not Required</span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-50 text-blue-700">{d.sims}</span>
+                          )
+                        ) : '—'}
+                      </td>
+                      <td className="table-cell text-slate-700 whitespace-nowrap">{d.payment_terms}</td>
+                      <td className="table-cell font-mono text-slate-600">{d.hsn_code}</td>
                       <td className="table-cell text-right">
                         <button
                           onClick={(e) => {
@@ -904,47 +1019,55 @@ function LotsContent() {
                       <table className="w-full text-left border-collapse text-xs">
                         <thead className="sticky top-0 z-10 bg-slate-100 shadow-2xs">
                           <tr>
-                            <th className="table-header w-10 text-center">#</th>
-                            <th className="table-header">Steel Grade & Spec</th>
-                            <th className="table-header">Dimensions (W × T × L)</th>
-                            <th className="table-header text-center">Pieces</th>
-                            <th className="table-header text-right">Weight (KG)</th>
-                            <th className="table-header text-center">Status</th>
-                            <th className="table-header">Arriving Date / ETA</th>
-                            <th className="table-header">Heat Number</th>
-                            <th className="table-header">Mill / Source</th>
+                            <th className="table-header">Make</th>
+                            <th className="table-header">Supplier</th>
+                            <th className="table-header">LOT</th>
+                            <th className="table-header">Grade</th>
+                            <th className="table-header">Condition</th>
+                            <th className="table-header text-right">DIA/W</th>
+                            <th className="table-header text-right">T</th>
+                            <th className="table-header text-right">L</th>
+                            <th className="table-header text-right">pc</th>
+                            <th className="table-header text-right">Weight</th>
+                            <th className="table-header">customer</th>
+                            <th className="table-header">Port</th>
+                            <th className="table-header">Date of Shipment</th>
+                            <th className="table-header">ETA (sea port)</th>
+                            <th className="table-header text-center">RECEIVED</th>
+                            <th className="table-header">HEAT NO</th>
+                            <th className="table-header text-right">SEC WEIGHT</th>
+                            <th className="table-header">DEL TERMS</th>
+                            <th className="table-header text-right">PRICE</th>
+                            <th className="table-header">CURRENCY</th>
+                            <th className="table-header text-center">SIMS</th>
+                            <th className="table-header">PAYMENT TERMS</th>
+                            <th className="table-header">HSN Code</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {filteredLotItems.length === 0 ? (
                             <tr>
-                              <td colSpan={9} className="py-8 text-center text-slate-400">
+                              <td colSpan={23} className="py-8 text-center text-slate-400">
                                 No items found matching &quot;{lotItemSearch}&quot;.
                               </td>
                             </tr>
                           ) : (
                             filteredLotItems.map((item, idx) => (
                               <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
-                                <td className="table-cell text-center font-mono text-slate-400 font-semibold">
-                                  #{idx + 1}
-                                </td>
-                                <td className="table-cell">
-                                  <strong className="text-slate-900 block font-bold">{item.grade}</strong>
-                                  {item.condition && (
-                                    <span className="text-[10px] text-slate-500 font-medium block">
-                                      {item.condition}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="table-cell font-mono text-slate-800 font-semibold text-[11px]">
-                                  {item.dimensions}
-                                </td>
-                                <td className="table-cell text-center font-mono font-bold text-slate-700">
-                                  {item.pieces || 1} PC
-                                </td>
-                                <td className="table-cell text-right font-mono font-bold text-blue-700 text-xs">
-                                  {formatWeight(item.weight)}
-                                </td>
+                                <td className="table-cell font-medium text-slate-800">{item.make || 'Standard'}</td>
+                                <td className="table-cell text-slate-700 truncate max-w-[120px]" title={item.supplier || ''}>{item.supplier || '—'}</td>
+                                <td className="table-cell font-mono font-bold text-slate-900">{selectedLot.lot_number}</td>
+                                <td className="table-cell font-bold text-slate-900">{item.grade}</td>
+                                <td className="table-cell text-slate-600">{item.condition || '—'}</td>
+                                <td className="table-cell text-right font-mono text-slate-700">{(item as any).dia_w ?? '—'}</td>
+                                <td className="table-cell text-right font-mono text-slate-700">{(item as any).t ?? '—'}</td>
+                                <td className="table-cell text-right font-mono text-slate-700">{(item as any).l ?? '—'}</td>
+                                <td className="table-cell text-right font-mono font-bold text-slate-800">{item.pieces || 1}</td>
+                                <td className="table-cell text-right font-mono font-bold text-blue-700">{formatWeight(item.weight)}</td>
+                                <td className="table-cell font-semibold text-slate-800">{(item as any).customer || 'SE'}</td>
+                                <td className="table-cell text-slate-700">{item.port || 'N.S.'}</td>
+                                <td className="table-cell whitespace-nowrap text-slate-600">{formatDate((item as any).date_of_shipment)}</td>
+                                <td className="table-cell whitespace-nowrap text-slate-800 font-medium">{formatDate(item.eta)}</td>
                                 <td className="table-cell text-center">
                                   <span className={cn(
                                     "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border",
@@ -958,46 +1081,40 @@ function LotsContent() {
                                     <span>{item.status}</span>
                                   </span>
                                 </td>
-                                <td className="table-cell text-slate-700 font-medium">
-                                  {item.eta ? formatDate(item.eta) : '—'}
+                                <td className="table-cell font-mono text-slate-700">{item.heat_no || '—'}</td>
+                                <td className="table-cell text-right font-mono text-slate-600">{(item as any).sec_weight ?? '—'}</td>
+                                <td className="table-cell font-semibold text-slate-700">{(item as any).delivery_terms || 'FOB'}</td>
+                                <td className="table-cell text-right font-mono text-slate-800">{(item as any).price !== undefined && (item as any).price !== null ? (item as any).price : '—'}</td>
+                                <td className="table-cell font-semibold text-slate-600">{(item as any).currency || 'USD'}</td>
+                                <td className="table-cell text-center">
+                                  {item.sims ? (
+                                    item.sims === 'Done' ? (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Done</span>
+                                    ) : item.sims === 'Not Required' ? (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Not Required</span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-50 text-blue-700">{item.sims}</span>
+                                    )
+                                  ) : '—'}
                                 </td>
-                                <td className="table-cell font-mono text-slate-700 text-[11px]">
-                                  {item.heat_no ? (
-                                    <span className="font-semibold text-slate-800">{item.heat_no}</span>
-                                  ) : item.sims ? (
-                                    <span className="text-slate-500">SIMS: {item.sims}</span>
-                                  ) : (
-                                    <span className="text-slate-400">—</span>
-                                  )}
-                                </td>
-                                <td className="table-cell text-slate-600">
-                                  <span className="block truncate max-w-[120px]" title={item.make || item.supplier || ''}>
-                                    {item.make || item.supplier || 'Standard'}
-                                  </span>
-                                  {item.poNumber && (
-                                    <span className="text-[10px] text-blue-600 font-semibold block">
-                                      PO {item.poNumber}
-                                    </span>
-                                  )}
-                                </td>
+                                <td className="table-cell text-slate-700 whitespace-nowrap">{(item as any).payment_terms || 'DP at sight'}</td>
+                                <td className="table-cell font-mono text-slate-600">{(item as any).hsn_code || '—'}</td>
                               </tr>
                             ))
                           )}
                         </tbody>
                         <tfoot className="bg-slate-50 border-t border-slate-200 font-bold text-slate-800">
                           <tr>
-                            <td colSpan={3} className="table-cell font-bold text-slate-700">
+                            <td colSpan={8} className="table-cell font-bold text-slate-700">
                               Total Manifest ({filteredLotItems.length} items)
                             </td>
-                            <td className="table-cell text-center font-mono font-bold text-slate-800">
-                              {filteredLotItems.reduce((acc, it) => acc + (Number(it.pieces) || 1), 0)} PCS
+                            <td className="table-cell text-right font-mono font-bold text-slate-800">
+                              {filteredLotItems.reduce((acc, it) => acc + (Number(it.pieces) || 1), 0)}
                             </td>
                             <td className="table-cell text-right font-mono font-extrabold text-blue-700 text-sm">
-                              {formatWeight(filteredLotItems.reduce((acc, it) => acc + (Number(it.weight) || 0), 0))}
+                              {formatWeight(filteredLotItems.reduce((acc, it) => acc + (it.weight || 0), 0))}
                             </td>
-                            <td colSpan={4} className="table-cell text-right text-[11px] text-slate-500 font-normal">
-                              Net cargo weight in Lot {selectedLot.lot_number}
-                            </td>
+                            <td colSpan={13}></td>
                           </tr>
                         </tfoot>
                       </table>

@@ -28,6 +28,7 @@ export function AddReceiptModal({
   // Form fields
   const [receiptDate, setReceiptDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [receivedQty, setReceivedQty] = useState<string>('');
+  const [pieces, setPieces] = useState<string>('1');
   const [supplierInvoice, setSupplierInvoice] = useState<string>('');
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [lotNumber, setLotNumber] = useState<string>('');
@@ -71,6 +72,7 @@ export function AddReceiptModal({
       const it = po?.items?.find(i => i.id === selectedItemId);
       if (it) {
         if (it.lot_number) setLotNumber(it.lot_number);
+        if (it.pieces) setPieces(String(it.pieces));
       }
     }
   }, [selectedItemId, selectedPoId, purchaseOrders]);
@@ -118,6 +120,7 @@ export function AddReceiptModal({
         itemId: selectedItemId,
         receiptDate,
         receivedQuantity: numReceived,
+        pieces: parseInt(pieces, 10) || 1,
         supplierInvoice: supplierInvoice.trim(),
         supplierInvoiceDate: invoiceDate,
         lotNumber: lotNumber.trim(),
@@ -230,6 +233,20 @@ export function AddReceiptModal({
                   setShowOverReceiptConfirm(false);
                 }}
                 placeholder="e.g. 2000"
+                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Pieces (pc) *</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                required
+                value={pieces}
+                onChange={(e) => setPieces(e.target.value)}
+                placeholder="e.g. 1"
                 className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
               />
             </div>
