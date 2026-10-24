@@ -6,7 +6,8 @@
     "dev": "next dev -p 3000",
     "build": "next build && node -e \"require('fs').writeFileSync('out/.nojekyll', '')\"",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "export:powerbi": "node scripts/exportPowerBIData.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

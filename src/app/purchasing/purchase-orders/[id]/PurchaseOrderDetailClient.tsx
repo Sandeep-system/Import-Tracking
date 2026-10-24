@@ -895,17 +895,52 @@ const STANDARD_ORIGINS = [
     }
   };
 
-  const handleOpenResolveBalance = (item: PurchaseOrderItem) => {
+  const handleOpenResolveBalance = (item: PurchaseOrderItem, defaultToWaived: boolean = false) => {
     setResolvingItem(item);
     const pending = item.actionable_pending_qty ?? item.balance_quantity ?? Math.max(0, item.ordered_quantity - (item.received_quantity || 0));
-    setResolveOption('CARRY_FORWARD');
-    setCfQty(pending > 0 ? String(pending) : '');
-    setWaivedQty('');
-    setResolveReason('Supplier production shortage accepted');
+    const isShortClose = defaultToWaived || item.status === 'Open';
+    setResolveOption(isShortClose ? 'WAIVED' : 'CARRY_FORWARD');
+    setCfQty(!isShortClose && pending > 0 ? String(pending) : '');
+    setWaivedQty(isShortClose && pending > 0 ? String(pending) : '');
+    setResolveReason(isShortClose ? 'Full shortage / Mill unable to supply' : 'Supplier production shortage accepted');
     setResolveRemarks('');
     setResolveExpDate(po.expected_delivery_date ? po.expected_delivery_date.split('T')[0] : '');
     setResolveError(null);
     setIsResolveOpen(true);
+  };
+
+  const handleBulkShortClose = () => {
+    if (selectedItemIds.length === 0 || !po) return;
+    const itemsToClose = (po.items || []).filter(i => 
+      selectedItemIds.includes(i.id) && 
+      (i.actionable_pending_qty ?? i.balance_quantity ?? Math.max(0, i.ordered_quantity - (i.received_quantity || 0))) > 0
+    );
+    if (itemsToClose.length === 0) {
+      alert('None of the selected items have an open actionable balance to short close.');
+      return;
+    }
+    const confirmMsg = `Are you sure you want to short close ${itemsToClose.length} selected item(s) due to mill shortage / cancellation? This will waive the remaining open balance.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    for (const item of itemsToClose) {
+      const actionable = item.actionable_pending_qty ?? item.balance_quantity ?? Math.max(0, item.ordered_quantity - (item.received_quantity || 0));
+      if (actionable > 0) {
+        dataStore.resolveBalance({
+          poIdOrNumber: po.id,
+          itemId: item.id,
+          option: 'WAIVED',
+          waivedQty: actionable,
+          reason: 'Full shortage / Mill unable to supply',
+          remarks: 'Bulk short-closed by operations'
+        });
+      }
+    }
+    setSelectedItemIds([]);
+    loadData();
+    setDataVersion(v => v + 1);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('app:data-updated'));
+    }
   };
 
   const handleSubmitResolveBalance = (e: React.FormEvent) => {
@@ -1292,6 +1327,15 @@ const STANDARD_ORIGINS = [
                 </button>
                 <button
                   type="button"
+                  onClick={handleBulkShortClose}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-600 hover:text-white border border-rose-200 rounded shadow-sm transition-colors cursor-pointer"
+                  title="Short close selected open/actionable items"
+                >
+                  <AlertTriangle className="h-3 w-3" />
+                  <span>Short Close</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setSelectedItemIds([])}
                   className="text-xs text-slate-500 hover:text-slate-700 underline px-1"
                 >
@@ -1509,15 +1553,28 @@ const STANDARD_ORIGINS = [
                             </button>
                           )}
 
-                          {/* Balance resolution button for shortages */}
-                          {actionable > 0 && item.status !== 'In Transit' && item.status !== 'Open' && (
-                            <button
-                              onClick={() => handleOpenResolveBalance(item)}
-                              className="px-2 py-1 rounded bg-slate-50 hover:bg-amber-600 hover:text-white text-amber-800 border border-amber-200 font-semibold text-[11px] transition-colors"
-                              title="Resolve remaining balance"
-                            >
-                              Resolve
-                            </button>
+                          {/* Balance resolution / Short Close button */}
+                          {actionable > 0 && item.status !== 'In Transit' && (
+                            item.status === 'Open' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenResolveBalance(item, true)}
+                                className="px-2.5 py-1 rounded bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 border border-rose-200 font-semibold text-[11px] transition-colors flex items-center gap-1 shadow-sm cursor-pointer"
+                                title="Short close this open item (mill unable to supply / full shortage)"
+                              >
+                                <AlertTriangle className="h-3 w-3" />
+                                <span>Short Close</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenResolveBalance(item, false)}
+                                className="px-2 py-1 rounded bg-slate-50 hover:bg-amber-600 hover:text-white text-amber-800 border border-amber-200 font-semibold text-[11px] transition-colors cursor-pointer"
+                                title="Resolve remaining balance"
+                              >
+                                Resolve
+                              </button>
+                            )
                           )}
 
                           {/* Edit Item button */}
@@ -1902,18 +1959,24 @@ const STANDARD_ORIGINS = [
                     const isSelectedSettled = Math.abs(selectedItem.ordered_quantity - (selectedItem.received_quantity || 0)) < 0.001;
                     const actQty = isSelectedSettled ? 0 : (selectedItem.actionable_pending_qty ?? selectedItem.balance_quantity ?? 0);
                     if (actQty <= 0 || isViewer) return null;
+                    const isOpen = selectedItem.status === 'Open';
                     return (
                       <button
                         type="button"
                         onClick={() => {
                           const it = selectedItem;
                           setSelectedItem(null);
-                          handleOpenResolveBalance(it);
+                          handleOpenResolveBalance(it, isOpen);
                         }}
-                        className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-sm transition-colors flex items-center gap-1.5"
+                        className={`px-4 py-2 rounded-lg font-bold text-xs shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer ${
+                          isOpen
+                            ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                            : 'bg-amber-600 hover:bg-amber-700 text-white'
+                        }`}
+                        title={isOpen ? 'Short close this open item (mill unable to supply / full shortage)' : 'Resolve remaining balance'}
                       >
-                        <Split className="h-3.5 w-3.5" />
-                        <span>Resolve Balance ({formatWeight(actQty)})</span>
+                        {isOpen ? <AlertTriangle className="h-3.5 w-3.5" /> : <Split className="h-3.5 w-3.5" />}
+                        <span>{isOpen ? `Short Close Item (${formatWeight(actQty)})` : `Resolve Balance (${formatWeight(actQty)})`}</span>
                       </button>
                     );
                   })()}
@@ -2472,12 +2535,14 @@ const STANDARD_ORIGINS = [
             <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
               {/* Header */}
               <div className="px-6 py-4 border-b flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2.5 text-amber-600">
-                  <div className="p-2 rounded-lg bg-amber-100">
-                    <Split className="h-5 w-5 text-amber-700" />
+                <div className={`flex items-center gap-2.5 ${resolvingItem.status === 'Open' ? 'text-rose-600' : 'text-amber-600'}`}>
+                  <div className={`p-2 rounded-lg ${resolvingItem.status === 'Open' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {resolvingItem.status === 'Open' ? <AlertTriangle className="h-5 w-5" /> : <Split className="h-5 w-5" />}
                   </div>
                   <div>
-                    <h2 className="text-base font-bold text-slate-900">Resolve Remaining Balance</h2>
+                    <h2 className="text-base font-bold text-slate-900">
+                      {resolvingItem.status === 'Open' ? 'Short Close / Cancel Open Item Balance' : 'Resolve Remaining Balance'}
+                    </h2>
                     <p className="text-xs text-slate-500">
                       PO {po.po_number} • Line Item #{resolvingItem.line_number} ({resolvingItem.grade_code} {resolvingItem.section_name})
                     </p>
@@ -2643,6 +2708,7 @@ const STANDARD_ORIGINS = [
                         onChange={(e) => setResolveReason(e.target.value)}
                         className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
                       >
+                        <option value="Full shortage / Mill unable to supply">Full shortage / Mill unable to supply</option>
                         <option value="Supplier production shortage accepted">Supplier production shortage accepted</option>
                         <option value="Commercial weight tolerance accepted (<1%)">Commercial weight tolerance accepted (&lt;1%)</option>
                         <option value="Balance carried forward to fresh schedule">Balance carried forward to fresh schedule</option>
@@ -2707,11 +2773,11 @@ const STANDARD_ORIGINS = [
                   <button
                     type="submit"
                     disabled={isSubmittingResolve || isOverLimit || totalResolving <= 0}
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg shadow-sm transition-colors"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg shadow-sm transition-colors cursor-pointer"
                   >
                     {isSubmittingResolve 
                       ? 'Processing...' 
-                      : 'Confirm & Apply Resolution'}
+                      : (resolveOption === 'WAIVED' && resolvingItem.status === 'Open' ? 'Confirm Short Close' : 'Confirm & Apply Resolution')}
                   </button>
                 </div>
               </form>
@@ -4319,8 +4385,25 @@ const STANDARD_ORIGINS = [
                 </div>
               </div>
 
-              {/* 5. Terms & Remarks */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* 5. Status, Terms & Remarks */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1 text-slate-800">Item Status</label>
+                  <select
+                    value={editItemStatus}
+                    onChange={(e) => setEditItemStatus(e.target.value as ItemStatus)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 font-medium"
+                  >
+                    <option value="Open">Open</option>
+                    <option value="Ready to Ship">Ready to Ship</option>
+                    <option value="In Transit">In Transit</option>
+                    <option value="Received">Received</option>
+                    <option value="Closed — Short Received">Closed — Short Received</option>
+                    <option value="Closed — Balance Carried Forward">Closed — Balance Carried Forward</option>
+                    <option value="Closed — Balance Resolved">Closed — Balance Resolved</option>
+                    <option value="Closed">Closed</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block font-semibold mb-1 text-slate-800">Delivery Terms</label>
                   <input
@@ -4340,7 +4423,7 @@ const STANDARD_ORIGINS = [
                     className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-3">
                   <label className="block font-semibold mb-1 text-slate-800">Item Remarks / Specs Notes</label>
                   <input
                     type="text"

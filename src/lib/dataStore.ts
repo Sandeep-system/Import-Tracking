@@ -1571,8 +1571,14 @@ class Store {
     }
 
     // Preserve lifecycle statuses if already set to Ready to Ship, In Transit, Received, or Closed
-    if (item.status === 'In Transit' || item.status === 'Received' || item.status?.startsWith('Closed')) {
+    if (item.status === 'In Transit' || item.status === 'Received') {
       return;
+    }
+    if (item.status?.startsWith('Closed')) {
+      if ((item.actionable_pending_qty ?? 0) === 0) {
+        return;
+      }
+      // If actionable balance exists (e.g. resolution reversed), allow recalculation below
     }
     if (item.status === 'Ready to Ship' && (totalRecd > 0 || (item.ready_quantity || 0) > 0)) {
       return;
@@ -1640,7 +1646,7 @@ class Store {
     if (po.is_closed) {
       po.status = 'Closed';
     } else if (po.items.length > 0 && po.items.every(i => i.status === 'Received' || i.status?.startsWith('Closed'))) {
-      po.status = 'Received';
+      po.status = po.total_received_qty > 0 ? 'Received' : 'Closed';
     } else if (po.items.some(i => i.status === 'In Transit')) {
       po.status = 'In Transit';
     } else if (po.items.some(i => i.status === 'Ready to Ship')) {
@@ -1656,6 +1662,37 @@ class Store {
     }
 
     po.updated_at = new Date().toISOString();
+  }
+
+  public shortCloseItem(params: {
+    poIdOrNumber: string;
+    itemId: string;
+    reason?: string;
+    remarks?: string;
+    createdBy?: string;
+  }) {
+    const po = this.state.purchaseOrders.find(
+      p => p.id === params.poIdOrNumber || p.po_number === params.poIdOrNumber
+    );
+    if (!po) throw new Error(`Purchase order ${params.poIdOrNumber} not found`);
+    const item = po.items?.find(i => i.id === params.itemId);
+    if (!item) throw new Error(`PO Line Item ${params.itemId} not found`);
+
+    this.computeItemQuantities(item);
+    const actionable = item.actionable_pending_qty ?? item.balance_quantity ?? Math.max(0, item.ordered_quantity - (item.received_quantity || 0));
+    if (actionable <= 0) {
+      throw new Error(`This item has no actionable pending balance to short close.`);
+    }
+
+    return this.resolveBalance({
+      poIdOrNumber: params.poIdOrNumber,
+      itemId: params.itemId,
+      option: 'WAIVED',
+      waivedQty: actionable,
+      reason: params.reason || 'Full shortage / Mill unable to supply',
+      remarks: params.remarks || undefined,
+      createdBy: params.createdBy || 'Current User (Operations)'
+    });
   }
 
   public resolveBalance(params: {
