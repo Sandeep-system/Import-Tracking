@@ -98,7 +98,6 @@ function LotsContent() {
       const inc = allIncoming.find(i => i.lot_number === lot.lot_number);
       if (inc) {
         if (inc.eta_seaport) arrivingDate = inc.eta_seaport;
-        else if (inc.date_of_shipment) arrivingDate = inc.date_of_shipment;
 
         if (inc.payment_terms) paymentTerms = inc.payment_terms;
         if (inc.condition || inc.make) {
@@ -119,7 +118,6 @@ function LotsContent() {
           const item = po.items?.find(it => it.lot_number === lot.lot_number || it.id === lot.purchase_order_item_id);
           if (item) {
             if (item.eta_seaport) arrivingDate = item.eta_seaport;
-            else if (item.date_of_shipment && !arrivingDate) arrivingDate = item.date_of_shipment;
             else if (item.expected_delivery_date && !arrivingDate) arrivingDate = item.expected_delivery_date;
 
             if (item.payment_terms) paymentTerms = item.payment_terms;
@@ -343,7 +341,7 @@ function LotsContent() {
           weight: Number(inc.weight) || 0,
           status: inc.received_status === 'RECEIVED' ? 'Received at Yard' : (inc.received_status === 'READY' ? 'Ready to Ship' : 'In Transit'),
           customer: inc.customer || 'SE',
-          eta: inc.eta_seaport || inc.date_of_shipment,
+          eta: inc.eta_seaport || null,
           date_of_shipment: inc.date_of_shipment,
           heat_no: inc.heat_no,
           sec_weight: inc.sec_weight,
@@ -388,7 +386,7 @@ function LotsContent() {
               weight: Number(it.ready_quantity ?? it.received_quantity ?? it.ordered_quantity) || 0,
               status: it.status === 'Received' ? 'Received at Yard' : (it.status || selectedLot.status || 'Available'),
               customer: po.customer_name || 'SE',
-              eta: it.eta_seaport || it.date_of_shipment || po.expected_delivery_date,
+              eta: it.eta_seaport || null,
               date_of_shipment: it.date_of_shipment,
               heat_no: it.heat_no,
               sec_weight: null,
@@ -478,7 +476,7 @@ function LotsContent() {
       customer: inc?.customer || po?.customer_name || 'SE',
       port: inc?.port || item?.destination_port || po?.destination || 'N.S.',
       date_of_shipment: inc?.date_of_shipment || item?.date_of_shipment || '',
-      eta_seaport: inc?.eta_seaport || item?.eta_seaport || meta?.arrivingDate || '',
+      eta_seaport: inc?.eta_seaport || item?.eta_seaport || '',
       received: lot.warehouse_location || inc?.received_status || (lot.available_qty > 0 ? 'Received' : 'In Transit'),
       heat_no: inc?.heat_no || item?.heat_no || '—',
       sec_weight: inc?.sec_weight !== undefined && inc?.sec_weight !== null ? inc.sec_weight : '—',
@@ -1195,7 +1193,7 @@ function LotsContent() {
                       <div>
                         <span className="text-[10px] text-slate-400 uppercase font-bold block">Vessel Sea Port ETA</span>
                         <span className="font-bold text-slate-800 block mt-0.5">
-                          {first?.eta_seaport ? formatDate(first.eta_seaport) : formatDate(lotMetaMap[selectedLot.id]?.arrivingDate)}
+                          {first?.eta_seaport ? formatDate(first.eta_seaport) : '—'}
                         </span>
                       </div>
 

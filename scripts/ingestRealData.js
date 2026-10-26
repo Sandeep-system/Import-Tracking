@@ -8,15 +8,13 @@ const TODAY_STR = '2026-10-07';
 // Date parser helper
 function parseExcelDate(val) {
   if (!val) return null;
-  if (val instanceof Date || (typeof val === 'object' && val !== null && typeof val.getTime === 'function')) {
-    if (!isNaN(val.getTime())) {
-      const year = val.getFullYear();
-      const month = String(val.getMonth() + 1).padStart(2, '0');
-      const day = String(val.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-  }
   if (typeof val === 'number') {
+    try {
+      const p = xlsx.SSF.parse_date_code(val);
+      if (p && p.y && p.m && p.d) {
+        return `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
+      }
+    } catch (e) {}
     try {
       const date = new Date(Math.round((val - 25569) * 86400 * 1000));
       if (!isNaN(date.getTime())) {
@@ -27,6 +25,14 @@ function parseExcelDate(val) {
       }
     } catch (e) {
       return null;
+    }
+  }
+  if (val instanceof Date || (typeof val === 'object' && val !== null && typeof val.getTime === 'function')) {
+    if (!isNaN(val.getTime())) {
+      const year = val.getUTCFullYear();
+      const month = String(val.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(val.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
   }
   const str = String(val).trim();
@@ -49,7 +55,6 @@ function parseExcelDate(val) {
   }
   return null;
 }
-
 function canonicalSupplierKey(name) {
   if (!name) return '';
   let str = name.toLowerCase();
@@ -60,7 +65,7 @@ function canonicalSupplierKey(name) {
 }
 
 console.log('--- Step 1: Parsing INCOMING STOCK.xlsx ---');
-const wbStock = xlsx.readFile('INCOMING STOCK.xlsx', { cellDates: true });
+const wbStock = xlsx.readFile('INCOMING STOCK.xlsx');
 
 // 1A: Parse INCOMING CLOSE (Received in warehouse lots)
 const sheetCloseStock = wbStock.Sheets['INCOMING CLOSE'];
@@ -221,7 +226,7 @@ console.log(`Total INCOMING SE Stock Items: ${incomingInTransitStock.length}`);
 
 // Step 2: Parsing Import Pending New.xlsx
 console.log('\n--- Step 2: Parsing Import Pending New.xlsx ---');
-const wbPending = xlsx.readFile('Import Pending New.xlsx', { cellStyles: true, cellDates: true });
+const wbPending = xlsx.readFile('Import Pending New.xlsx', { cellStyles: true });
 
 // 2A: Parse Pending Order
 const sheetPending = wbPending.Sheets['Pending Order'];

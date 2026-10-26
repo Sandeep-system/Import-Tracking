@@ -238,39 +238,46 @@ export default function IncomingStockPage() {
         if (workbook.SheetNames.includes('INCOMING SE')) {
           const ws = workbook.Sheets['INCOMING SE'];
           const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+          const parseExcelCellDate = (v: any): string | null => {
+            if (!v) return null;
+            if (typeof v === 'number') {
+              try {
+                const p = XLSX.SSF.parse_date_code(v);
+                if (p && p.y && p.m && p.d) {
+                  return `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
+                }
+              } catch (e) {}
+            }
+            const s = String(v).trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+            return s || null;
+          };
+
           for (let r = 2; r < rows.length; r++) {
             const row = rows[r];
             if (!row || !row[2]) continue; // col 2 is LOT
-              const rawShip = row[12];
-              let shipDateStr: string | null = null;
-              if (rawShip) {
-                if (typeof rawShip === 'number') {
-                  const d = new Date(Math.round((rawShip - 25569) * 86400 * 1000));
-                  if (!isNaN(d.getTime())) shipDateStr = d.toISOString().split('T')[0];
-                } else {
-                  shipDateStr = String(rawShip).trim() || null;
-                }
-              }
-              const nowStr = new Date().toISOString().split('T')[0];
-              const isReady = !shipDateStr || shipDateStr > nowStr;
+            const shipDateStr = parseExcelCellDate(row[12]);
+            const etaDateStr = parseExcelCellDate(row[13]);
+            const nowStr = new Date().toISOString().split('T')[0];
+            const isReady = !shipDateStr || shipDateStr > nowStr;
 
-              importedItems.push({
-                id: `inc-se-up-${r}-${Date.now()}`,
-                make: String(row[0] || '').trim(),
-                supplier: String(row[1] || '').trim(),
-                lot_number: String(row[2]).trim(),
-                grade: String(row[3] || '').trim(),
-                condition: String(row[4] || '').trim(),
-                dia_w: row[5] || null,
-                t: row[6] || null,
-                l: row[7] || null,
-                pieces: row[8] || null,
-                weight: Number(row[9]) || 0,
-                customer: String(row[10] || '').trim(),
-                port: String(row[11] || '').trim(),
-                date_of_shipment: shipDateStr,
-                eta_seaport: row[13] ? String(row[13]) : null,
-                received_status: isReady ? 'READY' : 'IN_TRANSIT',
+            importedItems.push({
+              id: `inc-se-up-${r}-${Date.now()}`,
+              make: String(row[0] || '').trim(),
+              supplier: String(row[1] || '').trim(),
+              lot_number: String(row[2]).trim(),
+              grade: String(row[3] || '').trim(),
+              condition: String(row[4] || '').trim(),
+              dia_w: row[5] || null,
+              t: row[6] || null,
+              l: row[7] || null,
+              pieces: row[8] || null,
+              weight: Number(row[9]) || 0,
+              customer: String(row[10] || '').trim(),
+              port: String(row[11] || '').trim(),
+              date_of_shipment: shipDateStr,
+              eta_seaport: etaDateStr,
+              received_status: isReady ? 'READY' : 'IN_TRANSIT',
               heat_no: row[15] ? String(row[15]).trim() : null,
               sec_weight: Number(row[16]) || null,
               delivery_terms: String(row[17] || '').trim(),

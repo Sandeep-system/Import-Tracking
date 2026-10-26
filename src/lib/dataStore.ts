@@ -24,7 +24,8 @@ import { canonicalSupplierKey } from './utils';
 const STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V8';
 const PREV_STORAGE_KEY = 'IMPORT_TRACKING_SYSTEM_DATA_V7';
 const RESOLUTIONS_STORAGE_KEY = 'IMPORT_TRACKING_RESOLUTIONS_V1';
-const OPERATIONAL_POS_STORAGE_KEY = 'IMPORT_TRACKING_OPERATIONAL_POS_V1';
+const OPERATIONAL_POS_STORAGE_KEY = 'IMPORT_TRACKING_OPERATIONAL_POS_V2';
+const PREV_OPERATIONAL_POS_STORAGE_KEY = 'IMPORT_TRACKING_OPERATIONAL_POS_V1';
 
 export function normalizeIncomingStockItem(raw: any, defaultSource: string = 'INCOMING SE'): IncomingStockItem {
   if (!raw) return raw;
@@ -142,6 +143,7 @@ class Store {
       try {
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(PREV_STORAGE_KEY);
+        localStorage.removeItem(PREV_OPERATIONAL_POS_STORAGE_KEY);
         localStorage.removeItem('sandeep_user_pos');
         localStorage.removeItem('sandeep_user_receipts');
       } catch (e) {}
