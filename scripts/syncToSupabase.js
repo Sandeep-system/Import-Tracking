@@ -31,6 +31,15 @@ function cleanDate(d) {
     activePOs.some(po => po.po_number === r.po_number)
   );
 
+  // Preserve any existing user balance resolutions in Supabase
+  let existingResolutions = [];
+  try {
+    const { data: curState } = await supabase.from('app_cloud_state').select('data').eq('id', 'master_state').single();
+    if (curState?.data?.balanceResolutions && Array.isArray(curState.data.balanceResolutions)) {
+      existingResolutions = curState.data.balanceResolutions;
+    }
+  } catch (e) {}
+
   const syncPayload = {
     version: 2,
     purchaseOrders: activePOs,
@@ -53,11 +62,11 @@ function cleanDate(d) {
         entity_type: 'SYSTEM',
         entity_id: 'ingest-init',
         entity_display: 'Import Tracking Cloud Database',
-        remarks: `Synchronized ${activePOs.length} active POs (55 In Transit, 35 Ready to Ship, 29 Received, 89 Open items) and ${inTransit.length} in-transit lots according to Option 2 rules.`,
+        remarks: `Synchronized ${activePOs.length} active POs and ${inTransit.length} in-transit lots with verified calendar dates.`,
         created_at: new Date().toISOString()
       }
     ],
-    balanceResolutions: [],
+    balanceResolutions: existingResolutions,
     incomingStock: inTransit
   };
 
