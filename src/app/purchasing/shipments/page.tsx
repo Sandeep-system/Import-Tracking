@@ -507,7 +507,7 @@ function ShipmentsContent() {
       if (search.trim()) {
         const q = search.toLowerCase().trim();
         const matchLot = group.lot_number.toLowerCase().includes(q);
-        const matchPo = (group.linked_po_number || '').toLowerCase().includes(q);
+        const matchPo = (group.linked_po_number || '').toLowerCase().includes(q) || (group.linked_pos && group.linked_pos.some(p => p.toLowerCase().includes(q)));
         const matchSupplier = group.supplier.toLowerCase().includes(q);
         const matchCustomer = (group.customer || '').toLowerCase().includes(q);
         const matchPort = (group.port || '').toLowerCase().includes(q);
@@ -2774,7 +2774,19 @@ function ShipmentsContent() {
                               )}
                             </td>
                             <td className="table-cell" onClick={(e) => e.stopPropagation()}>
-                              {group.linked_po_number ? (
+                              {group.linked_pos && group.linked_pos.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {group.linked_pos.map((poNum) => (
+                                    <Link 
+                                      key={poNum}
+                                      href={`/purchasing/purchase-orders/${poNum}`}
+                                      className="font-bold text-blue-600 hover:underline bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-xs inline-block"
+                                    >
+                                      PO {poNum}
+                                    </Link>
+                                  ))}
+                                </div>
+                              ) : group.linked_po_number ? (
                                 <Link 
                                   href={`/purchasing/purchase-orders/${group.linked_po_number}`}
                                   className="font-bold text-blue-600 hover:underline"

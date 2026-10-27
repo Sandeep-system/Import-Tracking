@@ -866,7 +866,7 @@ function LotsContent() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {selectedLot.grade_code} • {selectedLot.supplier_name || 'Direct Import'} • PO {selectedLot.po_number || 'Direct'} • {selectedLot.warehouse_location || 'Main Yard'}
+                    {selectedLot.grade_code} • {selectedLot.supplier_name || 'Direct Import'} • {selectedLot.po_number ? selectedLot.po_number.split(',').map(p => `PO ${p.trim()}`).join(', ') : 'Direct'} • {selectedLot.warehouse_location || 'Main Yard'}
                   </p>
                 </div>
               </div>
@@ -1054,7 +1054,20 @@ function LotsContent() {
                               <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
                                 <td className="table-cell font-medium text-slate-800">{item.make || 'Standard'}</td>
                                 <td className="table-cell text-slate-700 truncate max-w-[120px]" title={item.supplier || ''}>{item.supplier || '—'}</td>
-                                <td className="table-cell font-mono font-bold text-slate-900">{selectedLot.lot_number}</td>
+                                <td className="table-cell">
+                                  <div className="flex flex-col">
+                                    <span className="font-mono font-bold text-slate-900">{selectedLot.lot_number}</span>
+                                    {item.poNumber && (
+                                      <Link 
+                                        href={`/purchasing/purchase-orders/${item.poNumber}`}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-[10px] text-blue-600 hover:underline font-semibold"
+                                      >
+                                        PO {item.poNumber}
+                                      </Link>
+                                    )}
+                                  </div>
+                                </td>
                                 <td className="table-cell font-bold text-slate-900">{item.grade}</td>
                                 <td className="table-cell text-slate-600">{item.condition || '—'}</td>
                                 <td className="table-cell text-right font-mono text-slate-700">{(item as any).dia_w ?? '—'}</td>
@@ -1218,13 +1231,23 @@ function LotsContent() {
 
                       <div>
                         <span className="text-[10px] text-slate-400 uppercase font-bold block">Linked Purchase Order</span>
-                        <span className="font-bold text-blue-600 block mt-0.5">
+                        <div className="mt-0.5">
                           {selectedLot.po_number ? (
-                            <Link href={`/purchasing/purchase-orders/${selectedLot.po_number}`} className="hover:underline">
-                              PO {selectedLot.po_number}
-                            </Link>
-                          ) : 'Direct Import'}
-                        </span>
+                            <div className="flex flex-wrap gap-1">
+                              {selectedLot.po_number.split(',').map(p => p.trim()).filter(Boolean).map(poNum => (
+                                <Link 
+                                  key={poNum}
+                                  href={`/purchasing/purchase-orders/${poNum}`} 
+                                  className="hover:underline text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 text-xs inline-block"
+                                >
+                                  PO {poNum}
+                                </Link>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-xs">Direct Import</span>
+                          )}
+                        </div>
                       </div>
                     </div>
 

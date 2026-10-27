@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
 
-// Reference Date for Option 2: 2026-10-07
-const TODAY_STR = '2026-10-07';
+// Reference Date: Dynamic current date
+const TODAY_STR = new Date().toISOString().split('T')[0];
 
 // Date parser helper
 function parseExcelDate(val) {
@@ -166,9 +166,9 @@ for (let r = 2; r <= rangeSe.e.r; r++) {
   const curr = String(getV(19) || 'USD').trim();
 
   // OPTION 2 RULE:
-  // If date of shipment is blank OR in future (> TODAY_STR) -> Ready to Ship
-  // If date of shipment <= TODAY_STR (already departed) -> In Transit
-  const isReady = !dateShip || dateShip > TODAY_STR;
+  // If date of shipment is blank OR in future (> TODAY_STR) and no seaport ETA -> Ready to Ship
+  // If date of shipment <= TODAY_STR (already departed) OR has seaport ETA -> In Transit
+  const isReady = (!dateShip || dateShip > TODAY_STR) && !etaSea;
   const status = isReady ? 'Ready to Ship' : 'In Transit';
 
   if (!incomingSeLots.has(lot)) {
@@ -184,6 +184,14 @@ for (let r = 2; r <= rangeSe.e.r; r++) {
       rows: 0,
       totalWeight: 0
     });
+  } else {
+    const seLotEntry = incomingSeLots.get(lot);
+    if (!isReady) {
+      seLotEntry.isReady = false;
+      seLotEntry.status = 'In Transit';
+    }
+    if (etaSea && !seLotEntry.etaSea) seLotEntry.etaSea = etaSea;
+    if (dateShip && !seLotEntry.dateShip) seLotEntry.dateShip = dateShip;
   }
   const seLotEntry = incomingSeLots.get(lot);
   seLotEntry.rows++;
@@ -639,6 +647,117 @@ const suppliers = Array.from(supplierMap.values());
 const customers = Array.from(customerMap.values());
 const allPurchaseOrders = [...activePurchaseOrders, ...closedPurchaseOrders];
 const allReceipts = [...pendingReceipts, ...closedReceipts];
+
+// --- SMART MULTI-PO LINKING FOR INCOMING STOCK ---
+function canonicalGradeKey(g) {
+  if (!g) return '';
+  const clean = String(g).toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (['c45', 'c50', '1045', '1050', 'en8', 'en9'].includes(clean)) return 'c45_c50';
+  return clean;
+}
+
+const poItemsByLot = new Map();
+for (const po of allPurchaseOrders) {
+  const isClosed = Boolean(po.is_closed);
+  for (const it of (po.items || [])) {
+    if (!it.lot_number) continue;
+    const lot = it.lot_number.trim();
+    if (!poItemsByLot.has(lot)) poItemsByLot.set(lot, []);
+    poItemsByLot.get(lot).push({
+      po_number: po.po_number,
+      po_id: po.id,
+      item_id: it.id,
+      grade_code: it.grade_code,
+      gKey: canonicalGradeKey(it.grade_code),
+      qty: Number(it.ready_quantity ?? it.received_quantity ?? it.ordered_quantity ?? 0),
+      is_closed: isClosed,
+      claimed: false
+    });
+  }
+}
+
+const allIncs = [...incomingInTransitStock, ...incomingClosedStock];
+const incsByLot = new Map();
+for (const inc of allIncs) {
+  const lot = String(inc.lot_number || '').trim();
+  if (!incsByLot.has(lot)) incsByLot.set(lot, []);
+  incsByLot.get(lot).push(inc);
+}
+
+for (const [lot, incs] of incsByLot.entries()) {
+  const cands = poItemsByLot.get(lot);
+  if (!cands || cands.length === 0) continue;
+
+  const distinctPos = Array.from(new Set(cands.map(c => c.po_number)));
+
+  if (distinctPos.length === 1) {
+    const singlePo = cands[0];
+    for (const inc of incs) {
+      inc.linked_po_number = singlePo.po_number;
+      inc.linked_po_id = singlePo.po_id;
+      inc.linked_po_item_id = singlePo.item_id;
+    }
+    continue;
+  }
+
+  const poRemainingQty = new Map();
+  for (const c of cands) {
+    poRemainingQty.set(c.po_number, (poRemainingQty.get(c.po_number) || 0) + c.qty);
+  }
+
+  // Pass 1: Exact weight matches
+  for (const inc of incs) {
+    const incWeight = Number(inc.weight || 0);
+    const incGKey = canonicalGradeKey(inc.grade || inc.grade_code);
+    if (incWeight <= 0) continue;
+
+    let match = cands.find(c => !c.claimed && !c.is_closed && incGKey && c.gKey === incGKey && Math.abs(c.qty - incWeight) < 1);
+    if (!match) match = cands.find(c => !c.claimed && !c.is_closed && Math.abs(c.qty - incWeight) < 1);
+    if (!match) match = cands.find(c => !c.claimed && c.is_closed && incGKey && c.gKey === incGKey && Math.abs(c.qty - incWeight) < 1);
+    if (!match) match = cands.find(c => !c.claimed && c.is_closed && Math.abs(c.qty - incWeight) < 1);
+
+    if (match) {
+      match.claimed = true;
+      inc.linked_po_number = match.po_number;
+      inc.linked_po_id = match.po_id;
+      inc.linked_po_item_id = match.item_id;
+      poRemainingQty.set(match.po_number, Math.max(0, (poRemainingQty.get(match.po_number) || 0) - incWeight));
+    }
+  }
+
+  // Pass 2: Remaining unmatched items
+  for (const inc of incs) {
+    if (inc.linked_po_number) continue;
+    const incWeight = Number(inc.weight || 0);
+    const incGKey = canonicalGradeKey(inc.grade || inc.grade_code);
+
+    const activeGradeCands = cands.filter(c => !c.is_closed && (!incGKey || c.gKey === incGKey));
+    activeGradeCands.sort((a, b) => (poRemainingQty.get(b.po_number) || 0) - (poRemainingQty.get(a.po_number) || 0));
+
+    let match = activeGradeCands.find(c => (poRemainingQty.get(c.po_number) || 0) > 0);
+    if (!match && activeGradeCands.length > 0) match = activeGradeCands[0];
+
+    if (!match) {
+      const allActive = cands.filter(c => !c.is_closed);
+      allActive.sort((a, b) => (poRemainingQty.get(b.po_number) || 0) - (poRemainingQty.get(a.po_number) || 0));
+      match = allActive.find(c => (poRemainingQty.get(c.po_number) || 0) > 0) || allActive[0];
+    }
+
+    if (!match) {
+      const closedGradeCands = cands.filter(c => c.is_closed && (!incGKey || c.gKey === incGKey));
+      match = closedGradeCands[0];
+    }
+
+    if (!match) match = cands[0];
+
+    if (match) {
+      inc.linked_po_number = match.po_number;
+      inc.linked_po_id = match.po_id;
+      inc.linked_po_item_id = match.item_id;
+      poRemainingQty.set(match.po_number, Math.max(0, (poRemainingQty.get(match.po_number) || 0) - incWeight));
+    }
+  }
+}
 
 // Save initialData.json
 const initialData = {

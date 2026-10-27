@@ -249,6 +249,7 @@ export interface Lot {
   lot_number: string;
   purchase_order_item_id?: string | null;
   po_number?: string | null;
+  linked_pos?: string[];
   supplier_name?: string | null;
   grade_code?: string | null;
   section_name?: string | null;

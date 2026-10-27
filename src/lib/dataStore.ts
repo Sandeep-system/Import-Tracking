@@ -2013,12 +2013,26 @@ class Store {
       }
     }
 
+    for (const inc of (this.state.incomingStock || [])) {
+      if (inc.lot_number && inc.linked_po_number) {
+        const lotKey = inc.lot_number.trim().toLowerCase();
+        if (poLotAgg.has(lotKey)) {
+          poLotAgg.get(lotKey)!.po_numbers.add(inc.linked_po_number);
+        }
+      }
+    }
+
     for (const [lotKey, agg] of poLotAgg.entries()) {
       const existing = this.state.lots.find(l => l.lot_number.toLowerCase() === lotKey);
+      const allPos = Array.from(agg.po_numbers);
       if (existing) {
         existing.total_received_qty = agg.total_received_qty;
         existing.available_qty = Math.max(0, agg.total_received_qty - (existing.total_allocated_sold_qty || 0));
         existing.status = existing.available_qty > 0 ? 'Available' : 'Allocated';
+        if (allPos.length > 0) {
+          existing.po_number = allPos.join(', ');
+          existing.linked_pos = allPos;
+        }
       } else {
         const lotOrig = Array.from(this.state.purchaseOrders)
           .flatMap(p => p.items || [])
@@ -2027,7 +2041,8 @@ class Store {
           id: `lot-${lotOrig}`,
           lot_number: lotOrig,
           purchase_order_item_id: agg.firstItemId,
-          po_number: agg.primaryPo,
+          po_number: allPos.join(', ') || agg.primaryPo,
+          linked_pos: allPos,
           supplier_name: agg.primarySup,
           grade_code: agg.primaryGrade,
           section_name: agg.primarySection,
@@ -2357,10 +2372,17 @@ class Store {
       return clean;
     }
 
-    const activeGradeMap = new Map<string, { po_number: string; po_id: string; is_closed: boolean }>();
-    const activeLotMap = new Map<string, { po_number: string; po_id: string; is_closed: boolean }>();
-    const closedGradeMap = new Map<string, { po_number: string; po_id: string; is_closed: boolean }>();
-    const closedLotMap = new Map<string, { po_number: string; po_id: string; is_closed: boolean }>();
+    // 1. Group PO candidate items by lot number
+    const poItemsByLot = new Map<string, Array<{
+      po_number: string;
+      po_id: string;
+      item_id: string;
+      grade_code: string;
+      gKey: string;
+      qty: number;
+      is_closed: boolean;
+      claimed: boolean;
+    }>>();
 
     for (const po of this.state.purchaseOrders) {
       const isClosed = Boolean(po.is_closed);
@@ -2368,59 +2390,137 @@ class Store {
         for (const item of po.items) {
           if (item.lot_number) {
             const lot = String(item.lot_number).trim();
-            const gKey = canonicalGradeKey(item.grade_code);
-            const entry = { po_number: po.po_number, po_id: po.id, is_closed: isClosed };
-            if (isClosed) {
-              if (gKey) closedGradeMap.set(`${lot}:::${gKey}`, entry);
-              if (!closedLotMap.has(lot)) closedLotMap.set(lot, entry);
-            } else {
-              if (gKey) activeGradeMap.set(`${lot}:::${gKey}`, entry);
-              if (!activeLotMap.has(lot)) activeLotMap.set(lot, entry);
-            }
+            if (!lot) continue;
+            if (!poItemsByLot.has(lot)) poItemsByLot.set(lot, []);
+            poItemsByLot.get(lot)!.push({
+              po_number: po.po_number,
+              po_id: po.id,
+              item_id: item.id,
+              grade_code: item.grade_code,
+              gKey: canonicalGradeKey(item.grade_code),
+              qty: Number(item.ready_quantity ?? item.received_quantity ?? item.ordered_quantity ?? 0),
+              is_closed: isClosed,
+              claimed: false
+            });
           }
         }
       }
     }
 
+    // Also include receipts for lots that might be in receipts only
     for (const rc of this.state.receipts) {
       if (rc.lot_number && rc.po_number) {
         const lot = String(rc.lot_number).trim();
         const foundPo = this.state.purchaseOrders.find(p => p.po_number === rc.po_number);
         const isClosed = Boolean(foundPo?.is_closed);
-        const entry = { po_number: rc.po_number, po_id: foundPo?.id || '', is_closed: isClosed };
-        if (isClosed) {
-          if (!closedLotMap.has(lot)) closedLotMap.set(lot, entry);
-        } else {
-          if (!activeLotMap.has(lot)) activeLotMap.set(lot, entry);
+        const list = poItemsByLot.get(lot) || [];
+        if (!list.some(c => c.po_number === rc.po_number)) {
+          list.push({
+            po_number: rc.po_number,
+            po_id: foundPo?.id || '',
+            item_id: rc.purchase_order_item_id || '',
+            grade_code: '',
+            gKey: '',
+            qty: Number(rc.received_quantity || 0),
+            is_closed: isClosed,
+            claimed: false
+          });
+          poItemsByLot.set(lot, list);
         }
       }
     }
 
+    // 2. Group incoming stock items by lot number
+    const incsByLot = new Map<string, IncomingStockItem[]>();
     for (const inc of this.state.incomingStock) {
       const lot = String(inc.lot_number || '').trim();
-      const gKey = canonicalGradeKey(inc.grade || (inc as any).grade_code);
-      let match: { po_number: string; po_id: string; is_closed: boolean } | undefined;
+      if (!incsByLot.has(lot)) incsByLot.set(lot, []);
+      incsByLot.get(lot)!.push(inc);
+    }
 
-      // 1. Prioritize active PO with matching lot and grade
-      if (gKey && activeGradeMap.has(`${lot}:::${gKey}`)) {
-        match = activeGradeMap.get(`${lot}:::${gKey}`);
-      }
-      // 2. Closed PO with matching lot and grade
-      else if (gKey && closedGradeMap.has(`${lot}:::${gKey}`)) {
-        match = closedGradeMap.get(`${lot}:::${gKey}`);
-      }
-      // 3. Active PO with matching lot only
-      else if (activeLotMap.has(lot)) {
-        match = activeLotMap.get(lot);
-      }
-      // 4. Closed PO with matching lot only
-      else if (closedLotMap.has(lot)) {
-        match = closedLotMap.get(lot);
+    // 3. Match each lot's incoming items to PO candidates
+    for (const [lot, incs] of incsByLot.entries()) {
+      const cands = poItemsByLot.get(lot);
+      if (!cands || cands.length === 0) continue;
+
+      const distinctPos = Array.from(new Set(cands.map(c => c.po_number)));
+
+      // Case A: Only 1 PO associated with this lot -> All incoming items belong to it
+      if (distinctPos.length === 1) {
+        const singlePo = cands[0];
+        for (const inc of incs) {
+          inc.linked_po_number = singlePo.po_number;
+          inc.linked_po_id = singlePo.po_id;
+          (inc as any).linked_po_item_id = singlePo.item_id;
+        }
+        continue;
       }
 
-      if (match) {
-        inc.linked_po_number = match.po_number;
-        inc.linked_po_id = match.po_id;
+      // Case B: Multi-PO Lot -> Smart capacity-aware two-pass matching
+      const poRemainingQty = new Map<string, number>();
+      for (const c of cands) {
+        poRemainingQty.set(c.po_number, (poRemainingQty.get(c.po_number) || 0) + c.qty);
+      }
+
+      // Pass 1: Exact item weight matching
+      for (const inc of incs) {
+        const incWeight = Number(inc.weight || 0);
+        const incGKey = canonicalGradeKey(inc.grade || (inc as any).grade_code);
+        if (incWeight <= 0) continue;
+
+        // 1a. Active PO, exact weight + grade
+        let match = cands.find(c => !c.claimed && !c.is_closed && incGKey && c.gKey === incGKey && Math.abs(c.qty - incWeight) < 1);
+        // 1b. Active PO, exact weight
+        if (!match) match = cands.find(c => !c.claimed && !c.is_closed && Math.abs(c.qty - incWeight) < 1);
+        // 1c. Closed PO, exact weight + grade
+        if (!match) match = cands.find(c => !c.claimed && c.is_closed && incGKey && c.gKey === incGKey && Math.abs(c.qty - incWeight) < 1);
+        // 1d. Closed PO, exact weight
+        if (!match) match = cands.find(c => !c.claimed && c.is_closed && Math.abs(c.qty - incWeight) < 1);
+
+        if (match) {
+          match.claimed = true;
+          inc.linked_po_number = match.po_number;
+          inc.linked_po_id = match.po_id;
+          (inc as any).linked_po_item_id = match.item_id;
+          poRemainingQty.set(match.po_number, Math.max(0, (poRemainingQty.get(match.po_number) || 0) - incWeight));
+        }
+      }
+
+      // Pass 2: Remaining unmatched items (match by grade and remaining PO capacity)
+      for (const inc of incs) {
+        if (inc.linked_po_number) continue;
+        const incWeight = Number(inc.weight || 0);
+        const incGKey = canonicalGradeKey(inc.grade || (inc as any).grade_code);
+
+        // Active candidates matching grade
+        const activeGradeCands = cands.filter(c => !c.is_closed && (!incGKey || c.gKey === incGKey));
+        activeGradeCands.sort((a, b) => (poRemainingQty.get(b.po_number) || 0) - (poRemainingQty.get(a.po_number) || 0));
+
+        let match = activeGradeCands.find(c => (poRemainingQty.get(c.po_number) || 0) > 0);
+        if (!match && activeGradeCands.length > 0) match = activeGradeCands[0];
+
+        // Active candidates any grade
+        if (!match) {
+          const allActive = cands.filter(c => !c.is_closed);
+          allActive.sort((a, b) => (poRemainingQty.get(b.po_number) || 0) - (poRemainingQty.get(a.po_number) || 0));
+          match = allActive.find(c => (poRemainingQty.get(c.po_number) || 0) > 0) || allActive[0];
+        }
+
+        // Closed candidates matching grade
+        if (!match) {
+          const closedGradeCands = cands.filter(c => c.is_closed && (!incGKey || c.gKey === incGKey));
+          match = closedGradeCands[0];
+        }
+
+        // Fallback to any candidate
+        if (!match) match = cands[0];
+
+        if (match) {
+          inc.linked_po_number = match.po_number;
+          inc.linked_po_id = match.po_id;
+          (inc as any).linked_po_item_id = match.item_id;
+          poRemainingQty.set(match.po_number, Math.max(0, (poRemainingQty.get(match.po_number) || 0) - incWeight));
+        }
       }
     }
   }
