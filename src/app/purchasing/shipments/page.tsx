@@ -700,7 +700,7 @@ function ShipmentsContent() {
           if (arrivalsSearch.trim()) {
             const q = arrivalsSearch.toLowerCase().trim();
             const matchLot = lot.lot_number.toLowerCase().includes(q);
-            const matchPo = (lot.linked_po_number || '').toLowerCase().includes(q);
+            const matchPo = (lot.linked_po_number || '').toLowerCase().includes(q) || (lot.linked_pos && lot.linked_pos.some(p => p.toLowerCase().includes(q)));
             const matchSupplier = lot.supplier.toLowerCase().includes(q);
             const matchPort = (lot.port || '').toLowerCase().includes(q);
             const matchContainer = (lot.container_no || '').toLowerCase().includes(q);
@@ -1094,7 +1094,9 @@ function ShipmentsContent() {
           'Arrival Date (ETA)': dateGroup.dateStr === 'unscheduled' ? 'Unscheduled' : dateGroup.dateStr,
           'Arrival Status': dateGroup.etaInfo.text,
           'Lot Number': lot.lot_number,
-          'PO Number': lot.linked_po_number ? `PO ${lot.linked_po_number}` : 'Direct Cargo',
+          'PO Number': lot.linked_pos && lot.linked_pos.length > 0
+            ? lot.linked_pos.map(p => `PO ${p}`).join(', ')
+            : (lot.linked_po_number ? `PO ${lot.linked_po_number}` : 'Direct Cargo'),
           'Supplier': lot.supplier,
           'Mill / Make': lot.make || 'Standard',
           'Weight (KG)': lot.total_weight,
@@ -1116,7 +1118,9 @@ function ShipmentsContent() {
         cs.lots.map(lot => ({
           'Customer': cs.customer,
           'Lot Number': lot.lot_number,
-          'PO Number': lot.linked_po_number ? `PO ${lot.linked_po_number}` : 'Direct Cargo',
+          'PO Number': lot.linked_pos && lot.linked_pos.length > 0
+            ? lot.linked_pos.map(p => `PO ${p}`).join(', ')
+            : (lot.linked_po_number ? `PO ${lot.linked_po_number}` : 'Direct Cargo'),
           'Supplier': lot.supplier,
           'Make / Mill': lot.make || 'Standard',
           'Pieces': lot.total_pieces || lot.items.length,
@@ -2260,16 +2264,37 @@ function ShipmentsContent() {
                                     </td>
 
                                     <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
-                                      {lot.linked_po_number ? (
+                                      {lot.linked_pos && lot.linked_pos.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1">
+                                          {lot.linked_pos.map((poNum) => {
+                                            const isActive = activePOs.some(p => p.po_number === poNum);
+                                            return (
+                                              <Link
+                                                key={poNum}
+                                                href={`/purchasing/purchase-orders/${poNum}`}
+                                                className={cn(
+                                                  "font-bold hover:underline inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border shadow-2xs",
+                                                  isActive 
+                                                    ? "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100" 
+                                                    : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                                                )}
+                                              >
+                                                <span>PO {poNum}</span>
+                                                <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                                              </Link>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : lot.linked_po_number ? (
                                         <Link
                                           href={`/purchasing/purchase-orders/${lot.linked_po_number}`}
-                                          className="font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+                                          className="font-bold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 text-xs"
                                         >
                                           <span>PO {lot.linked_po_number}</span>
                                           <ExternalLink className="h-3 w-3 opacity-60" />
                                         </Link>
                                       ) : (
-                                        <span className="text-slate-400 font-medium">Direct Cargo</span>
+                                        <span className="text-slate-400 font-medium text-xs">Direct Cargo</span>
                                       )}
                                     </td>
 
@@ -3384,7 +3409,17 @@ function ShipmentsContent() {
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] font-semibold">Linked PO</span>
-                <span className="font-bold text-blue-600">{inspectingItem.linked_po_number ? `PO ${inspectingItem.linked_po_number}` : 'Direct Cargo'}</span>
+                {inspectingItem.linked_po_number ? (
+                  <Link 
+                    href={`/purchasing/purchase-orders/${inspectingItem.linked_po_number}`}
+                    className="font-bold text-blue-600 hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>PO {inspectingItem.linked_po_number}</span>
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Link>
+                ) : (
+                  <span className="font-bold text-slate-400">Direct Cargo</span>
+                )}
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px] font-semibold">Port of Discharge</span>
@@ -3451,6 +3486,69 @@ function ShipmentsContent() {
                 </div>
               )}
             </div>
+
+            {/* If lot has multiple items, display complete lot manifest */}
+            {(() => {
+              const siblingItems = allUnifiedShipments.filter(it => it.lot_number && it.lot_number.trim() === inspectingItem.lot_number.trim());
+              if (siblingItems.length <= 1) return null;
+              return (
+                <div className="space-y-2 pt-3 border-t border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800">
+                      All Items in Lot {inspectingItem.lot_number} ({siblingItems.length} items • {formatWeight(siblingItems.reduce((acc, it) => acc + (it.weight || 0), 0))})
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      Linked POs: {Array.from(new Set(siblingItems.map(it => it.linked_po_number).filter(Boolean))).map(p => `PO ${p}`).join(', ')}
+                    </span>
+                  </div>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-100 text-[10px] font-bold text-slate-600 uppercase">
+                        <tr>
+                          <th className="py-1.5 px-3">Grade</th>
+                          <th className="py-1.5 px-3 text-right">Weight</th>
+                          <th className="py-1.5 px-3 text-center">Status</th>
+                          <th className="py-1.5 px-3">Linked PO</th>
+                          <th className="py-1.5 px-2 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {siblingItems.map((sItem, sIdx) => {
+                          const isCurrent = sItem.id === inspectingItem.id;
+                          return (
+                            <tr key={`${sItem.id}-${sIdx}`} className={cn("hover:bg-slate-50 transition-colors", isCurrent ? "bg-blue-50/70 font-semibold" : "")}>
+                              <td className="py-1.5 px-3">{sItem.grade || '—'} {sItem.dimensions ? `(${sItem.dimensions})` : ''}</td>
+                              <td className="py-1.5 px-3 text-right font-mono font-bold text-blue-700">{formatWeight(sItem.weight)}</td>
+                              <td className="py-1.5 px-3 text-center">{renderShipmentStatusBadge(sItem.status)}</td>
+                              <td className="py-1.5 px-3">
+                                {sItem.linked_po_number ? (
+                                  <Link href={`/purchasing/purchase-orders/${sItem.linked_po_number}`} className="font-bold text-blue-600 hover:underline">
+                                    PO {sItem.linked_po_number}
+                                  </Link>
+                                ) : (
+                                  <span className="text-slate-400">Direct</span>
+                                )}
+                              </td>
+                              <td className="py-1.5 px-2 text-right">
+                                {!isCurrent && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setInspectingItem(sItem)}
+                                    className="text-[10px] text-blue-600 hover:underline font-bold"
+                                  >
+                                    View
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
