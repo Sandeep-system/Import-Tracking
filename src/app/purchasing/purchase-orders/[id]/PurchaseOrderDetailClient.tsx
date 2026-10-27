@@ -148,6 +148,10 @@ const STANDARD_ORIGINS = [
   const [shipPort, setShipPort] = useState('N.S.');
   const [shipContainerNo, setShipContainerNo] = useState('');
   const [shipPortOfLoading, setShipPortOfLoading] = useState('');
+  const [shipForwarderName, setShipForwarderName] = useState('');
+  const [shipInvoiceNumber, setShipInvoiceNumber] = useState('');
+  const [shipInvoiceDate, setShipInvoiceDate] = useState('');
+  const [shipInvoiceAmount, setShipInvoiceAmount] = useState('');
   const [shipHsnCode, setShipHsnCode] = useState('');
   const [isSubmittingShipment, setIsSubmittingShipment] = useState(false);
   const [shipmentError, setShipmentError] = useState<string | null>(null);
@@ -184,7 +188,7 @@ const STANDARD_ORIGINS = [
   // Receive Cargo Modal State (In Transit -> Received)
   const [receivingItem, setReceivingItem] = useState<PurchaseOrderItem | null>(null);
   const [receiveDate, setReceiveDate] = useState('');
-  const [receiveLocation, setReceiveLocation] = useState('Nhava Sheva Yard');
+  const [receiveLocation, setReceiveLocation] = useState('Nhava Sheva Warehouse');
   const [isSubmittingReceive, setIsSubmittingReceive] = useState(false);
   const [receiveError, setReceiveError] = useState<string | null>(null);
 
@@ -228,7 +232,7 @@ const STANDARD_ORIGINS = [
   const [bulkLotNumber, setBulkLotNumber] = useState('');
   const [bulkInvoiceNumber, setBulkInvoiceNumber] = useState('');
   const [bulkInvoiceDate, setBulkInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [bulkWarehouseLocation, setBulkWarehouseLocation] = useState('Nhava Sheva Yard');
+  const [bulkWarehouseLocation, setBulkWarehouseLocation] = useState('Nhava Sheva Warehouse');
   const [bulkRemarks, setBulkRemarks] = useState('');
   const [bulkMode, setBulkMode] = useState<'READY' | 'SHIP' | 'RECEIVE' | 'UPDATE'>('READY');
   const [bulkItemQuantities, setBulkItemQuantities] = useState<Record<string, number>>({});
@@ -250,6 +254,8 @@ const STANDARD_ORIGINS = [
   const [bulkDischargePort, setBulkDischargePort] = useState('N.S.');
   const [bulkContainerNo, setBulkContainerNo] = useState('');
   const [bulkPortOfLoading, setBulkPortOfLoading] = useState('');
+  const [bulkForwarderName, setBulkForwarderName] = useState('');
+  const [bulkInvoiceAmount, setBulkInvoiceAmount] = useState('');
 
   // Persistent in-memory cache of previously entered bulk action values per PO
   const savedBulkValues = useRef<Record<string, {
@@ -268,6 +274,8 @@ const STANDARD_ORIGINS = [
     hsnCode?: string;
     containerNo?: string;
     portOfLoading?: string;
+    forwarderName?: string;
+    invoiceAmount?: string;
   }>>({});
 
   const updateSavedBulkValues = (fields: Partial<{
@@ -286,6 +294,8 @@ const STANDARD_ORIGINS = [
     hsnCode: string;
     containerNo: string;
     portOfLoading: string;
+    forwarderName: string;
+    invoiceAmount: string;
   }>) => {
     if (!po) return;
     savedBulkValues.current[po.id] = {
@@ -360,7 +370,7 @@ const STANDARD_ORIGINS = [
 
     // 4. Resolve Warehouse Location
     const existingLocation = selectedItems.find(i => i.receipts?.some(r => r.warehouse_location?.trim()))?.receipts?.find(r => r.warehouse_location?.trim())?.warehouse_location?.trim();
-    const locationToUse = existingLocation || saved.warehouseLocation?.trim() || 'Nhava Sheva Yard';
+    const locationToUse = existingLocation || saved.warehouseLocation?.trim() || 'Nhava Sheva Warehouse';
     setBulkWarehouseLocation(locationToUse);
 
     // 5. Resolve Remarks
@@ -481,10 +491,6 @@ const STANDARD_ORIGINS = [
         setBulkError('Please enter a Lot Number.');
         return;
       }
-      if (!bulkInvoiceNumber.trim()) {
-        setBulkError('Please enter the Supplier Commercial Invoice number.');
-        return;
-      }
     }
 
     if (bulkMode === 'SHIP') {
@@ -525,10 +531,10 @@ const STANDARD_ORIGINS = [
           poIdOrNumber: po.id,
           itemIds: selectedItemIds,
           lotNumber: bulkLotNumber.trim(),
-          supplierInvoice: bulkInvoiceNumber.trim(),
-          supplierInvoiceDate: bulkInvoiceDate,
-          receiptDate: bulkInvoiceDate,
-          warehouseLocation: bulkWarehouseLocation.trim() || undefined,
+          supplierInvoice: '',
+          supplierInvoiceDate: undefined,
+          receiptDate: new Date().toISOString().split('T')[0],
+          warehouseLocation: undefined,
           remarks: bulkRemarks.trim() || undefined,
           containerNo: bulkContainerNo.trim() || undefined,
           portOfLoading: bulkPortOfLoading.trim() || undefined,
@@ -544,13 +550,17 @@ const STANDARD_ORIGINS = [
             dateOfShipment: bulkDateOfShipment,
             etaSeaport: bulkEtaSeaport,
             heatNo: bulkItemHeatNos[itemId]?.trim() || bulkHeatNo.trim() || undefined,
-            sims: bulkItemSims[itemId]?.trim() || bulkSims.trim() || undefined,
+            sims: bulkSims.trim() || undefined,
             hsnCode: bulkItemHsnCodes[itemId]?.trim() || bulkHsnCode.trim() || undefined,
             deliveryTerms: bulkDeliveryTerms,
             paymentTerms: bulkPaymentTerms,
             port: bulkDischargePort,
             containerNo: bulkContainerNo.trim() || undefined,
-            portOfLoading: bulkPortOfLoading.trim() || undefined
+            portOfLoading: bulkPortOfLoading.trim() || undefined,
+            forwarderName: bulkForwarderName.trim() || undefined,
+            supplierInvoice: bulkInvoiceNumber.trim() || undefined,
+            supplierInvoiceDate: bulkInvoiceDate || undefined,
+            invoiceAmount: bulkInvoiceAmount ? parseFloat(bulkInvoiceAmount) : undefined
           });
         }
       } else if (bulkMode === 'RECEIVE') {
@@ -757,6 +767,10 @@ const STANDARD_ORIGINS = [
     setShipPort(item.destination_port || po?.destination || 'N.S.');
     setShipContainerNo(item.container_no || '');
     setShipPortOfLoading(item.port_of_loading || '');
+    setShipForwarderName(item.forwarder_name || '');
+    setShipInvoiceNumber(item.supplier_invoice || item.receipts?.[0]?.supplier_invoice_number || '');
+    setShipInvoiceDate(item.supplier_invoice_date || item.receipts?.[0]?.supplier_invoice_date || '');
+    setShipInvoiceAmount(item.invoice_amount ? String(item.invoice_amount) : '');
   };
 
   const handleSubmitShipment = (e: React.FormEvent) => {
@@ -787,7 +801,11 @@ const STANDARD_ORIGINS = [
         paymentTerms: shipPaymentTerms,
         port: shipPort,
         containerNo: shipContainerNo.trim() || undefined,
-        portOfLoading: shipPortOfLoading.trim() || undefined
+        portOfLoading: shipPortOfLoading.trim() || undefined,
+        forwarderName: shipForwarderName.trim() || undefined,
+        supplierInvoice: shipInvoiceNumber.trim() || undefined,
+        supplierInvoiceDate: shipInvoiceDate || undefined,
+        invoiceAmount: shipInvoiceAmount ? parseFloat(shipInvoiceAmount) : undefined
       });
 
       setIsSubmittingShipment(false);
@@ -810,8 +828,8 @@ const STANDARD_ORIGINS = [
     setReceiveLocation(
       (item.destination_port || po?.destination || '').toLowerCase().includes('nhava') ||
       (item.destination_port || po?.destination || '').toLowerCase().includes('n.s')
-        ? 'Nhava Sheva Yard'
-        : 'Main Warehouse Yard'
+        ? 'Nhava Sheva Warehouse'
+        : 'Main Warehouse'
     );
   };
 
@@ -1519,7 +1537,7 @@ const STANDARD_ORIGINS = [
                               <button
                                 onClick={() => handleOpenReceiveModal(item)}
                                 className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1"
-                                title="Confirm physical arrival into warehouse/yard"
+                                title="Confirm physical arrival into warehouse"
                               >
                                 <CheckCircle2 className="h-3 w-3" />
                                 <span>Received</span>
@@ -2348,30 +2366,13 @@ const STANDARD_ORIGINS = [
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold mb-1 text-slate-800">Origin / Make</label>
-                  <div className="flex gap-1.5">
-                    <select
-                      value={STANDARD_ORIGINS.includes(editOrigin) ? editOrigin : (editOrigin ? '__custom__' : '')}
-                      onChange={(e) => {
-                        if (e.target.value !== '__custom__') {
-                          setEditOrigin(e.target.value);
-                        }
-                      }}
-                      className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg text-xs"
-                    >
-                      <option value="">Select Origin...</option>
-                      {STANDARD_ORIGINS.map(o => (
-                        <option key={o} value={o}>{o}</option>
-                      ))}
-                      <option value="__custom__">Custom / Other...</option>
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="e.g. Germany"
-                      value={editOrigin}
-                      onChange={(e) => setEditOrigin(e.target.value)}
-                      className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    placeholder="e.g. SIJ Acroni, Germany, Posco"
+                    value={editOrigin}
+                    onChange={(e) => setEditOrigin(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                  />
                 </div>
                 <div>
                   <label className="block font-semibold mb-1 text-slate-800">Commission</label>
@@ -2896,9 +2897,9 @@ const STANDARD_ORIGINS = [
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-start gap-2.5">
                   <PackageCheck className="h-4 w-4 text-emerald-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold block">3. Confirm Physical Yard Gate-In & Receipt:</span>
+                    <span className="font-bold block">3. Confirm Physical Warehouse Gate-In & Receipt:</span>
                     <span>
-                      Record physical warehouse yard gate-in and inspection. Transitions items to <strong>Received</strong> and replenishes active yard inventory.
+                      Record physical warehouse gate-in and inspection. Transitions items to <strong>Received</strong> and replenishes active warehouse inventory.
                     </span>
                   </div>
                 </div>
@@ -2947,48 +2948,7 @@ const STANDARD_ORIGINS = [
                     />
                   </div>
 
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Supplier Commercial Invoice *</label>
-                    <input
-                      type="text"
-                      required
-                      value={bulkInvoiceNumber}
-                      onChange={(e) => {
-                        setBulkInvoiceNumber(e.target.value);
-                        updateSavedBulkValues({ invoiceNumber: e.target.value });
-                      }}
-                      placeholder="e.g. INV-2024-8841"
-                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    />
-                  </div>
 
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Supplier Invoice Date *</label>
-                    <input
-                      type="date"
-                      required
-                      value={bulkInvoiceDate}
-                      onChange={(e) => {
-                        setBulkInvoiceDate(e.target.value);
-                        updateSavedBulkValues({ invoiceDate: e.target.value });
-                      }}
-                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Warehouse Location</label>
-                    <input
-                      type="text"
-                      value={bulkWarehouseLocation}
-                      onChange={(e) => {
-                        setBulkWarehouseLocation(e.target.value);
-                        updateSavedBulkValues({ warehouseLocation: e.target.value });
-                      }}
-                      placeholder="e.g. Nhava Sheva Yard"
-                      className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                    />
-                  </div>
 
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Container Number (Optional)</label>
@@ -3228,35 +3188,65 @@ const STANDARD_ORIGINS = [
                       />
                     </div>
 
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Freight Forwarder Name (Optional)</label>
+                      <input
+                        type="text"
+                        value={bulkForwarderName}
+                        onChange={(e) => {
+                          setBulkForwarderName(e.target.value);
+                          updateSavedBulkValues({ forwarderName: e.target.value });
+                        }}
+                        placeholder="e.g. Kuehne+Nagel, DHL, Expeditors"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Supplier Commercial Invoice (Optional)</label>
+                      <input
+                        type="text"
+                        value={bulkInvoiceNumber}
+                        onChange={(e) => {
+                          setBulkInvoiceNumber(e.target.value);
+                          updateSavedBulkValues({ invoiceNumber: e.target.value });
+                        }}
+                        placeholder="e.g. INV-2024-8841"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Supplier Invoice Date (Optional)</label>
+                      <input
+                        type="date"
+                        value={bulkInvoiceDate}
+                        onChange={(e) => {
+                          setBulkInvoiceDate(e.target.value);
+                          updateSavedBulkValues({ invoiceDate: e.target.value });
+                        }}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Invoice Amount ({po.currency || 'USD'}) (Optional)</label>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={bulkInvoiceAmount}
+                        onChange={(e) => {
+                          setBulkInvoiceAmount(e.target.value);
+                          updateSavedBulkValues({ invoiceAmount: e.target.value });
+                        }}
+                        placeholder="e.g. 45000"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
                     <div className="sm:col-span-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="font-semibold text-slate-700">Quick Fill SIMS Status (Optional)</label>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newSims = { ...bulkItemSims };
-                              selectedItemIds.forEach(id => { newSims[id] = 'Done'; });
-                              setBulkItemSims(newSims);
-                            }}
-                            className="text-[10px] text-emerald-600 hover:underline font-bold cursor-pointer"
-                          >
-                            Set All to Done
-                          </button>
-                          <span className="text-slate-300">•</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const newSims = { ...bulkItemSims };
-                              selectedItemIds.forEach(id => { newSims[id] = 'Not Required'; });
-                              setBulkItemSims(newSims);
-                            }}
-                            className="text-[10px] text-slate-600 hover:underline font-bold cursor-pointer"
-                          >
-                            Set All to Not Required
-                          </button>
-                        </div>
-                      </div>
+                      <label className="block font-semibold text-slate-700 mb-1">SIMS Status (Shipment-wide)</label>
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
@@ -3264,11 +3254,6 @@ const STANDARD_ORIGINS = [
                             const val = bulkSims === 'Done' ? '' : 'Done';
                             setBulkSims(val);
                             updateSavedBulkValues({ sims: val });
-                            if (val) {
-                              const newSims = { ...bulkItemSims };
-                              selectedItemIds.forEach(id => { newSims[id] = val; });
-                              setBulkItemSims(newSims);
-                            }
                           }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
                             bulkSims === 'Done'
@@ -3285,11 +3270,6 @@ const STANDARD_ORIGINS = [
                             const val = bulkSims === 'Not Required' ? '' : 'Not Required';
                             setBulkSims(val);
                             updateSavedBulkValues({ sims: val });
-                            if (val) {
-                              const newSims = { ...bulkItemSims };
-                              selectedItemIds.forEach(id => { newSims[id] = val; });
-                              setBulkItemSims(newSims);
-                            }
                           }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
                             bulkSims === 'Not Required'
@@ -3300,6 +3280,11 @@ const STANDARD_ORIGINS = [
                           <X className="h-3.5 w-3.5" />
                           <span>Not Required</span>
                         </button>
+                        {bulkSims && (
+                          <span className="text-[11px] font-semibold text-slate-500 ml-2">
+                            Applied to entire shipment: <strong className="text-slate-800">{bulkSims}</strong>
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -3333,7 +3318,7 @@ const STANDARD_ORIGINS = [
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-emerald-50/30 p-4 rounded-xl border border-emerald-100">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Physical Yard Location *</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Warehouse Location *</label>
                       <input
                         type="text"
                         required
@@ -3342,13 +3327,13 @@ const STANDARD_ORIGINS = [
                           setBulkWarehouseLocation(e.target.value);
                           updateSavedBulkValues({ warehouseLocation: e.target.value });
                         }}
-                        placeholder="e.g. Nhava Sheva Yard"
+                        placeholder="e.g. Nhava Sheva Warehouse"
                         className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Date of Yard Receipt *</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Date of Warehouse Receipt *</label>
                       <input
                         type="date"
                         required
@@ -3362,7 +3347,7 @@ const STANDARD_ORIGINS = [
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="block font-semibold text-slate-700 mb-1">Yard Remarks / Physical Inspection Notes</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Warehouse Remarks / Inspection Notes</label>
                       <input
                         type="text"
                         value={bulkRemarks}
@@ -3370,7 +3355,7 @@ const STANDARD_ORIGINS = [
                           setBulkRemarks(e.target.value);
                           updateSavedBulkValues({ remarks: e.target.value });
                         }}
-                        placeholder="e.g. Bundles unloaded in Yard A, visual inspection verified OK"
+                        placeholder="e.g. Bundles unloaded at Main Warehouse, visual inspection verified OK"
                         className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
@@ -3392,7 +3377,6 @@ const STANDARD_ORIGINS = [
                           <th className="py-2 px-3 font-semibold text-slate-600">Material Spec</th>
                           <th className="py-2 px-3 font-semibold text-slate-600 text-right">Dispatch Qty</th>
                           <th className="py-2 px-3 font-semibold text-slate-600">Heat Number (Item-wise)</th>
-                          <th className="py-2 px-3 font-semibold text-slate-600">SIMS Status</th>
                           <th className="py-2 px-3 font-semibold text-slate-600">HSN Code</th>
                         </tr>
                       ) : (
@@ -3403,7 +3387,7 @@ const STANDARD_ORIGINS = [
                           <th className="py-2 px-3 font-semibold text-slate-600 text-right">Ordered</th>
                           <th className="py-2 px-3 font-semibold text-slate-600 text-right">Pieces (pc)</th>
                           <th className="py-2 px-3 font-semibold text-slate-600 text-right">
-                            {bulkMode === 'READY' ? 'Ready Qty (KG)' : bulkMode === 'RECEIVE' ? 'Yard Qty' : 'Current Qty'}
+                            {bulkMode === 'READY' ? 'Ready Qty (KG)' : bulkMode === 'RECEIVE' ? 'Warehouse Qty' : 'Current Qty'}
                           </th>
                         </tr>
                       )}
@@ -3452,38 +3436,6 @@ const STANDARD_ORIGINS = [
                                   placeholder="e.g. H-8831"
                                   className="w-32 p-1.5 bg-white border border-slate-300 rounded font-mono text-xs focus:ring-1 focus:ring-indigo-500"
                                 />
-                              </td>
-                              <td className="py-2 px-3">
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setBulkItemSims(prev => ({ ...prev, [itemId]: 'Done' }));
-                                    }}
-                                    className={`px-2.5 py-1 rounded text-[11px] font-bold border transition-colors flex items-center gap-1 cursor-pointer ${
-                                      itemSims === 'Done'
-                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-emerald-50'
-                                    }`}
-                                  >
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    <span>Done</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setBulkItemSims(prev => ({ ...prev, [itemId]: 'Not Required' }));
-                                    }}
-                                    className={`px-2.5 py-1 rounded text-[11px] font-bold border transition-colors flex items-center gap-1 cursor-pointer ${
-                                      itemSims === 'Not Required'
-                                        ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
-                                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                                    }`}
-                                  >
-                                    <X className="h-3 w-3" />
-                                    <span>Not Required</span>
-                                  </button>
-                                </div>
                               </td>
                               <td className="py-2 px-3">
                                 <input
@@ -3574,7 +3526,7 @@ const STANDARD_ORIGINS = [
                 <span className="font-semibold text-slate-600">
                   {bulkMode === 'READY' && 'Total Bulk Ready Material:'}
                   {bulkMode === 'SHIP' && 'Total Weight to Dispatch:'}
-                  {bulkMode === 'RECEIVE' && 'Total Quantity to Receive at Yard:'}
+                  {bulkMode === 'RECEIVE' && 'Total Quantity to Receive at Warehouse:'}
                   {bulkMode === 'UPDATE' && 'Total Selected Items Weight:'}
                 </span>
                 <div className="flex items-center gap-3">
@@ -3640,7 +3592,7 @@ const STANDARD_ORIGINS = [
                     : bulkMode === 'SHIP'
                     ? 'Confirm Maritime Dispatch (In Transit)'
                     : bulkMode === 'RECEIVE'
-                    ? 'Confirm Physical Yard Receipt'
+                    ? 'Confirm Physical Warehouse Receipt'
                     : 'Save Bulk Changes'}
                 </button>
               </div>
@@ -3882,6 +3834,65 @@ const STANDARD_ORIGINS = [
                 </div>
               </div>
 
+              {/* Forwarder Name & Invoice Amount */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Freight Forwarder Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Kuehne+Nagel, DHL, Expeditors"
+                    value={shipForwarderName}
+                    onChange={(e) => setShipForwarderName(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Freight / logistics agent</span>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Invoice Amount ({shippingItem?.currency || po?.currency || 'USD'})
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="e.g. 45000"
+                    value={shipInvoiceAmount}
+                    onChange={(e) => setShipInvoiceAmount(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Supplier invoice total value</span>
+                </div>
+              </div>
+
+              {/* Supplier Commercial Invoice No. & Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Supplier Commercial Invoice
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. INV-2024-8841"
+                    value={shipInvoiceNumber}
+                    onChange={(e) => setShipInvoiceNumber(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Supplier Invoice Date
+                  </label>
+                  <input
+                    type="date"
+                    value={shipInvoiceDate}
+                    onChange={(e) => setShipInvoiceDate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
               {/* Delivery Terms & Port */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -4054,13 +4065,13 @@ const STANDARD_ORIGINS = [
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-800 mb-1">
-                    Warehouse / Yard Location
+                    Warehouse Location
                   </label>
                   <input
                     type="text"
                     value={receiveLocation}
                     onChange={(e) => setReceiveLocation(e.target.value)}
-                    placeholder="e.g. Nhava Sheva Yard"
+                    placeholder="e.g. Nhava Sheva Warehouse"
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                 </div>

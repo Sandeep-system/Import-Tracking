@@ -56,6 +56,10 @@ export interface UnifiedShipmentItem {
   payment_terms?: string | null;
   container_no?: string | null;
   port_of_loading?: string | null;
+  forwarder_name?: string | null;
+  supplier_invoice?: string | null;
+  supplier_invoice_date?: string | null;
+  invoice_amount?: number | null;
   customer?: string | null;
   status: ShipmentStage;
   rawIncoming?: IncomingStockItem;
@@ -81,6 +85,10 @@ export interface LotShipmentGroup {
   payment_terms?: string | null;
   container_no?: string | null;
   port_of_loading?: string | null;
+  forwarder_name?: string | null;
+  supplier_invoice?: string | null;
+  supplier_invoice_date?: string | null;
+  invoice_amount?: number | null;
   status: ShipmentStage;
 }
 
@@ -137,7 +145,7 @@ function ShipmentsContent() {
   const [inspectingItem, setInspectingItem] = useState<UnifiedShipmentItem | null>(null);
   const [receivingItem, setReceivingItem] = useState<UnifiedShipmentItem | null>(null);
   const [receiptDate, setReceiptDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [warehouseLocation, setWarehouseLocation] = useState('Nhava Sheva Yard');
+  const [warehouseLocation, setWarehouseLocation] = useState('Nhava Sheva Warehouse');
   const [isReceivingSuccess, setIsReceivingSuccess] = useState(false);
 
   useEffect(() => {
@@ -296,6 +304,10 @@ function ShipmentsContent() {
         payment_terms: inc.payment_terms || matchedItem?.payment_terms || matchedPo?.payment_terms || 'DP at sight',
         container_no: inc.container_no || matchedItem?.container_no || null,
         port_of_loading: inc.port_of_loading || matchedItem?.port_of_loading || null,
+        forwarder_name: inc.forwarder_name || matchedItem?.forwarder_name || null,
+        supplier_invoice: inc.supplier_invoice || matchedItem?.supplier_invoice || matchedItem?.receipts?.[0]?.supplier_invoice_number || null,
+        supplier_invoice_date: inc.supplier_invoice_date || matchedItem?.supplier_invoice_date || matchedItem?.receipts?.[0]?.supplier_invoice_date || null,
+        invoice_amount: inc.invoice_amount ?? matchedItem?.invoice_amount ?? null,
         customer: inc.customer || matchedPo?.customer_name || null,
         status: stage,
         rawIncoming: inc,
@@ -357,6 +369,10 @@ function ShipmentsContent() {
           payment_terms: item.payment_terms || po.payment_terms || 'DP at sight',
           container_no: item.container_no || null,
           port_of_loading: item.port_of_loading || null,
+          forwarder_name: item.forwarder_name || null,
+          supplier_invoice: item.supplier_invoice || item.receipts?.[0]?.supplier_invoice_number || null,
+          supplier_invoice_date: item.supplier_invoice_date || item.receipts?.[0]?.supplier_invoice_date || null,
+          invoice_amount: item.invoice_amount ?? null,
           customer: po.customer_name || null,
           status: stage,
           rawPo: po,
@@ -384,6 +400,10 @@ function ShipmentsContent() {
       payment_terms?: string | null;
       container_no?: string | null;
       port_of_loading?: string | null;
+      forwarder_name?: string | null;
+      supplier_invoice?: string | null;
+      supplier_invoice_date?: string | null;
+      invoice_amount?: number | null;
     }>();
 
     for (const item of allUnifiedShipments) {
@@ -411,6 +431,10 @@ function ShipmentsContent() {
       if (item.linked_po_number) group.linked_pos.add(item.linked_po_number);
       if (!group.container_no && item.container_no) group.container_no = item.container_no;
       if (!group.port_of_loading && item.port_of_loading) group.port_of_loading = item.port_of_loading;
+      if (!group.forwarder_name && item.forwarder_name) group.forwarder_name = item.forwarder_name;
+      if (!group.supplier_invoice && item.supplier_invoice) group.supplier_invoice = item.supplier_invoice;
+      if (!group.supplier_invoice_date && item.supplier_invoice_date) group.supplier_invoice_date = item.supplier_invoice_date;
+      if (!group.invoice_amount && item.invoice_amount) group.invoice_amount = item.invoice_amount;
       if (!group.date_of_shipment && item.date_of_shipment) group.date_of_shipment = item.date_of_shipment;
       if (!group.eta_seaport && item.eta_seaport) group.eta_seaport = item.eta_seaport;
       if (!group.make && item.make) group.make = item.make;
@@ -458,6 +482,10 @@ function ShipmentsContent() {
         payment_terms: g.payment_terms,
         container_no: g.container_no,
         port_of_loading: g.port_of_loading,
+        forwarder_name: g.forwarder_name,
+        supplier_invoice: g.supplier_invoice,
+        supplier_invoice_date: g.supplier_invoice_date,
+        invoice_amount: g.invoice_amount,
         status: stage,
       });
     }
@@ -1840,7 +1868,7 @@ function ShipmentsContent() {
                                                     type="button"
                                                     onClick={() => {
                                                       setReceivingItem(item);
-                                                      setWarehouseLocation(item.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                                                      setWarehouseLocation(item.port?.includes('Nhava') ? 'Nhava Sheva Warehouse' : 'Main Warehouse');
                                                     }}
                                                     className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] shadow-2xs transition-colors flex items-center gap-1"
                                                     title="Receive cargo arrival into warehouse inventory"
@@ -2348,7 +2376,7 @@ function ShipmentsContent() {
                                             type="button"
                                             onClick={() => {
                                               setReceivingItem(lot.items[0]);
-                                              setWarehouseLocation(lot.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                                              setWarehouseLocation(lot.port?.includes('Nhava') ? 'Nhava Sheva Warehouse' : 'Main Warehouse');
                                             }}
                                             className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] shadow-2xs transition-colors flex items-center gap-1"
                                             title="Receive this lot into warehouse inventory"
@@ -2541,7 +2569,7 @@ function ShipmentsContent() {
                               <button
                                 onClick={() => {
                                   setReceivingItem(item);
-                                  setWarehouseLocation(item.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                                  setWarehouseLocation(item.port?.includes('Nhava') ? 'Nhava Sheva Warehouse' : 'Main Warehouse');
                                 }}
                                 className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors ml-auto flex items-center gap-1"
                               >
@@ -2912,7 +2940,7 @@ function ShipmentsContent() {
 
               <div className="p-3 bg-white rounded-xl border border-emerald-200 shadow-2xs">
                 <span className="text-[10px] text-emerald-700 font-bold uppercase block flex items-center gap-1">
-                  <CheckCircle2 className="h-3 w-3" /> Received into Yard
+                  <CheckCircle2 className="h-3 w-3" /> Received into Warehouse
                 </span>
                 <strong className="text-base font-extrabold text-emerald-600">{poLotStats.received} lots</strong>
                 <span className="text-[10px] text-slate-400 block mt-0.5">Port cleared</span>
@@ -3116,7 +3144,7 @@ function ShipmentsContent() {
                                       grade: lot.gradeCode,
                                       weight: lot.readyQty > 0 ? lot.readyQty : lot.orderedQty
                                     });
-                                    setWarehouseLocation(lot.port.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                                    setWarehouseLocation(lot.port.includes('Nhava') ? 'Nhava Sheva Warehouse' : 'Main Warehouse');
                                   }}
                                   className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-sm transition-colors flex items-center gap-1 ml-auto"
                                   title="Confirm physical arrival into warehouse inventory"
@@ -3334,7 +3362,7 @@ function ShipmentsContent() {
                                                       grade: lot.gradeCode,
                                                       weight: lot.readyQty > 0 ? lot.readyQty : lot.orderedQty
                                                     });
-                                                    setWarehouseLocation(lot.port.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                                                    setWarehouseLocation(lot.port.includes('Nhava') ? 'Nhava Sheva Warehouse' : 'Main Warehouse');
                                                   }}
                                                   className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] ml-auto"
                                                 >
@@ -3485,6 +3513,29 @@ function ShipmentsContent() {
                   <span className="font-bold text-slate-800">{inspectingItem.make}</span>
                 </div>
               )}
+              {inspectingItem.forwarder_name && (
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-semibold">Freight Forwarder</span>
+                  <span className="font-semibold text-slate-800">{inspectingItem.forwarder_name}</span>
+                </div>
+              )}
+              {inspectingItem.supplier_invoice && (
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-semibold">Supplier Commercial Invoice</span>
+                  <span className="font-mono font-bold text-slate-800">
+                    {inspectingItem.supplier_invoice}
+                    {inspectingItem.supplier_invoice_date ? ` (${formatDate(inspectingItem.supplier_invoice_date)})` : ''}
+                  </span>
+                </div>
+              )}
+              {inspectingItem.invoice_amount && (
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-semibold">Invoice Amount</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    {inspectingItem.rawItem?.currency || inspectingItem.rawIncoming?.currency || 'USD'} {Number(inspectingItem.invoice_amount).toLocaleString()}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* If lot has multiple items, display complete lot manifest */}
@@ -3565,11 +3616,11 @@ function ShipmentsContent() {
                     const it = inspectingItem;
                     setInspectingItem(null);
                     setReceivingItem(it);
-                    setWarehouseLocation(it.port?.includes('Nhava') ? 'Nhava Sheva Yard' : 'Main Warehouse Yard');
+                    setWarehouseLocation(it.port?.includes('Nhava') ? 'Nhava Sheva Warehouse' : 'Main Warehouse');
                   }}
                   className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm"
                 >
-                  Receive into Yard
+                  Receive into Warehouse
                 </button>
               )}
               {inspectingItem.status === 'Ready' && inspectingItem.linked_po_number && (
@@ -3681,7 +3732,7 @@ function ShipmentsContent() {
                         />
                       </div>
                       <div>
-                        <label className="block font-semibold text-slate-800 mb-1">Warehouse / Yard Location</label>
+                        <label className="block font-semibold text-slate-800 mb-1">Warehouse Location</label>
                         <input
                           type="text"
                           value={warehouseLocation}

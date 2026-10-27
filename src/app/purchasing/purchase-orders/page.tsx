@@ -827,30 +827,13 @@ const STANDARD_ORIGINS = [
 
                 <div>
                   <label className="block font-semibold mb-1 text-slate-800">Origin / Make</label>
-                  <div className="flex gap-1.5">
-                    <select
-                      value={STANDARD_ORIGINS.includes(newOrigin) ? newOrigin : (newOrigin ? '__custom__' : '')}
-                      onChange={(e) => {
-                        if (e.target.value !== '__custom__') {
-                          setNewOrigin(e.target.value);
-                        }
-                      }}
-                      className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-                    >
-                      <option value="">Select Origin...</option>
-                      {STANDARD_ORIGINS.map(o => (
-                        <option key={o} value={o}>{o}</option>
-                      ))}
-                      <option value="__custom__">Custom / Other...</option>
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="e.g. Germany"
-                      value={newOrigin}
-                      onChange={(e) => setNewOrigin(e.target.value)}
-                      className="w-1/2 p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    placeholder="e.g. SIJ Acroni, Germany, Posco"
+                    value={newOrigin}
+                    onChange={(e) => setNewOrigin(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+                  />
                 </div>
 
                 <div>

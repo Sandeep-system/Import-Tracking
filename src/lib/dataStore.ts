@@ -567,7 +567,7 @@ class Store {
             total_received_qty: 0,
             total_allocated_sold_qty: 0,
             available_qty: 0,
-            warehouse_location: 'Nhava Sheva Yard',
+            warehouse_location: 'Nhava Sheva Warehouse',
             status: 'Available',
             created_at: new Date().toISOString()
           };
@@ -878,7 +878,7 @@ class Store {
         total_received_qty: 0,
         total_allocated_sold_qty: 0,
         available_qty: 0,
-        warehouse_location: 'Nhava Sheva Yard',
+        warehouse_location: 'Nhava Sheva Warehouse',
         status: 'Available',
         created_at: new Date().toISOString()
       };
@@ -967,6 +967,10 @@ class Store {
     port?: string;
     containerNo?: string;
     portOfLoading?: string;
+    forwarderName?: string;
+    supplierInvoice?: string;
+    supplierInvoiceDate?: string;
+    invoiceAmount?: number;
   }): { updatedItem: PurchaseOrderItem; updatedPO: PurchaseOrder; incomingItem: IncomingStockItem } {
     const po = this.state.purchaseOrders.find(
       p => p.id === params.poIdOrNumber || p.po_number === params.poIdOrNumber
@@ -987,6 +991,17 @@ class Store {
     item.destination_port = params.port || po.destination || 'N.S.';
     if (params.containerNo !== undefined) item.container_no = params.containerNo?.trim() || null;
     if (params.portOfLoading !== undefined) item.port_of_loading = params.portOfLoading?.trim() || null;
+    if (params.forwarderName !== undefined) item.forwarder_name = params.forwarderName ? params.forwarderName.trim() : null;
+    if (params.supplierInvoice !== undefined) item.supplier_invoice = params.supplierInvoice ? params.supplierInvoice.trim() : null;
+    if (params.supplierInvoiceDate !== undefined) item.supplier_invoice_date = params.supplierInvoiceDate || null;
+    if (params.invoiceAmount !== undefined) item.invoice_amount = params.invoiceAmount ?? null;
+
+    if (item.receipts && item.receipts.length > 0) {
+      item.receipts.forEach(r => {
+        if (params.supplierInvoice) r.supplier_invoice_number = params.supplierInvoice.trim();
+        if (params.supplierInvoiceDate) r.supplier_invoice_date = params.supplierInvoiceDate;
+      });
+    }
 
     if (params.lotNumber?.trim()) {
       item.lot_number = params.lotNumber.trim();
@@ -1015,6 +1030,10 @@ class Store {
       incomingItem.port = params.port || incomingItem.port || 'N.S.';
       incomingItem.container_no = params.containerNo?.trim() || incomingItem.container_no || item.container_no || null;
       incomingItem.port_of_loading = params.portOfLoading?.trim() || incomingItem.port_of_loading || item.port_of_loading || null;
+      if (params.forwarderName !== undefined) incomingItem.forwarder_name = item.forwarder_name;
+      if (params.supplierInvoice !== undefined) incomingItem.supplier_invoice = item.supplier_invoice;
+      if (params.supplierInvoiceDate !== undefined) incomingItem.supplier_invoice_date = item.supplier_invoice_date;
+      if (params.invoiceAmount !== undefined) incomingItem.invoice_amount = item.invoice_amount;
       incomingItem.received_status = 'IN_TRANSIT';
       incomingItem.source_sheet = 'INCOMING SE';
       incomingItem.weight = cargoWeight;
@@ -1047,6 +1066,10 @@ class Store {
         payment_terms: params.paymentTerms || po.payment_terms || null,
         container_no: params.containerNo?.trim() || item.container_no || null,
         port_of_loading: params.portOfLoading?.trim() || item.port_of_loading || null,
+        forwarder_name: params.forwarderName ? params.forwarderName.trim() : item.forwarder_name || null,
+        supplier_invoice: params.supplierInvoice ? params.supplierInvoice.trim() : item.supplier_invoice || null,
+        supplier_invoice_date: params.supplierInvoiceDate || item.supplier_invoice_date || null,
+        invoice_amount: params.invoiceAmount ?? item.invoice_amount ?? null,
         source_sheet: 'INCOMING SE',
         linked_po_number: po.po_number,
         linked_po_id: po.id
@@ -1070,7 +1093,7 @@ class Store {
         total_received_qty: cargoWeight,
         total_allocated_sold_qty: 0,
         available_qty: cargoWeight,
-        warehouse_location: params.port || po.destination || 'Nhava Sheva Yard',
+        warehouse_location: params.port || po.destination || 'Nhava Sheva Warehouse',
         status: 'Available',
         created_at: new Date().toISOString()
       };
@@ -1153,7 +1176,7 @@ class Store {
     poIdOrNumber: string;
     itemIds: string[];
     lotNumber: string;
-    supplierInvoice: string;
+    supplierInvoice?: string;
     supplierInvoiceDate?: string;
     receiptDate?: string;
     warehouseLocation?: string;
@@ -1170,8 +1193,7 @@ class Store {
 
     const lotNo = params.lotNumber.trim();
     if (!lotNo) throw new Error('Lot Number is required');
-    const invoiceNo = params.supplierInvoice.trim();
-    if (!invoiceNo) throw new Error('Supplier Invoice Number is required');
+    const invoiceNo = (params.supplierInvoice || '').trim();
     const invoiceDate = params.supplierInvoiceDate || new Date().toISOString().split('T')[0];
     const receiptDate = params.receiptDate || invoiceDate;
 
@@ -1194,7 +1216,7 @@ class Store {
         total_received_qty: 0,
         total_allocated_sold_qty: 0,
         available_qty: 0,
-        warehouse_location: params.warehouseLocation || 'Nhava Sheva Yard',
+        warehouse_location: params.warehouseLocation || 'Nhava Sheva Warehouse',
         status: 'Available',
         created_at: new Date().toISOString()
       };
@@ -1465,7 +1487,7 @@ class Store {
           total_received_qty: newQty,
           total_allocated_sold_qty: 0,
           available_qty: newQty,
-          warehouse_location: updates.warehouseLocation || 'Nhava Sheva Yard',
+          warehouse_location: updates.warehouseLocation || 'Nhava Sheva Warehouse',
           status: 'Available',
           created_at: new Date().toISOString()
         };
@@ -2050,7 +2072,7 @@ class Store {
           total_received_qty: agg.total_received_qty,
           total_allocated_sold_qty: 0,
           available_qty: agg.total_received_qty,
-          warehouse_location: 'Nhava Sheva Yard',
+          warehouse_location: 'Nhava Sheva Warehouse',
           status: agg.total_received_qty > 0 ? 'Available' : 'Allocated',
           created_at: new Date().toISOString()
         });
@@ -2729,7 +2751,7 @@ class Store {
             total_received_qty: Number(item.weight) || 0,
             total_allocated_sold_qty: 0,
             available_qty: Number(item.weight) || 0,
-            warehouse_location: options?.location || 'Main Yard (Port Arrival)',
+            warehouse_location: options?.location || 'Main Warehouse (Port Arrival)',
             status: 'Available',
             created_at: new Date().toISOString()
           };

@@ -213,6 +213,10 @@ export interface PurchaseOrderItem {
   destination_port?: string | null;
   container_no?: string | null;
   port_of_loading?: string | null;
+  forwarder_name?: string | null;
+  supplier_invoice?: string | null;
+  supplier_invoice_date?: string | null;
+  invoice_amount?: number | null;
   legacy_source_sheet?: string | null;
   legacy_excel_row?: number | null;
   receipts?: Receipt[];
@@ -377,6 +381,10 @@ export interface IncomingStockItem {
   payment_terms?: string | null;
   container_no?: string | null;
   port_of_loading?: string | null;
+  forwarder_name?: string | null;
+  supplier_invoice?: string | null;
+  supplier_invoice_date?: string | null;
+  invoice_amount?: number | null;
   hsn_code?: string | null;
   bis?: string | null;
   source_sheet?: 'INCOMING SE' | 'INCOMING CLOSE' | string;
