@@ -8,27 +8,17 @@ import {
   Download, 
   RefreshCw, 
   Filter, 
-  Edit3, 
-  Check, 
   X, 
   ExternalLink, 
-  ArrowUpDown, 
   Ship, 
-  Truck, 
   Clock, 
-  CheckCircle2, 
-  Calendar, 
-  DollarSign, 
-  Percent, 
   Box, 
   Building2, 
-  Info,
-  ChevronDown
+  Info
 } from 'lucide-react';
 import { dataStore } from '@/lib/dataStore';
 import { PurchaseOrder, PurchaseOrderItem, IncomingStockItem } from '@/types';
 import { formatDate, formatWeight, cn, normalizeDateStr } from '@/lib/utils';
-import { useAuth } from '@/context/AuthContext';
 import * as XLSX from 'xlsx';
 
 // --- Exchange Rates State & Public Live Rate Helper ---
@@ -106,7 +96,7 @@ function calculateDefaultDutyPct(grade?: string | null, countryOrOrigin?: string
   return 28;
 }
 
-// Active Lot Row Model
+// Active Lot Row Model (20 standard business columns)
 interface ActiveLotRow {
   key: string;
   lot_number: string;
@@ -138,9 +128,6 @@ interface ActiveLotRow {
 }
 
 function ShipmentStatusContent() {
-  const { user } = useAuth();
-  const isViewer = user?.role === 'viewer';
-
   const [dataVersion, setDataVersion] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<'ALL' | 'IN_TRANSIT' | 'READY' | 'OPEN'>('ALL');
@@ -149,21 +136,6 @@ function ShipmentStatusContent() {
   const [rates, setRates] = useState<ExchangeRates>(DEFAULT_RATES);
   const [isFetchingRates, setIsFetchingRates] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
-
-  // Quick Edit Drawer / Modal state
-  const [editingLot, setEditingLot] = useState<ActiveLotRow | null>(null);
-  const [editDutyPct, setEditDutyPct] = useState<string>('28');
-  const [editContainerType, setEditContainerType] = useState<string>('20ft');
-  const [editContainerCount, setEditContainerCount] = useState<string>('1');
-  const [editInvoiceAmount, setEditInvoiceAmount] = useState<string>('');
-  const [editForwarder, setEditForwarder] = useState<string>('');
-  const [editSims, setEditSims] = useState<string>('');
-  const [editPT, setEditPT] = useState<string>('');
-  const [editTER, setEditTER] = useState<string>('');
-  const [editPOL, setEditPOL] = useState<string>('');
-  const [editPOD, setEditPOD] = useState<string>('');
-  const [editETD, setEditETD] = useState<string>('');
-  const [editETA, setEditETA] = useState<string>('');
 
   // Fetch Live Rates
   const fetchLiveRates = async () => {
@@ -362,7 +334,6 @@ function ShipmentStatusContent() {
         // Fallback: estimate from purchase price * (weight in MT or KG)
         totalInvAmount = group.items.reduce((sum, i) => {
           if (i.price && i.weight) {
-            // If price > 50 it's likely per MT, if price < 50 it's likely per KG
             const unitPrice = i.price > 100 ? (i.price / 1000) : i.price;
             return sum + (unitPrice * i.weight);
           }
@@ -425,7 +396,7 @@ function ShipmentStatusContent() {
       });
     }
 
-    // Sort by Lot Number or ETD
+    // Sort by Lot Number
     return rows.sort((a, b) => {
       const aLot = parseInt(a.lot_number) || 0;
       const bLot = parseInt(b.lot_number) || 0;
@@ -476,52 +447,6 @@ function ShipmentStatusContent() {
       grandTotalInr
     };
   }, [filteredRows]);
-
-  // Open Edit Modal
-  const handleOpenEdit = (row: ActiveLotRow) => {
-    if (isViewer) return;
-    setEditingLot(row);
-    setEditDutyPct(String(row.duty_pct));
-    setEditContainerType(row.container_type || '20ft');
-    setEditContainerCount(String(row.container_count || 1));
-    setEditInvoiceAmount(row.invoice_amount ? String(row.invoice_amount) : '');
-    setEditForwarder(row.forwarder !== '—' ? row.forwarder : '');
-    setEditSims(row.sims);
-    setEditPT(row.payment_terms);
-    setEditTER(row.delivery_terms);
-    setEditPOL(row.port_of_loading !== '—' ? row.port_of_loading : '');
-    setEditPOD(row.place_of_delivery);
-    setEditETD(row.etd);
-    setEditETA(row.eta);
-  };
-
-  // Save Quick Edit
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingLot) return;
-
-    dataStore.updateLotShipmentDetails({
-      lotNumber: editingLot.lot_number,
-      customsDutyPct: parseFloat(editDutyPct) || 28,
-      containerType: editContainerType,
-      containerCount: parseInt(editContainerCount) || 1,
-      invoiceAmount: editInvoiceAmount ? parseFloat(editInvoiceAmount) : undefined,
-      forwarderName: editForwarder.trim() || undefined,
-      sims: editSims,
-      paymentTerms: editPT.trim() || undefined,
-      deliveryTerms: editTER.trim() || undefined,
-      portOfLoading: editPOL.trim() || undefined,
-      destinationPort: editPOD.trim() || undefined,
-      dateOfShipment: editETD || undefined,
-      etaSeaport: editETA || undefined
-    });
-
-    setEditingLot(null);
-    setDataVersion(v => v + 1);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('app:data-updated'));
-    }
-  };
 
   // Export to Excel
   const handleExportExcel = () => {
@@ -592,7 +517,7 @@ function ShipmentStatusContent() {
               onClick={fetchLiveRates}
               disabled={isFetchingRates}
               title="Refresh live exchange rates"
-              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-200/60 rounded-md transition-colors"
+              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-200/60 rounded-md transition-colors cursor-pointer"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", isFetchingRates && "animate-spin text-blue-600")} />
             </button>
@@ -737,41 +662,134 @@ function ShipmentStatusContent() {
         </div>
       </div>
 
-      {/* Main 20-Column Table Container */}
+      {/* Main 20-Column Table Container with Desktop Side Scroll */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto min-h-[400px]">
-          <table className="w-full text-left text-xs border-collapse">
+        {/* Desktop Side Scroll Guide Bar */}
+        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/90 border-b border-slate-200 text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
+              20 Columns
+            </span>
+            <span className="text-[11px] font-medium text-slate-500">
+              ↔ Horizontal scroll enabled: Scroll sideways to view complete shipping, logistics, container & landed cost details
+            </span>
+          </div>
+          <div className="hidden sm:flex items-center gap-3 text-[11px] text-slate-400">
+            <span>• <strong>Lot no.</strong> is pinned</span>
+            <span>• Live currency conversion</span>
+          </div>
+        </div>
+
+        {/* Horizontal Scrollable Table Wrapper */}
+        <div className="overflow-x-auto min-h-[440px]">
+          <table className="min-w-[2200px] w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap select-none">
-                <th className="py-3 px-3 border-r border-slate-800">Action</th>
-                <th className="py-3 px-3 border-r border-slate-800">Lot no.</th>
-                <th className="py-3 px-3 border-r border-slate-800">PT</th>
-                <th className="py-3 px-3 border-r border-slate-800">Supplier</th>
-                <th className="py-3 px-3 border-r border-slate-800">Consignee</th>
-                <th className="py-3 px-3 border-r border-slate-800">Grade</th>
-                <th className="py-3 px-3 border-r border-slate-800">ETD</th>
-                <th className="py-3 px-3 border-r border-slate-800">ETA</th>
-                <th className="py-3 px-3 text-right border-r border-slate-800">Qty (MT)</th>
-                <th className="py-3 px-3 border-r border-slate-800">Cntr</th>
-                <th className="py-3 px-3 text-center border-r border-slate-800">No. of Cntr</th>
-                <th className="py-3 px-3 text-center border-r border-slate-800">Currency</th>
-                <th className="py-3 px-3 text-right border-r border-slate-800">Amount</th>
-                <th className="py-3 px-3 text-right border-r border-slate-800">INR Value</th>
-                <th className="py-3 px-3 text-center border-r border-slate-800">Duty %</th>
-                <th className="py-3 px-3 text-right border-r border-slate-800 bg-emerald-950/80 text-emerald-300">
+              <tr className="border-b border-slate-800 select-none">
+                {/* 1. Lot no. (Sticky Left) */}
+                <th className="sticky left-0 z-30 !bg-slate-950 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800 shadow-[2px_0_5px_rgba(0,0,0,0.18)]">
+                  Lot no.
+                </th>
+
+                {/* 2. PT (Payment Terms) */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                  PT
+                </th>
+
+                {/* 3. Supplier */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                  Supplier
+                </th>
+
+                {/* 4. Consignee (Customer) */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                  Consignee
+                </th>
+
+                {/* 5. Grade */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                  Grade
+                </th>
+
+                {/* 6. ETD (Date of Shipment) */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                  ETD
+                </th>
+
+                {/* 7. ETA */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                  ETA
+                </th>
+
+                {/* 8. Qty */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-slate-800">
+                  Qty
+                </th>
+
+                {/* 9. Cntr (Container Type) */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-slate-800">
+                  Cntr
+                </th>
+
+                {/* 10. No. of container */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-slate-800">
+                  No. of container
+                </th>
+
+                {/* 11. Currency */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-slate-800">
+                  Currency
+                </th>
+
+                {/* 12. Amount (Invoice Amount) */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-slate-800">
+                  Amount
+                </th>
+
+                {/* 13. INR Value */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-slate-800">
+                  INR Value
+                </th>
+
+                {/* 14. Duty % */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-slate-800">
+                  Duty %
+                </th>
+
+                {/* 15. Total Amount INR */}
+                <th className="!bg-emerald-950 !text-emerald-300 text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-slate-800">
                   Total Amount INR
                 </th>
-                <th className="py-3 px-3 border-r border-slate-800">TER</th>
-                <th className="py-3 px-3 border-r border-slate-800">POL</th>
-                <th className="py-3 px-3 border-r border-slate-800">Place of Delivery</th>
-                <th className="py-3 px-3 border-r border-slate-800">Forwarder</th>
-                <th className="py-3 px-3">SIMS</th>
+
+                {/* 16. TER (Delivery Terms) */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                  TER
+                </th>
+
+                {/* 17. POL (Port of Load) */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                  POL
+                </th>
+
+                {/* 18. Place of Delivery */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                  Place of Delivery
+                </th>
+
+                {/* 19. Forwarder */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                  Forwarder
+                </th>
+
+                {/* 20. SIMS */}
+                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3">
+                  SIMS
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={21} className="py-12 text-center text-slate-400">
+                  <td colSpan={20} className="py-12 text-center text-slate-400">
                     <Compass className="h-8 w-8 mx-auto mb-2 text-slate-300" />
                     <p className="text-sm font-semibold text-slate-600">No active shipments matching criteria</p>
                     <p className="text-xs text-slate-400 mt-1">Try resetting the stage filter or search keyword.</p>
@@ -782,24 +800,10 @@ function ShipmentStatusContent() {
                   return (
                     <tr 
                       key={`${r.key}-${idx}`} 
-                      className="hover:bg-blue-50/40 transition-colors whitespace-nowrap text-xs group"
+                      className="hover:bg-blue-50/50 transition-colors whitespace-nowrap text-xs group"
                     >
-                      {/* Action */}
-                      <td className="py-2.5 px-3 border-r border-slate-100">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(r)}
-                          disabled={isViewer}
-                          title="Quick edit lot parameters"
-                          className="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white rounded text-[11px] font-bold text-slate-700 transition-colors cursor-pointer flex items-center gap-1"
-                        >
-                          <Edit3 className="h-3 w-3" />
-                          <span>Edit</span>
-                        </button>
-                      </td>
-
-                      {/* 1. Lot no. */}
-                      <td className="py-2.5 px-3 font-mono font-bold text-slate-900 border-r border-slate-100">
+                      {/* 1. Lot no. (Sticky Left) */}
+                      <td className="sticky left-0 z-20 bg-white group-hover:bg-blue-50/90 py-2.5 px-3 font-mono font-bold text-slate-900 border-r-2 border-slate-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
                         <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200">
                           {r.lot_number}
                         </span>
@@ -862,7 +866,7 @@ function ShipmentStatusContent() {
                       </td>
 
                       {/* 9. Cntr (Container Type) */}
-                      <td className="py-2.5 px-3 border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-center border-r border-slate-100">
                         <span className="font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-semibold text-[11px]">
                           {r.container_type}
                         </span>
@@ -900,7 +904,7 @@ function ShipmentStatusContent() {
                       </td>
 
                       {/* 15. Total Amount INR */}
-                      <td className="py-2.5 px-3 text-right font-mono font-extrabold text-emerald-800 bg-emerald-50/50 border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-right font-mono font-extrabold text-emerald-800 bg-emerald-50/60 border-r border-slate-100">
                         ₹{r.total_amount_inr.toLocaleString()}
                       </td>
 
@@ -942,29 +946,49 @@ function ShipmentStatusContent() {
             </tbody>
             {filteredRows.length > 0 && (
               <tfoot>
-                <tr className="bg-slate-900 text-slate-200 text-xs font-bold border-t-2 border-slate-800">
-                  <td colSpan={8} className="py-3 px-3 text-right uppercase tracking-wider">
-                    Total Summary ({filteredRows.length} Lots):
+                <tr className="border-t-2 border-slate-800 text-xs font-bold select-none">
+                  {/* Column 1: Pinned Total Lot */}
+                  <td className="sticky left-0 z-20 !bg-slate-950 !text-white py-3 px-3 border-r border-slate-800 font-mono shadow-[2px_0_4px_rgba(0,0,0,0.18)]">
+                    TOTAL
                   </td>
-                  <td className="py-3 px-3 text-right font-mono text-blue-300">
+
+                  {/* Columns 2-7: PT to ETA */}
+                  <td colSpan={6} className="!bg-slate-900 !text-slate-300 py-3 px-3 text-right uppercase tracking-wider border-r border-slate-800">
+                    Summary ({filteredRows.length} Active Lots):
+                  </td>
+
+                  {/* Column 8: Qty */}
+                  <td className="!bg-slate-900 !text-blue-300 py-3 px-3 text-right font-mono border-r border-slate-800">
                     {summaryMetrics.totalWeightMt.toFixed(3)} MT
                   </td>
-                  <td colSpan={3} className="py-3 px-3 text-center">
+
+                  {/* Columns 9-11: Cntr, Count, Currency */}
+                  <td colSpan={3} className="!bg-slate-900 !text-slate-400 py-3 px-3 text-center border-r border-slate-800">
                     —
                   </td>
-                  <td className="py-3 px-3 text-right font-mono">
+
+                  {/* Column 12: Amount */}
+                  <td className="!bg-slate-900 !text-slate-400 py-3 px-3 text-right font-mono border-r border-slate-800">
                     —
                   </td>
-                  <td className="py-3 px-3 text-right font-mono text-slate-100">
+
+                  {/* Column 13: INR Value */}
+                  <td className="!bg-slate-900 !text-white py-3 px-3 text-right font-mono border-r border-slate-800">
                     ₹{summaryMetrics.totalInrValue.toLocaleString()}
                   </td>
-                  <td className="py-3 px-3 text-center font-mono text-amber-300">
+
+                  {/* Column 14: Duty % */}
+                  <td className="!bg-slate-900 !text-amber-300 py-3 px-3 text-center font-mono border-r border-slate-800">
                     ₹{summaryMetrics.totalDutyInr.toLocaleString()}
                   </td>
-                  <td className="py-3 px-3 text-right font-mono text-emerald-300 bg-emerald-950">
+
+                  {/* Column 15: Total Amount INR */}
+                  <td className="!bg-emerald-950 !text-emerald-300 py-3 px-3 text-right font-mono border-r border-slate-800">
                     ₹{summaryMetrics.grandTotalInr.toLocaleString()}
                   </td>
-                  <td colSpan={5} className="py-3 px-3 text-slate-400">
+
+                  {/* Columns 16-20: TER to SIMS */}
+                  <td colSpan={5} className="!bg-slate-900 !text-slate-400 py-3 px-3 text-center">
                     —
                   </td>
                 </tr>
@@ -973,226 +997,6 @@ function ShipmentStatusContent() {
           </table>
         </div>
       </div>
-
-      {/* Quick Edit Drawer / Modal */}
-      {editingLot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95">
-            {/* Modal Header */}
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-blue-600 text-white rounded-lg">
-                  <Edit3 className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base text-white">Edit Lot Parameters — Lot #{editingLot.lot_number}</h3>
-                  <p className="text-xs text-slate-400">
-                    {editingLot.grade} • {editingLot.supplier} • {editingLot.weight_mt.toFixed(2)} MT
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingLot(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Modal Form */}
-            <form onSubmit={handleSaveEdit} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
-              {/* Container Specs & Count */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Container Type (Cntr)</label>
-                  <select
-                    value={editContainerType}
-                    onChange={(e) => setEditContainerType(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500/20"
-                  >
-                    <option value="20ft">20ft Heavy / GP</option>
-                    <option value="40ft">40ft GP</option>
-                    <option value="40HC">40ft High Cube (40HC)</option>
-                    <option value="LCL">LCL (Less than Container)</option>
-                    <option value="Breakbulk">Breakbulk / Loose</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">No. of Containers</label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={editContainerCount}
-                    onChange={(e) => setEditContainerCount(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-              </div>
-
-              {/* Duty % & Invoice Amount */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Customs Duty %
-                    <span className="text-[10px] text-slate-400 ml-1 font-normal">(Rule calculated)</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="100"
-                      value={editDutyPct}
-                      onChange={(e) => setEditDutyPct(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500/20"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">%</span>
-                  </div>
-                  <span className="text-[10px] text-slate-400 mt-1 block">
-                    Machines: 28% • Inserts/Blades: 31% • Japan: 18% • Europe/China: 28%
-                  </span>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Invoice Amount ({editingLot.currency})
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0"
-                    placeholder="e.g. 45000"
-                    value={editInvoiceAmount}
-                    onChange={(e) => setEditInvoiceAmount(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500/20"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-1 block">
-                    INR Value: ₹{(Math.round((parseFloat(editInvoiceAmount) || 0) * getRate(rates, editingLot.currency))).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Logistics & Shipping */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Freight Forwarder</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Kuehne+Nagel, DHL, Expeditors"
-                    value={editForwarder}
-                    onChange={(e) => setEditForwarder(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">SIMS Status</label>
-                  <select
-                    value={editSims}
-                    onChange={(e) => setEditSims(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500/20"
-                  >
-                    <option value="Done">Done</option>
-                    <option value="Not Required">Not Required</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Commercial Terms */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Payment Terms (PT)</label>
-                  <input
-                    type="text"
-                    value={editPT}
-                    onChange={(e) => setEditPT(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Delivery Terms (TER)</label>
-                  <input
-                    type="text"
-                    value={editTER}
-                    onChange={(e) => setEditTER(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-              </div>
-
-              {/* Ports */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Port of Loading (POL)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Shanghai / Koper"
-                    value={editPOL}
-                    onChange={(e) => setEditPOL(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Place of Delivery (POD)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Nhava Sheva (N.S.)"
-                    value={editPOD}
-                    onChange={(e) => setEditPOD(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-              </div>
-
-              {/* Voyage Dates */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">ETD (Date of Shipment)</label>
-                  <input
-                    type="date"
-                    value={editETD}
-                    onChange={(e) => setEditETD(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">ETA (Sea Port Arrival)</label>
-                  <input
-                    type="date"
-                    value={editETA}
-                    onChange={(e) => setEditETA(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setEditingLot(null)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-semibold text-xs cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-xs text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-                >
-                  <Check className="h-4 w-4" />
-                  <span>Save Changes</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
