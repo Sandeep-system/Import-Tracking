@@ -662,7 +662,7 @@ function ShipmentStatusContent() {
         </div>
       </div>
 
-      {/* Main 20-Column Table Container with Desktop Side Scroll */}
+      {/* Main 20-Column Table Container with Desktop Side Scroll & Sticky Frozen Header */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         {/* Desktop Side Scroll Guide Bar */}
         <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/90 border-b border-slate-200 text-xs text-slate-600">
@@ -675,121 +675,122 @@ function ShipmentStatusContent() {
             </span>
           </div>
           <div className="hidden sm:flex items-center gap-3 text-[11px] text-slate-400">
+            <span>• <strong>Header</strong> is frozen on scroll</span>
             <span>• <strong>Lot no.</strong> is pinned</span>
             <span>• Live currency conversion</span>
           </div>
         </div>
 
-        {/* Horizontal Scrollable Table Wrapper */}
-        <div className="overflow-x-auto min-h-[440px]">
-          <table className="min-w-[2200px] w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-slate-800 select-none">
-                {/* 1. Lot no. (Sticky Left) */}
-                <th className="sticky left-0 z-30 !bg-slate-950 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800 shadow-[2px_0_5px_rgba(0,0,0,0.18)]">
+        {/* Horizontal & Vertical Scrollable Table Wrapper */}
+        <div className="overflow-auto max-h-[calc(100vh-270px)] min-h-[460px] relative w-full scrollbar-thin">
+          <table className="min-w-[2200px] w-full text-left text-xs border-separate border-spacing-0">
+            <thead className="sticky top-0 z-30 select-none">
+              <tr>
+                {/* 1. Lot no. (Sticky Top & Left) */}
+                <th className="sticky top-0 left-0 z-40 !bg-slate-950 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 shadow-[2px_2px_5px_rgba(0,0,0,0.25)] whitespace-nowrap">
                   Lot no.
                 </th>
 
                 {/* 2. PT (Payment Terms) */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   PT
                 </th>
 
                 {/* 3. Supplier */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Supplier
                 </th>
 
                 {/* 4. Consignee (Customer) */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Consignee
                 </th>
 
                 {/* 5. Grade */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Grade
                 </th>
 
                 {/* 6. ETD (Date of Shipment) */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   ETD
                 </th>
 
                 {/* 7. ETA */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   ETA
                 </th>
 
                 {/* 8. Qty */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Qty
                 </th>
 
                 {/* 9. Cntr (Container Type) */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Cntr
                 </th>
 
                 {/* 10. No. of container */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   No. of container
                 </th>
 
                 {/* 11. Currency */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Currency
                 </th>
 
                 {/* 12. Amount (Invoice Amount) */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Amount
                 </th>
 
                 {/* 13. INR Value */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   INR Value
                 </th>
 
                 {/* 14. Duty % */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-center border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Duty %
                 </th>
 
                 {/* 15. Total Amount INR */}
-                <th className="!bg-emerald-950 !text-emerald-300 text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-emerald-950 !text-emerald-300 text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 text-right border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Total Amount INR
                 </th>
 
                 {/* 16. TER (Delivery Terms) */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   TER
                 </th>
 
                 {/* 17. POL (Port of Load) */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   POL
                 </th>
 
                 {/* 18. Place of Delivery */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Place of Delivery
                 </th>
 
                 {/* 19. Forwarder */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-slate-800">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-r border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   Forwarder
                 </th>
 
                 {/* 20. SIMS */}
-                <th className="!bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3">
+                <th className="sticky top-0 z-30 !bg-slate-900 !text-white text-[11px] font-extrabold uppercase tracking-wider py-3.5 px-3 border-b-2 border-slate-800 whitespace-nowrap shadow-[0_2px_4px_rgba(0,0,0,0.15)]">
                   SIMS
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700">
+            <tbody className="text-slate-700">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={20} className="py-12 text-center text-slate-400">
+                  <td colSpan={20} className="py-12 text-center text-slate-400 bg-white">
                     <Compass className="h-8 w-8 mx-auto mb-2 text-slate-300" />
                     <p className="text-sm font-semibold text-slate-600">No active shipments matching criteria</p>
                     <p className="text-xs text-slate-400 mt-1">Try resetting the stage filter or search keyword.</p>
@@ -803,7 +804,7 @@ function ShipmentStatusContent() {
                       className="hover:bg-blue-50/50 transition-colors whitespace-nowrap text-xs group"
                     >
                       {/* 1. Lot no. (Sticky Left) */}
-                      <td className="sticky left-0 z-20 bg-white group-hover:bg-blue-50/90 py-2.5 px-3 font-mono font-bold text-slate-900 border-r-2 border-slate-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+                      <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50/90 py-2.5 px-3 font-mono font-bold text-slate-900 border-r-2 border-b border-slate-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
                         <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200">
                           {r.lot_number}
                         </span>
@@ -815,34 +816,34 @@ function ShipmentStatusContent() {
                       </td>
 
                       {/* 2. PT (Payment Terms) */}
-                      <td className="py-2.5 px-3 text-slate-700 font-medium border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-slate-700 font-medium border-r border-b border-slate-100">
                         {r.payment_terms}
                       </td>
 
                       {/* 3. Supplier */}
-                      <td className="py-2.5 px-3 font-semibold text-slate-800 max-w-[180px] truncate border-r border-slate-100" title={r.supplier}>
+                      <td className="py-2.5 px-3 font-semibold text-slate-800 max-w-[180px] truncate border-r border-b border-slate-100" title={r.supplier}>
                         {r.supplier}
                       </td>
 
                       {/* 4. Consignee (Customer) */}
-                      <td className="py-2.5 px-3 border-r border-slate-100">
+                      <td className="py-2.5 px-3 border-r border-b border-slate-100">
                         <span className="font-bold text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded border border-violet-200 text-[11px]">
                           {r.consignee}
                         </span>
                       </td>
 
                       {/* 5. Grade */}
-                      <td className="py-2.5 px-3 font-bold text-slate-900 border-r border-slate-100">
+                      <td className="py-2.5 px-3 font-bold text-slate-900 border-r border-b border-slate-100">
                         {r.grade}
                       </td>
 
                       {/* 6. ETD (Date of Shipment) */}
-                      <td className="py-2.5 px-3 font-medium text-slate-700 border-r border-slate-100">
+                      <td className="py-2.5 px-3 font-medium text-slate-700 border-r border-b border-slate-100">
                         {r.etd ? formatDate(r.etd) : <span className="text-slate-400">—</span>}
                       </td>
 
                       {/* 7. ETA */}
-                      <td className="py-2.5 px-3 border-r border-slate-100">
+                      <td className="py-2.5 px-3 border-r border-b border-slate-100">
                         {r.eta ? (
                           <div className="flex items-center gap-1.5">
                             <span className="font-semibold text-slate-900">{formatDate(r.eta)}</span>
@@ -858,7 +859,7 @@ function ShipmentStatusContent() {
                       </td>
 
                       {/* 8. Qty */}
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-700 border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-700 border-r border-b border-slate-100">
                         {r.weight_mt.toFixed(3)} MT
                         <span className="block text-[10px] text-slate-400 font-normal">
                           {Math.round(r.weight_kg).toLocaleString()} KG
@@ -866,35 +867,35 @@ function ShipmentStatusContent() {
                       </td>
 
                       {/* 9. Cntr (Container Type) */}
-                      <td className="py-2.5 px-3 text-center border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-center border-r border-b border-slate-100">
                         <span className="font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-semibold text-[11px]">
                           {r.container_type}
                         </span>
                       </td>
 
                       {/* 10. No. of container */}
-                      <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800 border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800 border-r border-b border-slate-100">
                         {r.container_count}
                       </td>
 
                       {/* 11. Currency */}
-                      <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-600 border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-600 border-r border-b border-slate-100">
                         {r.currency}
                       </td>
 
                       {/* 12. Amount (Invoice Amount) */}
-                      <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-900 border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-900 border-r border-b border-slate-100">
                         {r.currency === 'USD' ? '$' : r.currency === 'EUR' ? '€' : ''}
                         {Number(r.invoice_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
 
                       {/* 13. INR Value */}
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 border-r border-b border-slate-100">
                         ₹{r.inr_value.toLocaleString()}
                       </td>
 
                       {/* 14. Duty % */}
-                      <td className="py-2.5 px-3 text-center border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-center border-r border-b border-slate-100">
                         <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold font-mono text-[11px]">
                           {r.duty_pct}%
                         </span>
@@ -904,32 +905,32 @@ function ShipmentStatusContent() {
                       </td>
 
                       {/* 15. Total Amount INR */}
-                      <td className="py-2.5 px-3 text-right font-mono font-extrabold text-emerald-800 bg-emerald-50/60 border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-right font-mono font-extrabold text-emerald-800 bg-emerald-50/60 border-r border-b border-slate-100">
                         ₹{r.total_amount_inr.toLocaleString()}
                       </td>
 
                       {/* 16. TER (Delivery Terms) */}
-                      <td className="py-2.5 px-3 font-semibold text-slate-700 border-r border-slate-100">
+                      <td className="py-2.5 px-3 font-semibold text-slate-700 border-r border-b border-slate-100">
                         {r.delivery_terms}
                       </td>
 
                       {/* 17. POL (Port of Load) */}
-                      <td className="py-2.5 px-3 text-slate-700 border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-slate-700 border-r border-b border-slate-100">
                         {r.port_of_loading}
                       </td>
 
                       {/* 18. Place of Delivery */}
-                      <td className="py-2.5 px-3 text-slate-800 font-medium border-r border-slate-100">
+                      <td className="py-2.5 px-3 text-slate-800 font-medium border-r border-b border-slate-100">
                         {r.place_of_delivery}
                       </td>
 
                       {/* 19. Forwarder */}
-                      <td className="py-2.5 px-3 font-medium text-slate-800 border-r border-slate-100 max-w-[150px] truncate" title={r.forwarder}>
+                      <td className="py-2.5 px-3 font-medium text-slate-800 border-r border-b border-slate-100 max-w-[150px] truncate" title={r.forwarder}>
                         {r.forwarder}
                       </td>
 
                       {/* 20. SIMS */}
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-3 border-b border-slate-100">
                         <span className={cn(
                           "px-2 py-0.5 rounded text-[10px] font-bold",
                           r.sims === 'Done' ? "bg-emerald-100 text-emerald-800" :
@@ -946,49 +947,49 @@ function ShipmentStatusContent() {
             </tbody>
             {filteredRows.length > 0 && (
               <tfoot>
-                <tr className="border-t-2 border-slate-800 text-xs font-bold select-none">
+                <tr className="text-xs font-bold select-none">
                   {/* Column 1: Pinned Total Lot */}
-                  <td className="sticky left-0 z-20 !bg-slate-950 !text-white py-3 px-3 border-r border-slate-800 font-mono shadow-[2px_0_4px_rgba(0,0,0,0.18)]">
+                  <td className="sticky left-0 z-20 !bg-slate-950 !text-white py-3 px-3 border-r border-t-2 border-slate-800 font-mono shadow-[2px_0_4px_rgba(0,0,0,0.18)]">
                     TOTAL
                   </td>
 
                   {/* Columns 2-7: PT to ETA */}
-                  <td colSpan={6} className="!bg-slate-900 !text-slate-300 py-3 px-3 text-right uppercase tracking-wider border-r border-slate-800">
+                  <td colSpan={6} className="!bg-slate-900 !text-slate-300 py-3 px-3 text-right uppercase tracking-wider border-r border-t-2 border-slate-800">
                     Summary ({filteredRows.length} Active Lots):
                   </td>
 
                   {/* Column 8: Qty */}
-                  <td className="!bg-slate-900 !text-blue-300 py-3 px-3 text-right font-mono border-r border-slate-800">
+                  <td className="!bg-slate-900 !text-blue-300 py-3 px-3 text-right font-mono border-r border-t-2 border-slate-800">
                     {summaryMetrics.totalWeightMt.toFixed(3)} MT
                   </td>
 
                   {/* Columns 9-11: Cntr, Count, Currency */}
-                  <td colSpan={3} className="!bg-slate-900 !text-slate-400 py-3 px-3 text-center border-r border-slate-800">
+                  <td colSpan={3} className="!bg-slate-900 !text-slate-400 py-3 px-3 text-center border-r border-t-2 border-slate-800">
                     —
                   </td>
 
                   {/* Column 12: Amount */}
-                  <td className="!bg-slate-900 !text-slate-400 py-3 px-3 text-right font-mono border-r border-slate-800">
+                  <td className="!bg-slate-900 !text-slate-400 py-3 px-3 text-right font-mono border-r border-t-2 border-slate-800">
                     —
                   </td>
 
                   {/* Column 13: INR Value */}
-                  <td className="!bg-slate-900 !text-white py-3 px-3 text-right font-mono border-r border-slate-800">
+                  <td className="!bg-slate-900 !text-white py-3 px-3 text-right font-mono border-r border-t-2 border-slate-800">
                     ₹{summaryMetrics.totalInrValue.toLocaleString()}
                   </td>
 
                   {/* Column 14: Duty % */}
-                  <td className="!bg-slate-900 !text-amber-300 py-3 px-3 text-center font-mono border-r border-slate-800">
+                  <td className="!bg-slate-900 !text-amber-300 py-3 px-3 text-center font-mono border-r border-t-2 border-slate-800">
                     ₹{summaryMetrics.totalDutyInr.toLocaleString()}
                   </td>
 
                   {/* Column 15: Total Amount INR */}
-                  <td className="!bg-emerald-950 !text-emerald-300 py-3 px-3 text-right font-mono border-r border-slate-800">
+                  <td className="!bg-emerald-950 !text-emerald-300 py-3 px-3 text-right font-mono border-r border-t-2 border-slate-800">
                     ₹{summaryMetrics.grandTotalInr.toLocaleString()}
                   </td>
 
                   {/* Columns 16-20: TER to SIMS */}
-                  <td colSpan={5} className="!bg-slate-900 !text-slate-400 py-3 px-3 text-center">
+                  <td colSpan={5} className="!bg-slate-900 !text-slate-400 py-3 px-3 text-center border-t-2 border-slate-800">
                     —
                   </td>
                 </tr>
