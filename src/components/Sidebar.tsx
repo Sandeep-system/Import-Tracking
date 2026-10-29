@@ -19,7 +19,8 @@ import {
   ClipboardList, 
   Settings,
   Anchor,
-  History
+  History,
+  Compass
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -44,6 +45,7 @@ const navSections: NavSection[] = [
     title: 'PURCHASING',
     items: [
       { label: 'Purchase Orders', href: '/purchasing/purchase-orders', icon: ShoppingBag },
+      { label: 'Shipment Status', href: '/purchasing/shipment-status', icon: Compass, badge: 'Active' },
       { label: 'Receipts Log', href: '/purchasing/receipts', icon: Package },
       { label: 'Shipments & Ports', href: '/purchasing/shipments', icon: Anchor, badge: 'Ports' },
       { label: 'Suppliers', href: '/purchasing/suppliers', icon: Building2 },

@@ -212,11 +212,14 @@ export interface PurchaseOrderItem {
   payment_terms?: string | null;
   destination_port?: string | null;
   container_no?: string | null;
+  container_type?: string | null;
+  container_count?: number | null;
   port_of_loading?: string | null;
   forwarder_name?: string | null;
   supplier_invoice?: string | null;
   supplier_invoice_date?: string | null;
   invoice_amount?: number | null;
+  customs_duty_pct?: number | null;
   legacy_source_sheet?: string | null;
   legacy_excel_row?: number | null;
   receipts?: Receipt[];
@@ -380,11 +383,14 @@ export interface IncomingStockItem {
   sims?: string | null;
   payment_terms?: string | null;
   container_no?: string | null;
+  container_type?: string | null;
+  container_count?: number | null;
   port_of_loading?: string | null;
   forwarder_name?: string | null;
   supplier_invoice?: string | null;
   supplier_invoice_date?: string | null;
   invoice_amount?: number | null;
+  customs_duty_pct?: number | null;
   hsn_code?: string | null;
   bis?: string | null;
   source_sheet?: 'INCOMING SE' | 'INCOMING CLOSE' | string;
@@ -406,4 +412,35 @@ export interface DataState {
   auditLogs: AuditLog[];
   balanceResolutions: BalanceResolution[];
   incomingStock: IncomingStockItem[];
+}
+
+export interface ActiveLotShipmentRecord {
+  id: string;
+  lot_number: string;
+  payment_terms: string;
+  supplier: string;
+  consignee: string;
+  grade: string;
+  etd: string;
+  eta: string;
+  weight: number;
+  weight_mt: number;
+  container_type: string;
+  container_count: number;
+  container_no?: string;
+  currency: string;
+  invoice_amount: number;
+  exchange_rate: number;
+  inr_value: number;
+  duty_pct: number;
+  duty_amount_inr: number;
+  total_amount_inr: number;
+  delivery_terms: string;
+  port_of_loading: string;
+  place_of_delivery: string;
+  forwarder: string;
+  sims: string;
+  status: 'Open' | 'Ready to Ship' | 'In Transit' | 'Received';
+  country_origin?: string;
+  linked_pos: string[];
 }

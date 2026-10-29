@@ -971,6 +971,9 @@ class Store {
     supplierInvoice?: string;
     supplierInvoiceDate?: string;
     invoiceAmount?: number;
+    containerType?: string;
+    containerCount?: number;
+    customsDutyPct?: number;
   }): { updatedItem: PurchaseOrderItem; updatedPO: PurchaseOrder; incomingItem: IncomingStockItem } {
     const po = this.state.purchaseOrders.find(
       p => p.id === params.poIdOrNumber || p.po_number === params.poIdOrNumber
@@ -995,6 +998,9 @@ class Store {
     if (params.supplierInvoice !== undefined) item.supplier_invoice = params.supplierInvoice ? params.supplierInvoice.trim() : null;
     if (params.supplierInvoiceDate !== undefined) item.supplier_invoice_date = params.supplierInvoiceDate || null;
     if (params.invoiceAmount !== undefined) item.invoice_amount = params.invoiceAmount ?? null;
+    if (params.containerType !== undefined) item.container_type = params.containerType ? params.containerType.trim() : null;
+    if (params.containerCount !== undefined) item.container_count = params.containerCount ?? null;
+    if (params.customsDutyPct !== undefined) item.customs_duty_pct = params.customsDutyPct ?? null;
 
     if (item.receipts && item.receipts.length > 0) {
       item.receipts.forEach(r => {
@@ -1034,6 +1040,9 @@ class Store {
       if (params.supplierInvoice !== undefined) incomingItem.supplier_invoice = item.supplier_invoice;
       if (params.supplierInvoiceDate !== undefined) incomingItem.supplier_invoice_date = item.supplier_invoice_date;
       if (params.invoiceAmount !== undefined) incomingItem.invoice_amount = item.invoice_amount;
+      if (params.containerType !== undefined) incomingItem.container_type = item.container_type;
+      if (params.containerCount !== undefined) incomingItem.container_count = item.container_count;
+      if (params.customsDutyPct !== undefined) incomingItem.customs_duty_pct = item.customs_duty_pct;
       incomingItem.received_status = 'IN_TRANSIT';
       incomingItem.source_sheet = 'INCOMING SE';
       incomingItem.weight = cargoWeight;
@@ -1070,6 +1079,9 @@ class Store {
         supplier_invoice: params.supplierInvoice ? params.supplierInvoice.trim() : item.supplier_invoice || null,
         supplier_invoice_date: params.supplierInvoiceDate || item.supplier_invoice_date || null,
         invoice_amount: params.invoiceAmount ?? item.invoice_amount ?? null,
+        container_type: params.containerType ? params.containerType.trim() : item.container_type || null,
+        container_count: params.containerCount ?? item.container_count ?? 1,
+        customs_duty_pct: params.customsDutyPct ?? item.customs_duty_pct ?? null,
         source_sheet: 'INCOMING SE',
         linked_po_number: po.po_number,
         linked_po_id: po.id
@@ -2905,8 +2917,79 @@ class Store {
       stockCount: payload.incomingStock?.length || 0
     };
   }
-}
 
+  public updateLotShipmentDetails(params: {
+    lotNumber: string;
+    containerType?: string;
+    containerCount?: number;
+    customsDutyPct?: number;
+    invoiceAmount?: number;
+    forwarderName?: string;
+    paymentTerms?: string;
+    deliveryTerms?: string;
+    portOfLoading?: string;
+    destinationPort?: string;
+    dateOfShipment?: string;
+    etaSeaport?: string;
+    sims?: string;
+    consignee?: string;
+    grade?: string;
+    supplier?: string;
+  }): void {
+    const lotNo = params.lotNumber.trim().toLowerCase();
+
+    // 1. Update in incomingStock
+    if (this.state.incomingStock) {
+      for (const inc of this.state.incomingStock) {
+        if (inc.lot_number?.trim().toLowerCase() === lotNo) {
+          if (params.containerType !== undefined) inc.container_type = params.containerType;
+          if (params.containerCount !== undefined) inc.container_count = params.containerCount;
+          if (params.customsDutyPct !== undefined) inc.customs_duty_pct = params.customsDutyPct;
+          if (params.invoiceAmount !== undefined) inc.invoice_amount = params.invoiceAmount;
+          if (params.forwarderName !== undefined) inc.forwarder_name = params.forwarderName;
+          if (params.paymentTerms !== undefined) inc.payment_terms = params.paymentTerms;
+          if (params.deliveryTerms !== undefined) inc.delivery_terms = params.deliveryTerms;
+          if (params.portOfLoading !== undefined) inc.port_of_loading = params.portOfLoading;
+          if (params.destinationPort !== undefined) inc.port = params.destinationPort;
+          if (params.dateOfShipment !== undefined) inc.date_of_shipment = params.dateOfShipment;
+          if (params.etaSeaport !== undefined) inc.eta_seaport = params.etaSeaport;
+          if (params.sims !== undefined) inc.sims = params.sims;
+          if (params.consignee !== undefined) inc.customer = params.consignee;
+          if (params.grade !== undefined) inc.grade = params.grade;
+          if (params.supplier !== undefined) inc.supplier = params.supplier;
+        }
+      }
+    }
+
+    // 2. Update in PO items
+    if (this.state.purchaseOrders) {
+      for (const po of this.state.purchaseOrders) {
+        if (!po.items) continue;
+        for (const item of po.items) {
+          if (
+            item.lot_number?.trim().toLowerCase() === lotNo ||
+            item.receipts?.some(r => r.lot_number?.trim().toLowerCase() === lotNo)
+          ) {
+            if (params.containerType !== undefined) item.container_type = params.containerType;
+            if (params.containerCount !== undefined) item.container_count = params.containerCount;
+            if (params.customsDutyPct !== undefined) item.customs_duty_pct = params.customsDutyPct;
+            if (params.invoiceAmount !== undefined) item.invoice_amount = params.invoiceAmount;
+            if (params.forwarderName !== undefined) item.forwarder_name = params.forwarderName;
+            if (params.paymentTerms !== undefined) item.payment_terms = params.paymentTerms;
+            if (params.deliveryTerms !== undefined) item.delivery_terms = params.deliveryTerms;
+            if (params.portOfLoading !== undefined) item.port_of_loading = params.portOfLoading;
+            if (params.destinationPort !== undefined) item.destination_port = params.destinationPort;
+            if (params.dateOfShipment !== undefined) item.date_of_shipment = params.dateOfShipment;
+            if (params.etaSeaport !== undefined) item.eta_seaport = params.etaSeaport;
+            if (params.sims !== undefined) item.sims = params.sims;
+          }
+        }
+      }
+    }
+
+    this.save();
+  }
+}
 
 // Global Singleton
 export const dataStore = new Store();

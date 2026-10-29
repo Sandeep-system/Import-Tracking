@@ -152,6 +152,8 @@ const STANDARD_ORIGINS = [
   const [shipInvoiceNumber, setShipInvoiceNumber] = useState('');
   const [shipInvoiceDate, setShipInvoiceDate] = useState('');
   const [shipInvoiceAmount, setShipInvoiceAmount] = useState('');
+  const [shipContainerType, setShipContainerType] = useState('20ft');
+  const [shipContainerCount, setShipContainerCount] = useState('1');
   const [shipHsnCode, setShipHsnCode] = useState('');
   const [isSubmittingShipment, setIsSubmittingShipment] = useState(false);
   const [shipmentError, setShipmentError] = useState<string | null>(null);
@@ -256,6 +258,8 @@ const STANDARD_ORIGINS = [
   const [bulkPortOfLoading, setBulkPortOfLoading] = useState('');
   const [bulkForwarderName, setBulkForwarderName] = useState('');
   const [bulkInvoiceAmount, setBulkInvoiceAmount] = useState('');
+  const [bulkContainerType, setBulkContainerType] = useState('20ft');
+  const [bulkContainerCount, setBulkContainerCount] = useState('1');
 
   // Persistent in-memory cache of previously entered bulk action values per PO
   const savedBulkValues = useRef<Record<string, {
@@ -276,6 +280,8 @@ const STANDARD_ORIGINS = [
     portOfLoading?: string;
     forwarderName?: string;
     invoiceAmount?: string;
+    containerType?: string;
+    containerCount?: string;
   }>>({});
 
   const updateSavedBulkValues = (fields: Partial<{
@@ -296,6 +302,8 @@ const STANDARD_ORIGINS = [
     portOfLoading: string;
     forwarderName: string;
     invoiceAmount: string;
+    containerType: string;
+    containerCount: string;
   }>) => {
     if (!po) return;
     savedBulkValues.current[po.id] = {
@@ -560,7 +568,9 @@ const STANDARD_ORIGINS = [
             forwarderName: bulkForwarderName.trim() || undefined,
             supplierInvoice: bulkInvoiceNumber.trim() || undefined,
             supplierInvoiceDate: bulkInvoiceDate || undefined,
-            invoiceAmount: bulkInvoiceAmount ? parseFloat(bulkInvoiceAmount) : undefined
+            invoiceAmount: bulkInvoiceAmount ? parseFloat(bulkInvoiceAmount) : undefined,
+            containerType: bulkContainerType,
+            containerCount: parseInt(bulkContainerCount) || 1
           });
         }
       } else if (bulkMode === 'RECEIVE') {
@@ -771,6 +781,8 @@ const STANDARD_ORIGINS = [
     setShipInvoiceNumber(item.supplier_invoice || item.receipts?.[0]?.supplier_invoice_number || '');
     setShipInvoiceDate(item.supplier_invoice_date || item.receipts?.[0]?.supplier_invoice_date || '');
     setShipInvoiceAmount(item.invoice_amount ? String(item.invoice_amount) : '');
+    setShipContainerType(item.container_type || '20ft');
+    setShipContainerCount(String(item.container_count || 1));
   };
 
   const handleSubmitShipment = (e: React.FormEvent) => {
@@ -805,7 +817,9 @@ const STANDARD_ORIGINS = [
         forwarderName: shipForwarderName.trim() || undefined,
         supplierInvoice: shipInvoiceNumber.trim() || undefined,
         supplierInvoiceDate: shipInvoiceDate || undefined,
-        invoiceAmount: shipInvoiceAmount ? parseFloat(shipInvoiceAmount) : undefined
+        invoiceAmount: shipInvoiceAmount ? parseFloat(shipInvoiceAmount) : undefined,
+        containerType: shipContainerType,
+        containerCount: parseInt(shipContainerCount) || 1
       });
 
       setIsSubmittingShipment(false);
@@ -3146,6 +3160,40 @@ const STANDARD_ORIGINS = [
                     </div>
 
                     <div>
+                      <label className="block font-semibold text-slate-700 mb-1">Container Type (Cntr)</label>
+                      <select
+                        value={bulkContainerType}
+                        onChange={(e) => {
+                          setBulkContainerType(e.target.value);
+                          updateSavedBulkValues({ containerType: e.target.value });
+                        }}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      >
+                        <option value="20ft">20ft Heavy / GP</option>
+                        <option value="40ft">40ft GP</option>
+                        <option value="40HC">40ft High Cube (40HC)</option>
+                        <option value="LCL">LCL (Less than Container)</option>
+                        <option value="Breakbulk">Breakbulk / Loose</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">No. of Containers</label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={bulkContainerCount}
+                        onChange={(e) => {
+                          setBulkContainerCount(e.target.value);
+                          updateSavedBulkValues({ containerCount: e.target.value });
+                        }}
+                        placeholder="1"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
                       <label className="block font-semibold text-slate-700 mb-1">Port of Load (POL) (Optional)</label>
                       <input
                         type="text"
@@ -3831,6 +3879,40 @@ const STANDARD_ORIGINS = [
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   />
                   <span className="text-[10px] text-slate-400 mt-0.5 block">Origin loading port</span>
+                </div>
+              </div>
+
+              {/* Container Type & No. of Containers */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Container Type (Cntr)
+                  </label>
+                  <select
+                    value={shipContainerType}
+                    onChange={(e) => setShipContainerType(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  >
+                    <option value="20ft">20ft Heavy / GP</option>
+                    <option value="40ft">40ft GP</option>
+                    <option value="40HC">40ft High Cube (40HC)</option>
+                    <option value="LCL">LCL (Less than Container)</option>
+                    <option value="Breakbulk">Breakbulk / Loose</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    No. of Containers
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="1"
+                    value={shipContainerCount}
+                    onChange={(e) => setShipContainerCount(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
                 </div>
               </div>
 
