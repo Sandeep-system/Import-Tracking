@@ -443,6 +443,16 @@ const STANDARD_ORIGINS = [
     const polToUse = existingPol || saved.portOfLoading || poPol || '';
     setBulkPortOfLoading(polToUse);
 
+    // 11. Resolve Invoice Amount
+    const existingAmount = selectedItems.find(i => i.invoice_amount && Number(i.invoice_amount) > 0)?.invoice_amount;
+    const defaultSum = selectedItems.reduce((acc, it) => {
+      const q = (it.actionable_pending_qty ?? it.balance_quantity ?? it.ordered_quantity) || 0;
+      const p = it.purchase_price || 0;
+      return acc + (q * p);
+    }, 0);
+    const amountToUse = saved.invoiceAmount || (existingAmount ? String(existingAmount) : (defaultSum > 0 ? String(defaultSum) : ''));
+    setBulkInvoiceAmount(amountToUse);
+
     // Store in cache for this PO
     savedBulkValues.current[po.id] = {
       lotNumber: lotToUse,
@@ -460,6 +470,7 @@ const STANDARD_ORIGINS = [
       hsnCode: hsnToUse,
       containerNo: containerToUse,
       portOfLoading: polToUse,
+      invoiceAmount: amountToUse,
     };
 
     // Auto-fill item quantities, pieces, item-wise heat numbers, sims, and hsn codes
@@ -510,6 +521,23 @@ const STANDARD_ORIGINS = [
         setBulkError('Please enter ETA (sea port).');
         return;
       }
+      if (!bulkPortOfLoading?.trim()) {
+        setBulkError('Please enter Port of Load (POL).');
+        return;
+      }
+      if (!bulkInvoiceNumber?.trim()) {
+        setBulkError('Please enter Supplier Commercial Invoice.');
+        return;
+      }
+      if (!bulkInvoiceDate) {
+        setBulkError('Please enter Supplier Invoice Date.');
+        return;
+      }
+      const invAmt = parseFloat(bulkInvoiceAmount);
+      if (!bulkInvoiceAmount || isNaN(invAmt) || invAmt <= 0) {
+        setBulkError('Please enter a valid Invoice Amount.');
+        return;
+      }
     }
 
     try {
@@ -532,6 +560,7 @@ const STANDARD_ORIGINS = [
         hsnCode: bulkHsnCode.trim(),
         containerNo: bulkContainerNo.trim(),
         portOfLoading: bulkPortOfLoading.trim(),
+        invoiceAmount: bulkInvoiceAmount.trim(),
       });
 
       if (bulkMode === 'READY') {
@@ -776,11 +805,13 @@ const STANDARD_ORIGINS = [
     setIsShipCustomPaymentTerms(!STANDARD_PAYMENT_TERMS.slice(0, -1).includes(pTerms));
     setShipPort(item.destination_port || po?.destination || 'N.S.');
     setShipContainerNo(item.container_no || '');
-    setShipPortOfLoading(item.port_of_loading || '');
+    setShipPortOfLoading(item.port_of_loading || po?.items?.find(i => i.port_of_loading?.trim())?.port_of_loading?.trim() || '');
     setShipForwarderName(item.forwarder_name || '');
     setShipInvoiceNumber(item.supplier_invoice || item.receipts?.[0]?.supplier_invoice_number || '');
     setShipInvoiceDate(item.supplier_invoice_date || item.receipts?.[0]?.supplier_invoice_date || '');
-    setShipInvoiceAmount(item.invoice_amount ? String(item.invoice_amount) : '');
+    const defaultSingleAmt = (item.actionable_pending_qty ?? item.balance_quantity ?? item.ordered_quantity ?? 0) * (item.purchase_price || 0);
+    const singleAmtToUse = item.invoice_amount ? String(item.invoice_amount) : (defaultSingleAmt > 0 ? String(defaultSingleAmt) : '');
+    setShipInvoiceAmount(singleAmtToUse);
     setShipContainerType(item.container_type || '20ft');
     setShipContainerCount(String(item.container_count || 1));
   };
@@ -796,6 +827,23 @@ const STANDARD_ORIGINS = [
     }
     if (!etaSeaport) {
       setShipmentError('Please enter ETA (sea port).');
+      return;
+    }
+    if (!shipPortOfLoading?.trim()) {
+      setShipmentError('Please enter Port of Load (POL).');
+      return;
+    }
+    if (!shipInvoiceNumber?.trim()) {
+      setShipmentError('Please enter Supplier Commercial Invoice.');
+      return;
+    }
+    if (!shipInvoiceDate) {
+      setShipmentError('Please enter Supplier Invoice Date.');
+      return;
+    }
+    const invAmt = parseFloat(shipInvoiceAmount);
+    if (!shipInvoiceAmount || isNaN(invAmt) || invAmt <= 0) {
+      setShipmentError('Please enter a valid Invoice Amount.');
       return;
     }
 
@@ -3194,9 +3242,10 @@ const STANDARD_ORIGINS = [
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Port of Load (POL) (Optional)</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Port of Load (POL) <span className="text-red-500">*</span></label>
                       <input
                         type="text"
+                        required
                         value={bulkPortOfLoading}
                         onChange={(e) => {
                           setBulkPortOfLoading(e.target.value);
@@ -3251,9 +3300,10 @@ const STANDARD_ORIGINS = [
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Supplier Commercial Invoice (Optional)</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Supplier Commercial Invoice <span className="text-red-500">*</span></label>
                       <input
                         type="text"
+                        required
                         value={bulkInvoiceNumber}
                         onChange={(e) => {
                           setBulkInvoiceNumber(e.target.value);
@@ -3265,9 +3315,10 @@ const STANDARD_ORIGINS = [
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Supplier Invoice Date (Optional)</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Supplier Invoice Date <span className="text-red-500">*</span></label>
                       <input
                         type="date"
+                        required
                         value={bulkInvoiceDate}
                         onChange={(e) => {
                           setBulkInvoiceDate(e.target.value);
@@ -3278,11 +3329,12 @@ const STANDARD_ORIGINS = [
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Invoice Amount ({po.currency || 'USD'}) (Optional)</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Invoice Amount ({po.currency || po.items?.find(i => selectedItemIds.includes(i.id))?.currency || 'USD'}) <span className="text-red-500">*</span></label>
                       <input
                         type="number"
                         step="any"
                         min="0"
+                        required
                         value={bulkInvoiceAmount}
                         onChange={(e) => {
                           setBulkInvoiceAmount(e.target.value);
@@ -3869,10 +3921,11 @@ const STANDARD_ORIGINS = [
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-800 mb-1">
-                    Port of Load (POL)
+                    Port of Load (POL) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     placeholder="e.g. Shanghai / Ningbo / Hamburg"
                     value={shipPortOfLoading}
                     onChange={(e) => setShipPortOfLoading(e.target.value)}
@@ -3933,12 +3986,13 @@ const STANDARD_ORIGINS = [
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-800 mb-1">
-                    Invoice Amount ({shippingItem?.currency || po?.currency || 'USD'})
+                    Invoice Amount ({shippingItem?.currency || po?.currency || 'USD'}) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     step="any"
                     min="0"
+                    required
                     placeholder="e.g. 45000"
                     value={shipInvoiceAmount}
                     onChange={(e) => setShipInvoiceAmount(e.target.value)}
@@ -3952,10 +4006,11 @@ const STANDARD_ORIGINS = [
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-semibold text-slate-800 mb-1">
-                    Supplier Commercial Invoice
+                    Supplier Commercial Invoice <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
+                    required
                     placeholder="e.g. INV-2024-8841"
                     value={shipInvoiceNumber}
                     onChange={(e) => setShipInvoiceNumber(e.target.value)}
@@ -3964,10 +4019,11 @@ const STANDARD_ORIGINS = [
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-800 mb-1">
-                    Supplier Invoice Date
+                    Supplier Invoice Date <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="date"
+                    required
                     value={shipInvoiceDate}
                     onChange={(e) => setShipInvoiceDate(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"

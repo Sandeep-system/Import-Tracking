@@ -622,6 +622,14 @@ class Store {
       po.total_pending_value = po.items.reduce((acc, i) => acc + ((i.balance_quantity || 0) * (i.purchase_price || 0)), 0);
     }
 
+    if (updates.currency && this.state.incomingStock) {
+      for (const inc of this.state.incomingStock) {
+        if (inc.linked_po_number === po.po_number || inc.linked_po_id === po.id) {
+          inc.currency = updates.currency;
+        }
+      }
+    }
+
     po.updated_at = new Date().toISOString();
 
     this.addAuditLog(
@@ -1001,6 +1009,7 @@ class Store {
     if (params.containerType !== undefined) item.container_type = params.containerType ? params.containerType.trim() : null;
     if (params.containerCount !== undefined) item.container_count = params.containerCount ?? null;
     if (params.customsDutyPct !== undefined) item.customs_duty_pct = params.customsDutyPct ?? null;
+    if (!item.currency || item.currency === 'USD') item.currency = po.currency || item.currency || 'USD';
 
     if (item.receipts && item.receipts.length > 0) {
       item.receipts.forEach(r => {
@@ -1048,6 +1057,8 @@ class Store {
       incomingItem.weight = cargoWeight;
       if (item.pieces) incomingItem.pieces = item.pieces;
       if (params.hsnCode !== undefined) incomingItem.hsn_code = params.hsnCode ? params.hsnCode.trim() : incomingItem.hsn_code || null;
+      incomingItem.currency = item.currency || po.currency || incomingItem.currency || 'USD';
+      if (item.purchase_price) incomingItem.price = item.purchase_price;
     } else {
       incomingItem = {
         id: incId,
@@ -2554,6 +2565,15 @@ class Store {
           inc.linked_po_id = match.po_id;
           (inc as any).linked_po_item_id = match.item_id;
           poRemainingQty.set(match.po_number, Math.max(0, (poRemainingQty.get(match.po_number) || 0) - incWeight));
+        }
+      }
+    }
+
+    for (const inc of this.state.incomingStock) {
+      if (inc.linked_po_number) {
+        const po = this.state.purchaseOrders.find(p => p.po_number === inc.linked_po_number || p.id === inc.linked_po_id);
+        if (po && po.currency && (!inc.currency || inc.currency === 'USD')) {
+          inc.currency = po.currency;
         }
       }
     }
