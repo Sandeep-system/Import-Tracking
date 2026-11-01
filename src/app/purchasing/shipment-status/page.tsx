@@ -220,8 +220,9 @@ function ShipmentStatusContent() {
       // Find matching PO
       const matchedPo = activePOs.find(p => p.po_number === inc.linked_po_number);
       const matchedItem = matchedPo?.items?.find(i => 
-        i.lot_number?.trim().toLowerCase() === key || i.grade_code === inc.grade
-      );
+        i.lot_number?.trim().toLowerCase() === key ||
+        i.receipts?.some(r => r.lot_number?.trim().toLowerCase() === key)
+      ) || (matchedPo?.items?.length === 1 ? matchedPo.items[0] : null);
 
       let status: 'Open' | 'Ready to Ship' | 'In Transit' = 'In Transit';
       if (inc.received_status === 'READY') {
@@ -385,10 +386,10 @@ function ShipmentStatusContent() {
         duty_amount_inr: dutyAmountInr,
         total_amount_inr: totalAmountInr,
         delivery_terms: first.ter || 'FOB',
-        port_of_loading: first.pol || '—',
-        place_of_delivery: first.pod || 'Nhava Sheva (N.S.)',
-        forwarder: first.forwarder || '—',
-        sims: first.sims || 'Not Required',
+        port_of_loading: group.items.find(i => i.pol)?.pol || first.pol || '—',
+        place_of_delivery: group.items.find(i => i.pod)?.pod || first.pod || 'Nhava Sheva (N.S.)',
+        forwarder: group.items.find(i => i.forwarder)?.forwarder || first.forwarder || '—',
+        sims: group.items.find(i => i.sims)?.sims || first.sims || '—',
         status: lotStatus,
         origin_country: first.origin_country || undefined,
         linked_pos: uniquePos,
@@ -875,7 +876,7 @@ function ShipmentStatusContent() {
 
                       {/* 10. No. of container */}
                       <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800 border-r border-b border-slate-100">
-                        {r.container_count}
+                        {r.container_type === 'LCL' ? '—' : r.container_count}
                       </td>
 
                       {/* 11. Currency */}
@@ -925,20 +926,24 @@ function ShipmentStatusContent() {
                       </td>
 
                       {/* 19. Forwarder */}
-                      <td className="py-2.5 px-3 font-medium text-slate-800 border-r border-b border-slate-100 max-w-[150px] truncate" title={r.forwarder}>
+                      <td className="py-2.5 px-3 font-medium text-slate-800 border-r border-b border-slate-100 max-w-[220px] truncate" title={r.forwarder}>
                         {r.forwarder}
                       </td>
 
                       {/* 20. SIMS */}
                       <td className="py-2.5 px-3 border-b border-slate-100">
-                        <span className={cn(
-                          "px-2 py-0.5 rounded text-[10px] font-bold",
-                          r.sims === 'Done' ? "bg-emerald-100 text-emerald-800" :
-                          r.sims === 'Not Required' ? "bg-slate-100 text-slate-600" :
-                          "bg-blue-100 text-blue-800"
-                        )}>
-                          {r.sims}
-                        </span>
+                        {r.sims === '—' || !r.sims ? (
+                          <span className="text-slate-400 font-medium">—</span>
+                        ) : (
+                          <span className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold",
+                            r.sims === 'Done' ? "bg-emerald-100 text-emerald-800" :
+                            r.sims === 'Not Required' ? "bg-slate-100 text-slate-600" :
+                            "bg-blue-100 text-blue-800"
+                          )}>
+                            {r.sims}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );

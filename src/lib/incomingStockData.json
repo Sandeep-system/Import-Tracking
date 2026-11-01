@@ -29,7 +29,12 @@
       "price": 0,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.080Z"
+      "created_at": "2026-10-27T05:43:59.080Z",
+      "sims": "Not Required",
+      "container_type": "LCL",
+      "container_count": 1,
+      "port_of_loading": null,
+      "forwarder_name": null
     },
     {
       "id": "inc-se-3",
@@ -63,7 +68,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1128",
       "linked_po_id": "po-1128",
-      "linked_po_item_id": "poi-1128-1-136"
+      "linked_po_item_id": "poi-1128-1-136",
+      "container_type": "20ft",
+      "container_count": 1,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-4",
@@ -94,7 +104,12 @@
       "price": 0,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.080Z"
+      "created_at": "2026-10-27T05:43:59.080Z",
+      "port_of_loading": "Shenzhen",
+      "sims": "Not Required",
+      "container_type": "40ft",
+      "container_count": 1,
+      "forwarder_name": null
     },
     {
       "id": "inc-se-5",
@@ -128,7 +143,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1129",
       "linked_po_id": "po-1129",
-      "linked_po_item_id": "poi-1129-4-148"
+      "linked_po_item_id": "poi-1129-4-148",
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura/ Ocean Freight USD675 / 28000INR+GST +2500INR",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
     },
     {
       "id": "inc-se-6",
@@ -162,7 +182,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1129",
       "linked_po_id": "po-1129",
-      "linked_po_item_id": "poi-1129-6-150"
+      "linked_po_item_id": "poi-1129-6-150",
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura/ Ocean Freight USD675 / 28000INR+GST +2500INR",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
     },
     {
       "id": "inc-se-7",
@@ -196,7 +221,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1123",
       "linked_po_id": "po-1123",
-      "linked_po_item_id": "poi-1123-1-90"
+      "linked_po_item_id": "poi-1123-1-90",
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura/ Ocean Freight USD675 / 28000INR+GST +2500INR",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
     },
     {
       "id": "inc-se-8",
@@ -230,7 +260,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1123",
       "linked_po_id": "po-1123",
-      "linked_po_item_id": "poi-1123-2-91"
+      "linked_po_item_id": "poi-1123-2-91",
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura/ Ocean Freight USD675 / 28000INR+GST +2500INR",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
     },
     {
       "id": "inc-se-9",
@@ -264,7 +299,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1123",
       "linked_po_id": "po-1123",
-      "linked_po_item_id": "poi-1123-4-93"
+      "linked_po_item_id": "poi-1123-4-93",
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura/ Ocean Freight USD675 / 28000INR+GST +2500INR",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
     },
     {
       "id": "inc-se-10",
@@ -298,7 +338,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1122",
       "linked_po_id": "po-1122",
-      "linked_po_item_id": "poi-close-1122-1-7591"
+      "linked_po_item_id": "poi-close-1122-1-7591",
+      "port_of_loading": "Shanghai",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1,
+      "forwarder_name": null
     },
     {
       "id": "inc-se-11",
@@ -332,7 +377,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1122",
       "linked_po_id": "po-1122",
-      "linked_po_item_id": "poi-close-1122-1-7591"
+      "linked_po_item_id": "poi-close-1122-1-7591",
+      "port_of_loading": "Shanghai",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1,
+      "forwarder_name": null
     },
     {
       "id": "inc-se-12",
@@ -366,7 +416,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1122",
       "linked_po_id": "po-1122",
-      "linked_po_item_id": "poi-close-1122-1-7591"
+      "linked_po_item_id": "poi-close-1122-1-7591",
+      "port_of_loading": "Shanghai",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1,
+      "forwarder_name": null
     },
     {
       "id": "inc-se-13",
@@ -397,7 +452,12 @@
       "price": 0,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.080Z"
+      "created_at": "2026-10-27T05:43:59.080Z",
+      "port_of_loading": "Dalian",
+      "forwarder_name": "Globus O/F$87/24693.12+GST",
+      "sims": "Not Required",
+      "container_type": "LCL",
+      "container_count": 1
     },
     {
       "id": "inc-se-14",
@@ -428,7 +488,12 @@
       "price": 0,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.080Z"
+      "created_at": "2026-10-27T05:43:59.080Z",
+      "port_of_loading": "Shanghai",
+      "forwarder_name": "Ruchi (60088.084INR)",
+      "sims": "Not Required",
+      "container_type": "LCL",
+      "container_count": 1
     },
     {
       "id": "inc-se-15",
@@ -462,7 +527,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1118",
       "linked_po_id": "po-1118",
-      "linked_po_item_id": "poi-1118-4-51"
+      "linked_po_item_id": "poi-1118-4-51",
+      "port_of_loading": "Kobe",
+      "forwarder_name": "Aum Aura O/F 1780, 3000+49814Rail Fght+31625 Shipping Charges",
+      "sims": "Not Required",
+      "container_type": "20ft",
+      "container_count": 1
     },
     {
       "id": "inc-se-16",
@@ -496,7 +566,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-17",
@@ -530,7 +605,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-18",
@@ -564,7 +644,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-19",
@@ -598,7 +683,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-20",
@@ -632,7 +722,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-21",
@@ -666,7 +761,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-22",
@@ -700,7 +800,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-2-32"
+      "linked_po_item_id": "poi-1117-2-32",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-23",
@@ -734,7 +839,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-3-33"
+      "linked_po_item_id": "poi-1117-3-33",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-24",
@@ -768,7 +878,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-4-34"
+      "linked_po_item_id": "poi-1117-4-34",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-25",
@@ -802,7 +917,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-5-35"
+      "linked_po_item_id": "poi-1117-5-35",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-26",
@@ -836,7 +956,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-27",
@@ -870,7 +995,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-28",
@@ -904,7 +1034,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-29",
@@ -938,7 +1073,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-30",
@@ -972,7 +1112,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-31",
@@ -1006,7 +1151,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-32",
@@ -1040,7 +1190,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-33",
@@ -1074,7 +1229,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-34",
@@ -1108,7 +1268,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-35",
@@ -1142,7 +1307,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-36",
@@ -1176,7 +1346,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-37",
@@ -1210,7 +1385,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-1-31"
+      "linked_po_item_id": "poi-1117-1-31",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-38",
@@ -1244,7 +1424,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1117",
       "linked_po_id": "po-1117",
-      "linked_po_item_id": "poi-1117-17-47"
+      "linked_po_item_id": "poi-1117-17-47",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-39",
@@ -1278,7 +1463,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1119",
       "linked_po_id": "po-1119",
-      "linked_po_item_id": "poi-1119-1-52"
+      "linked_po_item_id": "poi-1119-1-52",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-40",
@@ -1312,7 +1502,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1119",
       "linked_po_id": "po-1119",
-      "linked_po_item_id": "poi-1119-2-53"
+      "linked_po_item_id": "poi-1119-2-53",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-41",
@@ -1346,7 +1541,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1119",
       "linked_po_id": "po-1119",
-      "linked_po_item_id": "poi-1119-6-57"
+      "linked_po_item_id": "poi-1119-6-57",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-42",
@@ -1380,7 +1580,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1119",
       "linked_po_id": "po-1119",
-      "linked_po_item_id": "poi-1119-11-62"
+      "linked_po_item_id": "poi-1119-11-62",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-43",
@@ -1414,7 +1619,12 @@
       "created_at": "2026-10-27T05:43:59.080Z",
       "linked_po_number": "1119",
       "linked_po_id": "po-1119",
-      "linked_po_item_id": "poi-1119-15-66"
+      "linked_po_item_id": "poi-1119-15-66",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-44",
@@ -1448,7 +1658,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1119",
       "linked_po_id": "po-1119",
-      "linked_po_item_id": "poi-1119-16-67"
+      "linked_po_item_id": "poi-1119-16-67",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-45",
@@ -1482,7 +1697,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1119",
       "linked_po_id": "po-1119",
-      "linked_po_item_id": "poi-1119-19-70"
+      "linked_po_item_id": "poi-1119-19-70",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-46",
@@ -1516,7 +1736,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1119",
       "linked_po_id": "po-1119",
-      "linked_po_item_id": "poi-1119-20-71"
+      "linked_po_item_id": "poi-1119-20-71",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-47",
@@ -1550,7 +1775,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1119",
       "linked_po_id": "po-1119",
-      "linked_po_item_id": "poi-1119-21-72"
+      "linked_po_item_id": "poi-1119-21-72",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-48",
@@ -1584,7 +1814,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1120",
       "linked_po_id": "po-1120",
-      "linked_po_item_id": "poi-1120-13-87"
+      "linked_po_item_id": "poi-1120-13-87",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-49",
@@ -1618,7 +1853,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1120",
       "linked_po_id": "po-1120",
-      "linked_po_item_id": "poi-1120-14-88"
+      "linked_po_item_id": "poi-1120-14-88",
+      "container_type": "20ft",
+      "container_count": 3,
+      "port_of_loading": null,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-50",
@@ -1649,7 +1889,12 @@
       "price": 720,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.081Z"
+      "created_at": "2026-10-27T05:43:59.081Z",
+      "sims": "Not Required",
+      "container_type": "LCL",
+      "container_count": 1,
+      "port_of_loading": null,
+      "forwarder_name": null
     },
     {
       "id": "inc-se-51",
@@ -1680,7 +1925,12 @@
       "price": 0,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.081Z"
+      "created_at": "2026-10-27T05:43:59.081Z",
+      "port_of_loading": "Shanghai",
+      "forwarder_name": "Ruchi (68$ - INR27259.16)",
+      "sims": "Not Required",
+      "container_type": "LCL",
+      "container_count": 1
     },
     {
       "id": "inc-se-52",
@@ -1711,7 +1961,12 @@
       "price": 0,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.081Z"
+      "created_at": "2026-10-27T05:43:59.081Z",
+      "port_of_loading": "Shanghai",
+      "forwarder_name": "Ruchi (O/F 82/ 65139.96INR)",
+      "sims": "Not Required",
+      "container_type": "LCL",
+      "container_count": 1
     },
     {
       "id": "inc-se-53",
@@ -1745,7 +2000,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-54",
@@ -1779,7 +2039,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-55",
@@ -1813,7 +2078,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-56",
@@ -1847,7 +2117,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-57",
@@ -1881,7 +2156,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-58",
@@ -1915,7 +2195,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-59",
@@ -1949,7 +2234,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-60",
@@ -1983,7 +2273,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-61",
@@ -2017,7 +2312,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-62",
@@ -2051,7 +2351,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-63",
@@ -2085,7 +2390,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-64",
@@ -2119,7 +2429,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-65",
@@ -2153,7 +2468,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-66",
@@ -2187,7 +2507,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-67",
@@ -2221,7 +2546,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-68",
@@ -2255,7 +2585,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-69",
@@ -2289,7 +2624,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-70",
@@ -2323,7 +2663,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-71",
@@ -2357,7 +2702,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-72",
@@ -2391,7 +2741,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-73",
@@ -2425,7 +2780,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-74",
@@ -2459,7 +2819,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-75",
@@ -2493,7 +2858,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-76",
@@ -2527,7 +2897,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-77",
@@ -2561,7 +2936,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-78",
@@ -2595,7 +2975,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-1-108"
+      "linked_po_item_id": "poi-1125-1-108",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-79",
@@ -2629,7 +3014,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-80",
@@ -2663,7 +3053,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-6-113"
+      "linked_po_item_id": "poi-1125-6-113",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-81",
@@ -2697,7 +3092,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1112",
       "linked_po_id": "po-1112",
-      "linked_po_item_id": "poi-1112-1-8"
+      "linked_po_item_id": "poi-1112-1-8",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-82",
@@ -2731,7 +3131,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-83",
@@ -2765,7 +3170,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-84",
@@ -2799,7 +3209,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-85",
@@ -2833,7 +3248,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-86",
@@ -2867,7 +3287,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-87",
@@ -2901,7 +3326,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-88",
@@ -2935,7 +3365,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-89",
@@ -2969,7 +3404,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-90",
@@ -3003,7 +3443,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-91",
@@ -3037,7 +3482,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-92",
@@ -3071,7 +3521,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-93",
@@ -3105,7 +3560,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-4-111"
+      "linked_po_item_id": "poi-1125-4-111",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-94",
@@ -3139,7 +3599,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1125",
       "linked_po_id": "po-1125",
-      "linked_po_item_id": "poi-1125-23-130"
+      "linked_po_item_id": "poi-1125-23-130",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-95",
@@ -3173,7 +3638,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1135",
       "linked_po_id": "po-1135",
-      "linked_po_item_id": "poi-1135-1-180"
+      "linked_po_item_id": "poi-1135-1-180",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 1,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-96",
@@ -3207,7 +3677,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1135",
       "linked_po_id": "po-1135",
-      "linked_po_item_id": "poi-1135-1-180"
+      "linked_po_item_id": "poi-1135-1-180",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 1,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-97",
@@ -3241,7 +3716,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1135",
       "linked_po_id": "po-1135",
-      "linked_po_item_id": "poi-1135-1-180"
+      "linked_po_item_id": "poi-1135-1-180",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 1,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-98",
@@ -3275,7 +3755,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1135",
       "linked_po_id": "po-1135",
-      "linked_po_item_id": "poi-1135-1-180"
+      "linked_po_item_id": "poi-1135-1-180",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 1,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-99",
@@ -3309,7 +3794,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1135",
       "linked_po_id": "po-1135",
-      "linked_po_item_id": "poi-1135-1-180"
+      "linked_po_item_id": "poi-1135-1-180",
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 1,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-100",
@@ -3340,7 +3830,12 @@
       "price": 0,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.081Z"
+      "created_at": "2026-10-27T05:43:59.081Z",
+      "port_of_loading": "Chengdu",
+      "forwarder_name": "Aum Aura(o/f $60+500+1000+500)",
+      "sims": "Not Required",
+      "container_type": "LCL",
+      "container_count": 1
     },
     {
       "id": "inc-se-101",
@@ -3371,7 +3866,12 @@
       "price": 0,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.081Z"
+      "created_at": "2026-10-27T05:43:59.081Z",
+      "port_of_loading": "Dalian",
+      "forwarder_name": "Globus O/F $95+750+4500",
+      "sims": "Not Required",
+      "container_type": "LCL",
+      "container_count": 1
     },
     {
       "id": "inc-se-102",
@@ -3405,7 +3905,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1126",
       "linked_po_id": "po-1126",
-      "linked_po_item_id": "poi-1126-1-131"
+      "linked_po_item_id": "poi-1126-1-131",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-103",
@@ -3439,7 +3944,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1126",
       "linked_po_id": "po-1126",
-      "linked_po_item_id": "poi-1126-2-132"
+      "linked_po_item_id": "poi-1126-2-132",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-104",
@@ -3473,7 +3983,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1127",
       "linked_po_id": "po-1127",
-      "linked_po_item_id": "poi-1127-1-133"
+      "linked_po_item_id": "poi-1127-1-133",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-105",
@@ -3507,7 +4022,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1130",
       "linked_po_id": "po-1130",
-      "linked_po_item_id": "poi-1130-15-166"
+      "linked_po_item_id": "poi-1130-15-166",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-106",
@@ -3541,7 +4061,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1131",
       "linked_po_id": "po-1131",
-      "linked_po_item_id": "poi-1131-2-168"
+      "linked_po_item_id": "poi-1131-2-168",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-107",
@@ -3575,7 +4100,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1137",
       "linked_po_id": "po-1137",
-      "linked_po_item_id": "poi-1137-1-208"
+      "linked_po_item_id": "poi-1137-1-208",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-108",
@@ -3609,7 +4139,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1137",
       "linked_po_id": "po-1137",
-      "linked_po_item_id": "poi-1137-3-210"
+      "linked_po_item_id": "poi-1137-3-210",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-109",
@@ -3643,7 +4178,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1137",
       "linked_po_id": "po-1137",
-      "linked_po_item_id": "poi-1137-4-211"
+      "linked_po_item_id": "poi-1137-4-211",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-110",
@@ -3677,7 +4217,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1137",
       "linked_po_id": "po-1137",
-      "linked_po_item_id": "poi-1137-6-213"
+      "linked_po_item_id": "poi-1137-6-213",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-111",
@@ -3711,7 +4256,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1129",
       "linked_po_id": "po-1129",
-      "linked_po_item_id": "poi-1129-1-145"
+      "linked_po_item_id": "poi-1129-1-145",
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura (O/F$1030$+3000+28675)",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": null
     },
     {
       "id": "inc-se-112",
@@ -3745,7 +4295,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1129",
       "linked_po_id": "po-1129",
-      "linked_po_item_id": "poi-1129-7-151"
+      "linked_po_item_id": "poi-1129-7-151",
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura (O/F$1030$+3000+28675)",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": null
     },
     {
       "id": "inc-se-113",
@@ -3779,7 +4334,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1123",
       "linked_po_id": "po-1123",
-      "linked_po_item_id": "poi-1123-5-94"
+      "linked_po_item_id": "poi-1123-5-94",
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura (O/F$1030$+3000+28675)",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": null
     },
     {
       "id": "inc-se-114",
@@ -3813,7 +4373,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1123",
       "linked_po_id": "po-1123",
-      "linked_po_item_id": "poi-1123-6-95"
+      "linked_po_item_id": "poi-1123-6-95",
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura (O/F$1030$+3000+28675)",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": null
     },
     {
       "id": "inc-se-115",
@@ -3847,7 +4412,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1118",
       "linked_po_id": "po-1118",
-      "linked_po_item_id": "poi-1118-2-49"
+      "linked_po_item_id": "poi-1118-2-49",
+      "port_of_loading": "Kobe",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-116",
@@ -3881,7 +4451,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1118",
       "linked_po_id": "po-1118",
-      "linked_po_item_id": "poi-1118-2-49"
+      "linked_po_item_id": "poi-1118-2-49",
+      "port_of_loading": "Kobe",
+      "container_type": "20ft",
+      "container_count": 2,
+      "forwarder_name": null,
+      "sims": null
     },
     {
       "id": "inc-se-117",
@@ -3915,7 +4490,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1093",
       "linked_po_id": "po-1093",
-      "linked_po_item_id": "poi-1093-2-3"
+      "linked_po_item_id": "poi-1093-2-3",
+      "port_of_loading": "Kobe",
+      "forwarder_name": "Aum Aura(O/F 1780$)",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": null
     },
     {
       "id": "inc-se-118",
@@ -3949,7 +4529,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1093",
       "linked_po_id": "po-1093",
-      "linked_po_item_id": "poi-1093-4-5"
+      "linked_po_item_id": "poi-1093-4-5",
+      "port_of_loading": "Kobe",
+      "forwarder_name": "Aum Aura(O/F 1780$)",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": null
     },
     {
       "id": "inc-se-119",
@@ -3983,7 +4568,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1108",
       "linked_po_id": "po-1108",
-      "linked_po_item_id": "poi-1108-1-6"
+      "linked_po_item_id": "poi-1108-1-6",
+      "port_of_loading": "Kobe",
+      "forwarder_name": "Aum Aura(O/F 1780$)",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": null
     },
     {
       "id": "inc-se-120",
@@ -4017,7 +4607,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1108",
       "linked_po_id": "po-1108",
-      "linked_po_item_id": "poi-1108-2-7"
+      "linked_po_item_id": "poi-1108-2-7",
+      "port_of_loading": "Kobe",
+      "forwarder_name": "Aum Aura(O/F 1780$)",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": null
     },
     {
       "id": "inc-se-121",
@@ -4048,7 +4643,12 @@
       "price": 0,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.081Z"
+      "created_at": "2026-10-27T05:43:59.081Z",
+      "port_of_loading": "Ningbo",
+      "sims": "Not Required",
+      "container_type": "LCL",
+      "container_count": 1,
+      "forwarder_name": null
     },
     {
       "id": "inc-se-122",
@@ -4082,7 +4682,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1127",
       "linked_po_id": "po-1127",
-      "linked_po_item_id": "poi-1127-2-134"
+      "linked_po_item_id": "poi-1127-2-134",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-123",
@@ -4116,7 +4721,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1127",
       "linked_po_id": "po-1127",
-      "linked_po_item_id": "poi-1127-3-135"
+      "linked_po_item_id": "poi-1127-3-135",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-124",
@@ -4150,7 +4760,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1127",
       "linked_po_id": "po-1127",
-      "linked_po_item_id": "poi-1127-3-135"
+      "linked_po_item_id": "poi-1127-3-135",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-125",
@@ -4184,7 +4799,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1130",
       "linked_po_id": "po-1130",
-      "linked_po_item_id": "poi-1130-13-164"
+      "linked_po_item_id": "poi-1130-13-164",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-126",
@@ -4218,7 +4838,12 @@
       "created_at": "2026-10-27T05:43:59.081Z",
       "linked_po_number": "1131",
       "linked_po_id": "po-1131",
-      "linked_po_item_id": "poi-1131-1-167"
+      "linked_po_item_id": "poi-1131-1-167",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-127",
@@ -4252,7 +4877,12 @@
       "created_at": "2026-10-27T05:43:59.082Z",
       "linked_po_number": "1131",
       "linked_po_id": "po-1131",
-      "linked_po_item_id": "poi-1131-3-169"
+      "linked_po_item_id": "poi-1131-3-169",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-128",
@@ -4286,7 +4916,12 @@
       "created_at": "2026-10-27T05:43:59.082Z",
       "linked_po_number": "1137",
       "linked_po_id": "po-1137",
-      "linked_po_item_id": "poi-1137-5-212"
+      "linked_po_item_id": "poi-1137-5-212",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2,
+      "sims": null
     },
     {
       "id": "inc-se-129",
@@ -4317,7 +4952,363 @@
       "price": 0,
       "currency": "USD",
       "source_sheet": "INCOMING SE",
-      "created_at": "2026-10-27T05:43:59.082Z"
+      "created_at": "2026-10-27T05:43:59.082Z",
+      "port_of_loading": "Shanghai",
+      "sims": "Not Required",
+      "container_type": "LCL",
+      "container_count": 1,
+      "forwarder_name": null
+    },
+    {
+      "id": "inc-close-26151",
+      "lot_number": "1847",
+      "make": "China",
+      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_id": "sup-guangdongbaotongmoldmaterials",
+      "grade": "7CrSiMnMoV",
+      "grade_code": "7CrSiMnMoV",
+      "condition": "Black Forged",
+      "dia_w": 300,
+      "width_diameter": 300,
+      "t": 610,
+      "thickness": 610,
+      "l": 1000,
+      "length": 1000,
+      "pieces": 1,
+      "weight": 1486,
+      "customer": "SE",
+      "port": "N.S.",
+      "date_of_shipment": "2026-09-13",
+      "eta_seaport": "2026-10-08",
+      "received_status": "IN_TRANSIT",
+      "heat_no": "26A1359",
+      "heat_number": "26A1359",
+      "delivery_terms": "FOB",
+      "price": 1300,
+      "currency": "USD",
+      "source_sheet": "INCOMING SE",
+      "created_at": "2026-10-27T05:43:59.079Z",
+      "linked_po_number": "1133",
+      "linked_po_id": "po-1133",
+      "linked_po_item_id": "poi-1133-1-170",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura O/F 2875",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    {
+      "id": "inc-close-26152",
+      "lot_number": "1847",
+      "make": "China",
+      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_id": "sup-guangdongbaotongmoldmaterials",
+      "grade": "1.2738",
+      "grade_code": "1.2738",
+      "condition": "BLACK ROLLED",
+      "dia_w": 32,
+      "width_diameter": 32,
+      "t": 2250,
+      "thickness": 2250,
+      "l": 4500,
+      "length": 4500,
+      "pieces": 1,
+      "weight": 2530,
+      "customer": "SE",
+      "port": "N.S.",
+      "date_of_shipment": "2026-09-13",
+      "eta_seaport": "2026-10-08",
+      "received_status": "IN_TRANSIT",
+      "heat_no": "J262A00673",
+      "heat_number": "J262A00673",
+      "delivery_terms": "FOB",
+      "price": 970,
+      "currency": "USD",
+      "source_sheet": "INCOMING SE",
+      "created_at": "2026-10-27T05:43:59.079Z",
+      "linked_po_number": "1134",
+      "linked_po_id": "po-1134",
+      "linked_po_item_id": "poi-1134-1-171",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura O/F 2875",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    {
+      "id": "inc-close-26153",
+      "lot_number": "1847",
+      "make": "China",
+      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_id": "sup-guangdongbaotongmoldmaterials",
+      "grade": "1.2738",
+      "grade_code": "1.2738",
+      "condition": "BLACK ROLLED",
+      "dia_w": 36,
+      "width_diameter": 36,
+      "t": 2250,
+      "thickness": 2250,
+      "l": 4500,
+      "length": 4500,
+      "pieces": 1,
+      "weight": 2940,
+      "customer": "SE",
+      "port": "N.S.",
+      "date_of_shipment": "2026-09-13",
+      "eta_seaport": "2026-10-08",
+      "received_status": "IN_TRANSIT",
+      "heat_no": "J261A01416",
+      "heat_number": "J261A01416",
+      "delivery_terms": "FOB",
+      "price": 970,
+      "currency": "USD",
+      "source_sheet": "INCOMING SE",
+      "created_at": "2026-10-27T05:43:59.079Z",
+      "linked_po_number": "1134",
+      "linked_po_id": "po-1134",
+      "linked_po_item_id": "poi-1134-2-172",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura O/F 2875",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    {
+      "id": "inc-close-26154",
+      "lot_number": "1847",
+      "make": "China",
+      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_id": "sup-guangdongbaotongmoldmaterials",
+      "grade": "1.2738",
+      "grade_code": "1.2738",
+      "condition": "BLACK ROLLED",
+      "dia_w": 40,
+      "width_diameter": 40,
+      "t": 2250,
+      "thickness": 2250,
+      "l": 4500,
+      "length": 4500,
+      "pieces": 1,
+      "weight": 3300,
+      "customer": "SE",
+      "port": "N.S.",
+      "date_of_shipment": "2026-09-13",
+      "eta_seaport": "2026-10-08",
+      "received_status": "IN_TRANSIT",
+      "heat_no": "J262A00676",
+      "heat_number": "J262A00676",
+      "delivery_terms": "FOB",
+      "price": 970,
+      "currency": "USD",
+      "source_sheet": "INCOMING SE",
+      "created_at": "2026-10-27T05:43:59.079Z",
+      "linked_po_number": "1134",
+      "linked_po_id": "po-1134",
+      "linked_po_item_id": "poi-1134-3-173",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura O/F 2875",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    {
+      "id": "inc-close-26155",
+      "lot_number": "1847",
+      "make": "China",
+      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_id": "sup-guangdongbaotongmoldmaterials",
+      "grade": "1.2738",
+      "grade_code": "1.2738",
+      "condition": "BLACK ROLLED",
+      "dia_w": 50,
+      "width_diameter": 50,
+      "t": 2250,
+      "thickness": 2250,
+      "l": 4500,
+      "length": 4500,
+      "pieces": 1,
+      "weight": 3970,
+      "customer": "SE",
+      "port": "N.S.",
+      "date_of_shipment": "2026-09-13",
+      "eta_seaport": "2026-10-08",
+      "received_status": "IN_TRANSIT",
+      "heat_no": "J262A00674",
+      "heat_number": "J262A00674",
+      "delivery_terms": "FOB",
+      "price": 970,
+      "currency": "USD",
+      "source_sheet": "INCOMING SE",
+      "created_at": "2026-10-27T05:43:59.080Z",
+      "linked_po_number": "1134",
+      "linked_po_id": "po-1134",
+      "linked_po_item_id": "poi-1134-4-174",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura O/F 2875",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    {
+      "id": "inc-close-26156",
+      "lot_number": "1847",
+      "make": "China",
+      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_id": "sup-guangdongbaotongmoldmaterials",
+      "grade": "1.2738",
+      "grade_code": "1.2738",
+      "condition": "BLACK ROLLED",
+      "dia_w": 56,
+      "width_diameter": 56,
+      "t": 2250,
+      "thickness": 2250,
+      "l": 4500,
+      "length": 4500,
+      "pieces": 1,
+      "weight": 4520,
+      "customer": "SE",
+      "port": "N.S.",
+      "date_of_shipment": "2026-09-13",
+      "eta_seaport": "2026-10-08",
+      "received_status": "IN_TRANSIT",
+      "heat_no": "J262A01419",
+      "heat_number": "J262A01419",
+      "delivery_terms": "FOB",
+      "price": 970,
+      "currency": "USD",
+      "source_sheet": "INCOMING SE",
+      "created_at": "2026-10-27T05:43:59.080Z",
+      "linked_po_number": "1134",
+      "linked_po_id": "po-1134",
+      "linked_po_item_id": "poi-1134-5-175",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura O/F 2875",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    {
+      "id": "inc-close-26157",
+      "lot_number": "1847",
+      "make": "China",
+      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_id": "sup-guangdongbaotongmoldmaterials",
+      "grade": "1.2085",
+      "grade_code": "1.2085",
+      "condition": "BLACK ROLLED",
+      "dia_w": 70,
+      "width_diameter": 70,
+      "t": 1200,
+      "thickness": 1200,
+      "l": 2190,
+      "length": 2190,
+      "pieces": 1,
+      "weight": 1431,
+      "customer": "SE",
+      "port": "N.S.",
+      "date_of_shipment": "2026-09-13",
+      "eta_seaport": "2026-10-08",
+      "received_status": "IN_TRANSIT",
+      "heat_no": "17538705",
+      "heat_number": "17538705",
+      "delivery_terms": "FOB",
+      "price": 1760,
+      "currency": "USD",
+      "source_sheet": "INCOMING SE",
+      "created_at": "2026-10-27T05:43:59.080Z",
+      "linked_po_number": "1134",
+      "linked_po_id": "po-1134",
+      "linked_po_item_id": "poi-1134-9-179",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura O/F 2875",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    {
+      "id": "inc-close-26158",
+      "lot_number": "1847",
+      "make": "China",
+      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_id": "sup-guangdongbaotongmoldmaterials",
+      "grade": "1.2085",
+      "grade_code": "1.2085",
+      "condition": "BLACK ROLLED",
+      "dia_w": 20,
+      "width_diameter": 20,
+      "t": 2210,
+      "thickness": 2210,
+      "l": 2490,
+      "length": 2490,
+      "pieces": 1,
+      "weight": 870,
+      "customer": "SE",
+      "port": "N.S.",
+      "date_of_shipment": "2026-09-13",
+      "eta_seaport": "2026-10-08",
+      "received_status": "IN_TRANSIT",
+      "heat_no": "17538702",
+      "heat_number": "17538702",
+      "delivery_terms": "FOB",
+      "price": 1760,
+      "currency": "USD",
+      "source_sheet": "INCOMING SE",
+      "created_at": "2026-10-27T05:43:59.080Z",
+      "linked_po_number": "1134",
+      "linked_po_id": "po-1134",
+      "linked_po_item_id": "poi-1134-7-177",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura O/F 2875",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    {
+      "id": "inc-close-26159",
+      "lot_number": "1847",
+      "make": "China",
+      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
+      "supplier_id": "sup-guangdongbaotongmoldmaterials",
+      "grade": "1.2085",
+      "grade_code": "1.2085",
+      "condition": "BLACK ROLLED",
+      "dia_w": 85,
+      "width_diameter": 85,
+      "t": 2230,
+      "thickness": 2230,
+      "l": 4580,
+      "length": 4580,
+      "pieces": 1,
+      "weight": 6590,
+      "customer": "SE",
+      "port": "N.S.",
+      "date_of_shipment": "2026-09-13",
+      "eta_seaport": "2026-10-08",
+      "received_status": "IN_TRANSIT",
+      "heat_no": "17538705",
+      "heat_number": "17538705",
+      "delivery_terms": "FOB",
+      "price": 1760,
+      "currency": "USD",
+      "source_sheet": "INCOMING SE",
+      "created_at": "2026-10-27T05:43:59.080Z",
+      "linked_po_number": "1134",
+      "linked_po_id": "po-1134",
+      "linked_po_item_id": "poi-1134-8-178",
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura O/F 2875",
+      "sims": "Done",
+      "container_type": "20ft",
+      "container_count": 1
     }
   ],
   "received": [
@@ -843466,312 +844457,6 @@
       "currency": "USD",
       "source_sheet": "INCOMING CLOSE",
       "created_at": "2026-10-27T05:43:59.079Z"
-    },
-    {
-      "id": "inc-close-26151",
-      "lot_number": "1847",
-      "make": "China",
-      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_id": "sup-guangdongbaotongmoldmaterials",
-      "grade": "7CrSiMnMoV",
-      "grade_code": "7CrSiMnMoV",
-      "condition": "Black Forged",
-      "dia_w": 300,
-      "width_diameter": 300,
-      "t": 610,
-      "thickness": 610,
-      "l": 1000,
-      "length": 1000,
-      "pieces": 1,
-      "weight": 1486,
-      "customer": "SE",
-      "port": "N.S.",
-      "date_of_shipment": "2026-09-13",
-      "eta_seaport": "2026-10-08",
-      "received_status": "RECEIVED",
-      "heat_no": "26A1359",
-      "heat_number": "26A1359",
-      "delivery_terms": "FOB",
-      "price": 1300,
-      "currency": "USD",
-      "source_sheet": "INCOMING CLOSE",
-      "created_at": "2026-10-27T05:43:59.079Z",
-      "linked_po_number": "1133",
-      "linked_po_id": "po-1133",
-      "linked_po_item_id": "poi-1133-1-170"
-    },
-    {
-      "id": "inc-close-26152",
-      "lot_number": "1847",
-      "make": "China",
-      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_id": "sup-guangdongbaotongmoldmaterials",
-      "grade": "1.2738",
-      "grade_code": "1.2738",
-      "condition": "BLACK ROLLED",
-      "dia_w": 32,
-      "width_diameter": 32,
-      "t": 2250,
-      "thickness": 2250,
-      "l": 4500,
-      "length": 4500,
-      "pieces": 1,
-      "weight": 2530,
-      "customer": "SE",
-      "port": "N.S.",
-      "date_of_shipment": "2026-09-13",
-      "eta_seaport": "2026-10-08",
-      "received_status": "RECEIVED",
-      "heat_no": "J262A00673",
-      "heat_number": "J262A00673",
-      "delivery_terms": "FOB",
-      "price": 970,
-      "currency": "USD",
-      "source_sheet": "INCOMING CLOSE",
-      "created_at": "2026-10-27T05:43:59.079Z",
-      "linked_po_number": "1134",
-      "linked_po_id": "po-1134",
-      "linked_po_item_id": "poi-1134-1-171"
-    },
-    {
-      "id": "inc-close-26153",
-      "lot_number": "1847",
-      "make": "China",
-      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_id": "sup-guangdongbaotongmoldmaterials",
-      "grade": "1.2738",
-      "grade_code": "1.2738",
-      "condition": "BLACK ROLLED",
-      "dia_w": 36,
-      "width_diameter": 36,
-      "t": 2250,
-      "thickness": 2250,
-      "l": 4500,
-      "length": 4500,
-      "pieces": 1,
-      "weight": 2940,
-      "customer": "SE",
-      "port": "N.S.",
-      "date_of_shipment": "2026-09-13",
-      "eta_seaport": "2026-10-08",
-      "received_status": "RECEIVED",
-      "heat_no": "J261A01416",
-      "heat_number": "J261A01416",
-      "delivery_terms": "FOB",
-      "price": 970,
-      "currency": "USD",
-      "source_sheet": "INCOMING CLOSE",
-      "created_at": "2026-10-27T05:43:59.079Z",
-      "linked_po_number": "1134",
-      "linked_po_id": "po-1134",
-      "linked_po_item_id": "poi-1134-2-172"
-    },
-    {
-      "id": "inc-close-26154",
-      "lot_number": "1847",
-      "make": "China",
-      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_id": "sup-guangdongbaotongmoldmaterials",
-      "grade": "1.2738",
-      "grade_code": "1.2738",
-      "condition": "BLACK ROLLED",
-      "dia_w": 40,
-      "width_diameter": 40,
-      "t": 2250,
-      "thickness": 2250,
-      "l": 4500,
-      "length": 4500,
-      "pieces": 1,
-      "weight": 3300,
-      "customer": "SE",
-      "port": "N.S.",
-      "date_of_shipment": "2026-09-13",
-      "eta_seaport": "2026-10-08",
-      "received_status": "RECEIVED",
-      "heat_no": "J262A00676",
-      "heat_number": "J262A00676",
-      "delivery_terms": "FOB",
-      "price": 970,
-      "currency": "USD",
-      "source_sheet": "INCOMING CLOSE",
-      "created_at": "2026-10-27T05:43:59.079Z",
-      "linked_po_number": "1134",
-      "linked_po_id": "po-1134",
-      "linked_po_item_id": "poi-1134-3-173"
-    },
-    {
-      "id": "inc-close-26155",
-      "lot_number": "1847",
-      "make": "China",
-      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_id": "sup-guangdongbaotongmoldmaterials",
-      "grade": "1.2738",
-      "grade_code": "1.2738",
-      "condition": "BLACK ROLLED",
-      "dia_w": 50,
-      "width_diameter": 50,
-      "t": 2250,
-      "thickness": 2250,
-      "l": 4500,
-      "length": 4500,
-      "pieces": 1,
-      "weight": 3970,
-      "customer": "SE",
-      "port": "N.S.",
-      "date_of_shipment": "2026-09-13",
-      "eta_seaport": "2026-10-08",
-      "received_status": "RECEIVED",
-      "heat_no": "J262A00674",
-      "heat_number": "J262A00674",
-      "delivery_terms": "FOB",
-      "price": 970,
-      "currency": "USD",
-      "source_sheet": "INCOMING CLOSE",
-      "created_at": "2026-10-27T05:43:59.080Z",
-      "linked_po_number": "1134",
-      "linked_po_id": "po-1134",
-      "linked_po_item_id": "poi-1134-4-174"
-    },
-    {
-      "id": "inc-close-26156",
-      "lot_number": "1847",
-      "make": "China",
-      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_id": "sup-guangdongbaotongmoldmaterials",
-      "grade": "1.2738",
-      "grade_code": "1.2738",
-      "condition": "BLACK ROLLED",
-      "dia_w": 56,
-      "width_diameter": 56,
-      "t": 2250,
-      "thickness": 2250,
-      "l": 4500,
-      "length": 4500,
-      "pieces": 1,
-      "weight": 4520,
-      "customer": "SE",
-      "port": "N.S.",
-      "date_of_shipment": "2026-09-13",
-      "eta_seaport": "2026-10-08",
-      "received_status": "RECEIVED",
-      "heat_no": "J262A01419",
-      "heat_number": "J262A01419",
-      "delivery_terms": "FOB",
-      "price": 970,
-      "currency": "USD",
-      "source_sheet": "INCOMING CLOSE",
-      "created_at": "2026-10-27T05:43:59.080Z",
-      "linked_po_number": "1134",
-      "linked_po_id": "po-1134",
-      "linked_po_item_id": "poi-1134-5-175"
-    },
-    {
-      "id": "inc-close-26157",
-      "lot_number": "1847",
-      "make": "China",
-      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_id": "sup-guangdongbaotongmoldmaterials",
-      "grade": "1.2085",
-      "grade_code": "1.2085",
-      "condition": "BLACK ROLLED",
-      "dia_w": 70,
-      "width_diameter": 70,
-      "t": 1200,
-      "thickness": 1200,
-      "l": 2190,
-      "length": 2190,
-      "pieces": 1,
-      "weight": 1431,
-      "customer": "SE",
-      "port": "N.S.",
-      "date_of_shipment": "2026-09-13",
-      "eta_seaport": "2026-10-08",
-      "received_status": "RECEIVED",
-      "heat_no": "17538705",
-      "heat_number": "17538705",
-      "delivery_terms": "FOB",
-      "price": 1760,
-      "currency": "USD",
-      "source_sheet": "INCOMING CLOSE",
-      "created_at": "2026-10-27T05:43:59.080Z",
-      "linked_po_number": "1134",
-      "linked_po_id": "po-1134",
-      "linked_po_item_id": "poi-1134-9-179"
-    },
-    {
-      "id": "inc-close-26158",
-      "lot_number": "1847",
-      "make": "China",
-      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_id": "sup-guangdongbaotongmoldmaterials",
-      "grade": "1.2085",
-      "grade_code": "1.2085",
-      "condition": "BLACK ROLLED",
-      "dia_w": 20,
-      "width_diameter": 20,
-      "t": 2210,
-      "thickness": 2210,
-      "l": 2490,
-      "length": 2490,
-      "pieces": 1,
-      "weight": 870,
-      "customer": "SE",
-      "port": "N.S.",
-      "date_of_shipment": "2026-09-13",
-      "eta_seaport": "2026-10-08",
-      "received_status": "RECEIVED",
-      "heat_no": "17538702",
-      "heat_number": "17538702",
-      "delivery_terms": "FOB",
-      "price": 1760,
-      "currency": "USD",
-      "source_sheet": "INCOMING CLOSE",
-      "created_at": "2026-10-27T05:43:59.080Z",
-      "linked_po_number": "1134",
-      "linked_po_id": "po-1134",
-      "linked_po_item_id": "poi-1134-7-177"
-    },
-    {
-      "id": "inc-close-26159",
-      "lot_number": "1847",
-      "make": "China",
-      "supplier": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_name": "Guangdong Baotong Mold Materials Co Ltd.",
-      "supplier_id": "sup-guangdongbaotongmoldmaterials",
-      "grade": "1.2085",
-      "grade_code": "1.2085",
-      "condition": "BLACK ROLLED",
-      "dia_w": 85,
-      "width_diameter": 85,
-      "t": 2230,
-      "thickness": 2230,
-      "l": 4580,
-      "length": 4580,
-      "pieces": 1,
-      "weight": 6590,
-      "customer": "SE",
-      "port": "N.S.",
-      "date_of_shipment": "2026-09-13",
-      "eta_seaport": "2026-10-08",
-      "received_status": "RECEIVED",
-      "heat_no": "17538705",
-      "heat_number": "17538705",
-      "delivery_terms": "FOB",
-      "price": 1760,
-      "currency": "USD",
-      "source_sheet": "INCOMING CLOSE",
-      "created_at": "2026-10-27T05:43:59.080Z",
-      "linked_po_number": "1134",
-      "linked_po_id": "po-1134",
-      "linked_po_item_id": "poi-1134-8-178"
     }
   ]
 }
