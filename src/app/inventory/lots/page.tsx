@@ -82,44 +82,66 @@ function LotsContent() {
     return dataStore.getLots().filter(l => Boolean(l.lot_number && l.lot_number.trim() && !l.lot_number.startsWith('LOT-undefined')));
   }, [dataVersion]);
 
-  // Derived metadata map for each lot: Material, Arriving Date, and Payment Terms
+  // Derived metadata map for each lot: Material, Arriving Date, Payment Terms, and Linked POs
   const lotMetaMap = useMemo(() => {
-    const map: Record<string, { material: string; arrivingDate: string; paymentTerms: string }> = {};
+    const map: Record<string, { material: string; arrivingDate: string; paymentTerms: string; linkedPos: string[] }> = {};
     const allPOs = dataStore.getPurchaseOrders();
     const allIncoming = dataStore.getIncomingStock();
     const allReceipts = dataStore.getReceipts();
 
     for (const lot of allLots) {
+      const lotKey = (lot.lot_number || '').trim().toLowerCase();
       let material = lot.section_name ? `${lot.section_name} Tool Steel` : 'Tool & Die Steel';
       let arrivingDate = '';
       let paymentTerms = 'DP at sight';
 
-      // 1. Look up from incoming stock
-      const inc = allIncoming.find(i => i.lot_number === lot.lot_number);
-      if (inc) {
-        if (inc.eta_seaport) arrivingDate = inc.eta_seaport;
+      const poSet = new Set<string>();
 
+      // 1. From lot directly
+      if (lot.po_number) {
+        lot.po_number.split(',').forEach(p => {
+          const cleaned = p.trim();
+          if (cleaned) poSet.add(cleaned);
+        });
+      }
+      if (lot.linked_pos && Array.isArray(lot.linked_pos)) {
+        lot.linked_pos.forEach(p => {
+          if (p && p.trim()) poSet.add(p.trim());
+        });
+      }
+
+      // 2. Look up from incoming stock
+      const matchingIncs = allIncoming.filter(i => (i.lot_number || '').trim().toLowerCase() === lotKey);
+      matchingIncs.forEach(inc => {
+        if (inc.linked_po_number?.trim()) {
+          poSet.add(inc.linked_po_number.trim());
+        }
+        if (!arrivingDate && inc.eta_seaport) arrivingDate = inc.eta_seaport;
         if (inc.payment_terms) paymentTerms = inc.payment_terms;
         if (inc.condition || inc.make) {
           material = [inc.make, inc.condition].filter(Boolean).join(' • ') || inc.grade || material;
         }
-      }
+      });
 
-      // 2. Look up from PO and items
-      if (lot.po_number) {
-        const po = allPOs.find(p => p.po_number === lot.po_number);
-        if (po) {
+      // 3. Look up from PO and items
+      allPOs.forEach(po => {
+        const hasItem = po.items?.some(it => 
+          (it.lot_number || '').trim().toLowerCase() === lotKey ||
+          it.receipts?.some(r => (r.lot_number || '').trim().toLowerCase() === lotKey) ||
+          it.id === lot.purchase_order_item_id
+        );
+        if (hasItem && po.po_number?.trim()) {
+          poSet.add(po.po_number.trim());
           if (po.payment_terms && (!paymentTerms || paymentTerms === 'DP at sight')) {
             paymentTerms = po.payment_terms;
           }
           if (!arrivingDate && po.expected_delivery_date) {
             arrivingDate = po.expected_delivery_date;
           }
-          const item = po.items?.find(it => it.lot_number === lot.lot_number || it.id === lot.purchase_order_item_id);
+          const item = po.items?.find(it => (it.lot_number || '').trim().toLowerCase() === lotKey || it.id === lot.purchase_order_item_id);
           if (item) {
             if (item.eta_seaport) arrivingDate = item.eta_seaport;
             else if (item.expected_delivery_date && !arrivingDate) arrivingDate = item.expected_delivery_date;
-
             if (item.payment_terms) paymentTerms = item.payment_terms;
             const matParts = [item.condition_name, item.treatment].filter(Boolean);
             if (matParts.length > 0) {
@@ -127,10 +149,10 @@ function LotsContent() {
             }
           }
         }
-      }
+      });
 
       if (!arrivingDate) {
-        const rc = allReceipts.find(r => r.lot_number === lot.lot_number || r.lot_id === lot.id);
+        const rc = allReceipts.find(r => (r.lot_number || '').trim().toLowerCase() === lotKey || r.lot_id === lot.id);
         if (rc?.receipt_date) arrivingDate = rc.receipt_date;
         else if (lot.created_at) arrivingDate = lot.created_at.split('T')[0];
       }
@@ -138,7 +160,8 @@ function LotsContent() {
       map[lot.id] = {
         material,
         arrivingDate,
-        paymentTerms
+        paymentTerms,
+        linkedPos: Array.from(poSet)
       };
     }
     return map;
@@ -172,7 +195,7 @@ function LotsContent() {
           const matchesLot = (l.lot_number || '').toLowerCase().includes(q);
           const matchesGrade = (l.grade_code || '').toLowerCase().includes(q);
           const matchesSupplier = (l.supplier_name || '').toLowerCase().includes(q);
-          const matchesPO = (l.po_number || '').toLowerCase().includes(q);
+          const matchesPO = (l.po_number || '').toLowerCase().includes(q) || (meta?.linkedPos || []).some(p => p.toLowerCase().includes(q));
           const matchesDim = (l.dimensions_display || '').toLowerCase().includes(q);
           const matchesLoc = (l.warehouse_location || '').toLowerCase().includes(q);
           const matchesMat = (meta?.material || '').toLowerCase().includes(q);
@@ -457,15 +480,19 @@ function LotsContent() {
   const getLotIncomingData = (lot: Lot) => {
     const incItems = dataStore.getIncomingStockByLot(lot.lot_number);
     const allPOs = dataStore.getPurchaseOrders();
-    const po = allPOs.find(p => p.po_number === lot.po_number);
-    const item = po?.items?.find(it => it.lot_number === lot.lot_number || it.id === lot.purchase_order_item_id);
-    const inc = incItems[0];
     const meta = lotMetaMap[lot.id];
+    const linkedPos = meta?.linkedPos || [];
+    const primaryPoNum = linkedPos[0] || (lot.po_number ? lot.po_number.split(',')[0].trim() : undefined);
+    const po = allPOs.find(p => p.po_number === primaryPoNum);
+    const item = po?.items?.find(it => (it.lot_number || '').trim().toLowerCase() === (lot.lot_number || '').trim().toLowerCase() || it.id === lot.purchase_order_item_id);
+    const inc = incItems[0];
 
     return {
       make: inc?.make || po?.origin || (po as any)?.origin_make_name || 'Standard',
       supplier: lot.supplier_name || inc?.supplier || po?.supplier_name || '—',
       lot_number: lot.lot_number,
+      linked_pos: linkedPos,
+      linked_pos_display: linkedPos.length > 0 ? linkedPos.map(p => `PO ${p}`).join(', ') : 'Direct / None',
       grade: inc?.grade || lot.grade_code || item?.grade_code || '—',
       condition: inc?.condition || item?.condition_name || item?.treatment || lot.section_name || '—',
       dia_w: inc?.dia_w !== undefined && inc?.dia_w !== null ? inc.dia_w : (item?.diameter_width ?? '—'),
@@ -495,6 +522,7 @@ function LotsContent() {
       'Make': item.make || 'Standard',
       'Supplier': item.supplier || selectedLot.supplier_name || '—',
       'LOT': selectedLot.lot_number,
+      'Linked PO': item.poNumber ? `PO ${item.poNumber}` : 'Direct / None',
       'Grade': item.grade,
       'Condition': item.condition || '—',
       'DIA/W': (item as any).dia_w ?? '',
@@ -529,6 +557,7 @@ function LotsContent() {
         'Make': d.make,
         'Supplier': d.supplier,
         'LOT': d.lot_number,
+        'Linked PO': d.linked_pos_display,
         'Grade': d.grade,
         'Condition': d.condition,
         'DIA/W': d.dia_w,
@@ -740,6 +769,7 @@ function LotsContent() {
                     </span>
                   </div>
                 </th>
+                <th className="table-header">Linked PO</th>
                 <th className="table-header">Grade</th>
                 <th className="table-header">Condition</th>
                 <th className="table-header text-right">DIA/W</th>
@@ -766,7 +796,7 @@ function LotsContent() {
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredLots.length === 0 ? (
                 <tr>
-                  <td colSpan={24} className="py-12 text-center text-slate-400">
+                  <td colSpan={25} className="py-12 text-center text-slate-400">
                     <Truck className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                     <p className="font-semibold text-slate-600">No lots found matching your filter criteria.</p>
                     <p className="text-[11px] text-slate-400 mt-1">Try resetting your filters or adjusting your search term.</p>
@@ -787,6 +817,26 @@ function LotsContent() {
                         <span className="px-2 py-0.5 rounded font-mono font-bold text-xs bg-slate-900 text-white shadow-sm">
                           {d.lot_number}
                         </span>
+                      </td>
+                      <td className="table-cell">
+                        {d.linked_pos && d.linked_pos.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-1 max-w-[170px]">
+                            {d.linked_pos.map((poNum) => (
+                              <Link
+                                key={poNum}
+                                href={`/purchasing/purchase-orders/${poNum}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 hover:text-blue-900 border border-blue-200 transition-colors"
+                                title={`Open PO ${poNum}`}
+                              >
+                                <span>PO {poNum}</span>
+                                <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                              </Link>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 font-normal">Direct / None</span>
+                        )}
                       </td>
                       <td className="table-cell font-bold text-slate-900">{d.grade}</td>
                       <td className="table-cell text-slate-600">{d.condition}</td>
@@ -1020,6 +1070,7 @@ function LotsContent() {
                             <th className="table-header">Make</th>
                             <th className="table-header">Supplier</th>
                             <th className="table-header">LOT</th>
+                            <th className="table-header">Linked PO</th>
                             <th className="table-header">Grade</th>
                             <th className="table-header">Condition</th>
                             <th className="table-header text-right">DIA/W</th>
@@ -1045,7 +1096,7 @@ function LotsContent() {
                         <tbody className="divide-y divide-slate-100">
                           {filteredLotItems.length === 0 ? (
                             <tr>
-                              <td colSpan={23} className="py-8 text-center text-slate-400">
+                              <td colSpan={24} className="py-8 text-center text-slate-400">
                                 No items found matching &quot;{lotItemSearch}&quot;.
                               </td>
                             </tr>
@@ -1055,18 +1106,22 @@ function LotsContent() {
                                 <td className="table-cell font-medium text-slate-800">{item.make || 'Standard'}</td>
                                 <td className="table-cell text-slate-700 truncate max-w-[120px]" title={item.supplier || ''}>{item.supplier || '—'}</td>
                                 <td className="table-cell">
-                                  <div className="flex flex-col">
-                                    <span className="font-mono font-bold text-slate-900">{selectedLot.lot_number}</span>
-                                    {item.poNumber && (
-                                      <Link 
-                                        href={`/purchasing/purchase-orders/${item.poNumber}`}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="text-[10px] text-blue-600 hover:underline font-semibold"
-                                      >
-                                        PO {item.poNumber}
-                                      </Link>
-                                    )}
-                                  </div>
+                                  <span className="font-mono font-bold text-slate-900">{selectedLot.lot_number}</span>
+                                </td>
+                                <td className="table-cell">
+                                  {item.poNumber ? (
+                                    <Link 
+                                      href={`/purchasing/purchase-orders/${item.poNumber}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 hover:text-blue-900 border border-blue-200 transition-colors"
+                                      title={`Open PO ${item.poNumber}`}
+                                    >
+                                      <span>PO {item.poNumber}</span>
+                                      <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                                    </Link>
+                                  ) : (
+                                    <span className="text-slate-400 font-normal">Direct / None</span>
+                                  )}
                                 </td>
                                 <td className="table-cell font-bold text-slate-900">{item.grade}</td>
                                 <td className="table-cell text-slate-600">{item.condition || '—'}</td>
