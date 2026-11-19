@@ -190,6 +190,7 @@ export interface PurchaseOrderItem {
   carried_forward_to_item_id?: string | null;
   created_from_item_id?: string | null;
   created_from_po_number?: string | null;
+  is_carried_forward?: boolean;
   unit: string;
   purchase_price: number;
   currency: string;

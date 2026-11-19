@@ -775,6 +775,7 @@ class Store {
     if (updates.expected_delivery_date !== undefined) item.expected_delivery_date = updates.expected_delivery_date || null;
     if (updates.status !== undefined) item.status = updates.status;
     if (updates.remarks !== undefined) item.remarks = updates.remarks ? String(updates.remarks).trim() : null;
+    if (updates.is_carried_forward !== undefined) item.is_carried_forward = updates.is_carried_forward;
 
     // Recalculate balance and aggregates
     this.computeItemQuantities(item);
@@ -834,6 +835,13 @@ class Store {
       item.line_number = idx + 1;
     });
 
+    // Remove associated incoming stock items if any
+    if (this.state.incomingStock) {
+      this.state.incomingStock = this.state.incomingStock.filter(
+        i => !(i.linked_po_number === po.po_number && (i.id.includes(itemId) || (removedItem.lot_number && i.lot_number === removedItem.lot_number && (!po.items || !po.items.some(other => other.id !== itemId && other.lot_number === removedItem.lot_number)))))
+      );
+    }
+
     this.recomputePOAggregates(po);
 
     this.addAuditLog(
@@ -841,6 +849,47 @@ class Store {
       'purchase_order_items',
       itemId,
       `Deleted item #${removedItem.line_number} (${removedItem.grade_code}) from PO ${po.po_number}`
+    );
+
+    this.save();
+    return true;
+  }
+
+  public deletePurchaseOrderItemsBulk(poIdOrNumber: string, itemIds: string[]): boolean {
+    const po = this.state.purchaseOrders.find(
+      p => p.id === poIdOrNumber || p.po_number === poIdOrNumber
+    );
+    if (!po || !po.items || itemIds.length === 0) return false;
+
+    const idSet = new Set(itemIds);
+    const removedItems = po.items.filter(i => idSet.has(i.id));
+    if (removedItems.length === 0) return false;
+
+    // Remove associated receipts for these items
+    this.state.receipts = this.state.receipts.filter(r => !idSet.has(r.purchase_order_item_id));
+
+    // Remove associated incoming stock items
+    if (this.state.incomingStock) {
+      this.state.incomingStock = this.state.incomingStock.filter(
+        i => !(i.linked_po_number === po.po_number && Array.from(idSet).some(id => i.id.includes(id)))
+      );
+    }
+
+    // Remove items from PO
+    po.items = po.items.filter(i => !idSet.has(i.id));
+
+    // Re-index remaining line numbers
+    po.items.forEach((item, idx) => {
+      item.line_number = idx + 1;
+    });
+
+    this.recomputePOAggregates(po);
+
+    this.addAuditLog(
+      'PO_ITEMS_BULK_DELETE',
+      'purchase_order_items',
+      po.id,
+      `Deleted ${removedItems.length} items from PO ${po.po_number}: ${removedItems.map(i => `#${i.line_number} (${i.grade_code})`).join(', ')}`
     );
 
     this.save();
@@ -870,6 +919,20 @@ class Store {
 
     const qty = Number(params.receivedQuantity);
     if (isNaN(qty) || qty <= 0) throw new Error(`Invalid received quantity: ${params.receivedQuantity}`);
+
+    const isCarryForward = Boolean(
+      item.is_carried_forward ||
+      item.created_from_item_id ||
+      item.remarks?.toLowerCase().includes('carry forward') ||
+      Number(item.ordered_quantity) === 0
+    );
+
+    if (isCarryForward) {
+      item.is_carried_forward = true;
+      if (Number(item.ordered_quantity) === 0) {
+        item.ordered_quantity = (item.ready_quantity || 0) + qty;
+      }
+    }
 
     const lotNo = params.lotNumber.trim();
     let lot = this.state.lots.find(l => l.lot_number.toLowerCase() === lotNo.toLowerCase());
@@ -990,6 +1053,20 @@ class Store {
 
     const item = po.items?.find(i => i.id === params.itemId);
     if (!item) throw new Error(`PO Line Item ${params.itemId} not found`);
+
+    const isCarryForward = Boolean(
+      item.is_carried_forward ||
+      item.created_from_item_id ||
+      item.remarks?.toLowerCase().includes('carry forward') ||
+      Number(item.ordered_quantity) === 0
+    );
+
+    if (isCarryForward) {
+      item.is_carried_forward = true;
+      if (Number(item.ordered_quantity) === 0) {
+        item.ordered_quantity = item.ready_quantity || item.received_quantity || 0;
+      }
+    }
 
     item.status = 'In Transit';
     item.date_of_shipment = params.dateOfShipment;
@@ -1151,9 +1228,26 @@ class Store {
     const item = po.items?.find(i => i.id === params.itemId);
     if (!item) throw new Error(`PO Line Item ${params.itemId} not found`);
 
+    const isCarryForward = Boolean(
+      item.is_carried_forward ||
+      item.created_from_item_id ||
+      item.remarks?.toLowerCase().includes('carry forward') ||
+      Number(item.ordered_quantity) === 0
+    );
+
+    if (isCarryForward) {
+      item.is_carried_forward = true;
+      if (Number(item.ordered_quantity) === 0) {
+        item.ordered_quantity = item.ready_quantity || item.received_quantity || 0;
+      }
+    }
+
     item.status = 'Received';
     if (!item.received_quantity || item.received_quantity <= 0) {
       item.received_quantity = item.ready_quantity || item.ordered_quantity;
+    }
+    if (isCarryForward && Number(item.ordered_quantity) === 0 && (item.received_quantity || 0) > 0) {
+      item.ordered_quantity = item.received_quantity;
     }
     if (params.warehouseLocation) {
       item.destination_port = params.warehouseLocation.trim();
@@ -1251,6 +1345,23 @@ class Store {
     const createdReceipts: Receipt[] = [];
 
     for (const item of selectedItems) {
+      const isCarryForward = Boolean(
+        item.is_carried_forward ||
+        item.created_from_item_id ||
+        item.remarks?.toLowerCase().includes('carry forward') ||
+        Number(item.ordered_quantity) === 0
+      );
+
+      if (isCarryForward) {
+        item.is_carried_forward = true;
+        if (Number(item.ordered_quantity) === 0) {
+          const specifiedQty = params.itemQuantities && params.itemQuantities[item.id] !== undefined
+            ? Number(params.itemQuantities[item.id])
+            : 0;
+          item.ordered_quantity = specifiedQty || item.ready_quantity || item.received_quantity || 0;
+        }
+      }
+
       this.computeItemQuantities(item);
 
       // Full quantity received which we ordered (or remaining pending if partial)
@@ -1632,7 +1743,21 @@ class Store {
 
   // --- Balance Resolution Engine ---
   public computeItemQuantities(item: PurchaseOrderItem): void {
-    const totalRecd = item.receipts !== undefined
+    const isCarryForward = Boolean(
+      item.is_carried_forward ||
+      item.created_from_item_id ||
+      item.remarks?.toLowerCase().includes('carry forward') ||
+      (Number(item.ordered_quantity) === 0 && ((item.ready_quantity || 0) > 0 || (item.received_quantity || 0) > 0))
+    );
+
+    if (isCarryForward) {
+      item.is_carried_forward = true;
+      if (Number(item.ordered_quantity) === 0) {
+        item.ordered_quantity = (item.ready_quantity || item.received_quantity || 0);
+      }
+    }
+
+    const totalRecd = (item.receipts !== undefined && item.receipts.length > 0)
       ? item.receipts.reduce((sum, r) => sum + (Number(r.received_quantity) || 0), 0)
       : (Number(item.received_quantity) || 0);
 
@@ -1892,6 +2017,7 @@ class Store {
         receipts: [],
         created_from_item_id: item.id,
         created_from_po_number: po.po_number,
+        is_carried_forward: true,
         remarks: params.remarks ? `Balance carried forward from Item #${item.line_number}: ${params.remarks}` : `Balance carried forward from Item #${item.line_number}`
       };
       po.items!.push(newItem);

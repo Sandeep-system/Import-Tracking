@@ -482,8 +482,9 @@ const STANDARD_ORIGINS = [
     for (const itemId of selectedItemIds) {
       const it = po.items?.find(i => i.id === itemId);
       if (it) {
-        const fillQty = (it.actionable_pending_qty ?? it.balance_quantity ?? it.ordered_quantity);
-        qtys[itemId] = fillQty > 0 ? fillQty : it.ordered_quantity;
+        const effectiveOrd = (Number(it.ordered_quantity) || it.ready_quantity || it.received_quantity || 0);
+        const fillQty = (it.actionable_pending_qty ?? it.balance_quantity ?? effectiveOrd);
+        qtys[itemId] = fillQty > 0 ? fillQty : (effectiveOrd || 0);
         pcs[itemId] = Number(it.pieces) || 1;
         itemHeatNos[itemId] = it.heat_no || heatToUse || '';
         itemSims[itemId] = it.sims || simsToUse || 'Not Required';
@@ -975,6 +976,40 @@ const STANDARD_ORIGINS = [
     }
   };
 
+  const handleDeleteItem = (item: PurchaseOrderItem) => {
+    if (!po) return;
+    const confirmMsg = `Are you sure you want to delete Item #${item.line_number} (${item.grade_code} - ${formatWeight(item.ordered_quantity)}) from PO ${po.po_number}?\n\nThis will remove the item, its associated receipts, and recalculate PO totals.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    dataStore.deletePurchaseOrderItem(po.id, item.id);
+    setSelectedItemIds(prev => prev.filter(id => id !== item.id));
+    if (selectedItem?.id === item.id) {
+      setSelectedItem(null);
+    }
+    loadData();
+    setDataVersion(v => v + 1);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('app:data-updated'));
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (!po || selectedItemIds.length === 0) return;
+    const confirmMsg = `Are you sure you want to delete ${selectedItemIds.length} selected item(s) from PO ${po.po_number}?\n\nThis will remove the items, their associated receipts, and recalculate PO totals.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    dataStore.deletePurchaseOrderItemsBulk(po.id, selectedItemIds);
+    setSelectedItemIds([]);
+    if (selectedItem && selectedItemIds.includes(selectedItem.id)) {
+      setSelectedItem(null);
+    }
+    loadData();
+    setDataVersion(v => v + 1);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('app:data-updated'));
+    }
+  };
+
   const handleOpenResolveBalance = (item: PurchaseOrderItem, defaultToWaived: boolean = false) => {
     setResolvingItem(item);
     const pending = item.actionable_pending_qty ?? item.balance_quantity ?? Math.max(0, item.ordered_quantity - (item.received_quantity || 0));
@@ -1414,6 +1449,17 @@ const STANDARD_ORIGINS = [
                   <AlertTriangle className="h-3 w-3" />
                   <span>Short Close</span>
                 </button>
+                {!isViewer && (
+                  <button
+                    type="button"
+                    onClick={handleBulkDelete}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-600 hover:text-white border border-rose-200 rounded shadow-sm transition-colors cursor-pointer"
+                    title={`Delete selected ${selectedItemIds.length} item(s) from this PO`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    <span>Delete Selected</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setSelectedItemIds([])}
@@ -1478,6 +1524,7 @@ const STANDARD_ORIGINS = [
                       ? item.actionable_pending_qty
                       : itemBal);
                 const physicalShort = isFullySettled ? 0 : (item.physical_short_qty ?? Math.max(0, item.ordered_quantity - (item.received_quantity || 0)));
+                const isCF = Boolean(item.is_carried_forward || item.created_from_item_id || item.remarks?.toLowerCase().includes('carry forward'));
 
                 return (
                   <tr 
@@ -1495,7 +1542,16 @@ const STANDARD_ORIGINS = [
                       />
                     </td>
                     <td className="table-cell font-mono font-bold text-slate-500">#{item.line_number}</td>
-                    <td className="table-cell font-bold text-slate-900">{item.grade_code}</td>
+                    <td className="table-cell font-bold text-slate-900">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span>{item.grade_code}</span>
+                        {isCF && (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-bold tracking-tight inline-flex items-center gap-0.5 shadow-sm" title="Carry Forward item">
+                            [Carry Forward]
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="table-cell text-slate-500">{item.grade_doc || '—'}</td>
                     <td className="table-cell font-medium text-slate-700">{item.section_name}</td>
                     <td className="table-cell font-mono text-slate-800">{dimStr}</td>
@@ -1667,6 +1723,22 @@ const STANDARD_ORIGINS = [
                             <Pencil className="h-3 w-3" />
                             <span>Edit</span>
                           </button>
+
+                          {/* Delete Item button */}
+                          {!isViewer && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteItem(item);
+                              }}
+                              className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 border border-rose-200 font-semibold text-[11px] transition-colors flex items-center gap-1 shadow-sm cursor-pointer"
+                              title={`Delete Item #${item.line_number}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              <span>Delete</span>
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
@@ -1750,6 +1822,19 @@ const STANDARD_ORIGINS = [
                   </div>
                 );
               })()}
+
+              {/* Carry Forward Inbound Banner */}
+              {Boolean(selectedItem.is_carried_forward || selectedItem.remarks?.toLowerCase().includes('carry forward')) && !selectedItem.created_from_item_id && (
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-purple-900">
+                    <Split className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                    <div>
+                      <strong className="font-bold">Carry Forward Item:</strong>{' '}
+                      <span>Carried forward quantity ({formatWeight(selectedItem.ordered_quantity)}) from previous balance/order.</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Specification Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
@@ -2062,6 +2147,21 @@ const STANDARD_ORIGINS = [
                   })()}
                 </div>
                 <div className="flex items-center gap-2">
+                  {!isViewer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const it = selectedItem;
+                        setSelectedItem(null);
+                        handleDeleteItem(it);
+                      }}
+                      className="px-3 py-2 rounded-lg bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 border border-rose-200 font-semibold text-xs shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+                      title="Delete this item from PO"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Delete Item</span>
+                    </button>
+                  )}
                   {!isViewer && (
                     <button
                       type="button"
@@ -4586,7 +4686,7 @@ const STANDARD_ORIGINS = [
 
               {/* Actions */}
               <div className="flex items-center justify-between pt-3 border-t">
-                {isAdmin && (
+                {!isViewer && (
                   <button
                     type="button"
                     onClick={() => {
