@@ -351,6 +351,20 @@ function LotsContent() {
 
         const dimStr = dimParts.join(' × ');
 
+        const lotKey = (selectedLot.lot_number || '').trim().toLowerCase();
+        const matchedPoItem = allPOs.flatMap(p => p.items || []).find(it =>
+          (it.lot_number && it.lot_number.trim().toLowerCase() === lotKey) &&
+          (it.grade_code === inc.grade || it.id === inc.id)
+        );
+        const poItemsForLot = allPOs.flatMap(p => p.items || []).filter(it =>
+          it.lot_number && it.lot_number.trim().toLowerCase() === lotKey
+        );
+        const isItemReceived = inc.received_status === 'RECEIVED' ||
+          matchedPoItem?.status === 'Received' ||
+          matchedPoItem?.status?.startsWith('Closed') ||
+          (poItemsForLot.length > 0 && poItemsForLot.every(p => p.status === 'Received' || p.status?.startsWith('Closed')));
+        const isItemReady = inc.received_status === 'READY' || matchedPoItem?.status === 'Ready to Ship';
+
         poItems.push({
           id: inc.id || `inc-${idx}`,
           source: 'INCOMING',
@@ -362,7 +376,7 @@ function LotsContent() {
           l: inc.l,
           pieces: Number(inc.pieces) || 1,
           weight: Number(inc.weight) || 0,
-          status: inc.received_status === 'RECEIVED' ? 'Received at Yard' : (inc.received_status === 'READY' ? 'Ready to Ship' : 'In Transit'),
+          status: isItemReceived ? 'Received at Yard' : isItemReady ? 'Ready to Ship' : 'In Transit',
           customer: inc.customer || 'SE',
           eta: inc.eta_seaport || null,
           date_of_shipment: inc.date_of_shipment,
@@ -478,14 +492,43 @@ function LotsContent() {
   }, [selectedLotItems, lotItemSearch]);
 
   const getLotIncomingData = (lot: Lot) => {
+    const lotKey = (lot.lot_number || '').trim().toLowerCase();
     const incItems = dataStore.getIncomingStockByLot(lot.lot_number);
     const allPOs = dataStore.getPurchaseOrders();
     const meta = lotMetaMap[lot.id];
     const linkedPos = meta?.linkedPos || [];
     const primaryPoNum = linkedPos[0] || (lot.po_number ? lot.po_number.split(',')[0].trim() : undefined);
     const po = allPOs.find(p => p.po_number === primaryPoNum);
-    const item = po?.items?.find(it => (it.lot_number || '').trim().toLowerCase() === (lot.lot_number || '').trim().toLowerCase() || it.id === lot.purchase_order_item_id);
+    const item = po?.items?.find(it => (it.lot_number || '').trim().toLowerCase() === lotKey || it.id === lot.purchase_order_item_id);
     const inc = incItems[0];
+
+    // Accurate calculation of lot receiving status across all linked PO items and incoming records
+    const poItemsForLot = allPOs.flatMap(p => p.items || []).filter(it =>
+      it.lot_number && it.lot_number.trim().toLowerCase() === lotKey
+    );
+    const isAllPoRec = poItemsForLot.length > 0 && poItemsForLot.every(it => it.status === 'Received' || it.status?.startsWith('Closed'));
+    const isAllIncRec = incItems.length > 0 && incItems.every(i => i.received_status === 'RECEIVED');
+    const hasAnyPoRec = poItemsForLot.some(it => it.status === 'Received' || it.status?.startsWith('Closed'));
+    const hasAnyIncRec = incItems.some(i => i.received_status === 'RECEIVED');
+    const hasAnyTransit = poItemsForLot.some(it => it.status === 'In Transit') || incItems.some(i => i.received_status === 'IN_TRANSIT');
+    const hasAnyReady = poItemsForLot.some(it => it.status === 'Ready to Ship') || incItems.some(i => i.received_status === 'READY');
+
+    let receivedStatus = 'In Transit';
+    if (isAllPoRec || isAllIncRec) {
+      receivedStatus = 'Received';
+    } else if ((hasAnyPoRec || hasAnyIncRec) && hasAnyTransit) {
+      receivedStatus = 'Partially Received';
+    } else if (hasAnyPoRec || hasAnyIncRec) {
+      receivedStatus = 'Received';
+    } else if (hasAnyTransit) {
+      receivedStatus = 'In Transit';
+    } else if (hasAnyReady) {
+      receivedStatus = 'Ready to Ship';
+    } else if (lot.available_qty > 0) {
+      receivedStatus = 'Received';
+    } else {
+      receivedStatus = 'In Transit';
+    }
 
     return {
       make: inc?.make || po?.origin || (po as any)?.origin_make_name || 'Standard',
@@ -501,10 +544,10 @@ function LotsContent() {
       pc: inc?.pieces ?? (item?.pieces ?? 1),
       weight: lot.available_qty || inc?.weight || lot.total_received_qty || 0,
       customer: inc?.customer || po?.customer_name || 'SE',
-      port: inc?.port || item?.destination_port || po?.destination || 'N.S.',
+      port: inc?.port || item?.destination_port || lot.warehouse_location || po?.destination || 'N.S.',
       date_of_shipment: inc?.date_of_shipment || item?.date_of_shipment || '',
       eta_seaport: inc?.eta_seaport || item?.eta_seaport || '',
-      received: lot.warehouse_location || inc?.received_status || (lot.available_qty > 0 ? 'Received' : 'In Transit'),
+      received: receivedStatus,
       heat_no: inc?.heat_no || item?.heat_no || '—',
       sec_weight: inc?.sec_weight !== undefined && inc?.sec_weight !== null ? inc.sec_weight : '—',
       del_terms: inc?.delivery_terms || item?.delivery_terms || po?.delivery_terms || 'FOB',
@@ -1280,7 +1323,7 @@ function LotsContent() {
                       <div>
                         <span className="text-[10px] text-slate-400 uppercase font-bold block">Customs Clearance</span>
                         <span className="font-bold text-slate-800 block mt-0.5">
-                          {first?.received_status === 'RECEIVED' ? 'Cleared & Landed' : 'Pending Port Arrival'}
+                          {(first?.received_status === 'RECEIVED' || selectedLotItems.some(i => i.status.includes('Received'))) ? 'Cleared & Landed' : 'Pending Port Arrival'}
                         </span>
                       </div>
 

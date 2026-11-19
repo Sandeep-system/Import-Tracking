@@ -1253,15 +1253,17 @@ class Store {
       item.destination_port = params.warehouseLocation.trim();
     }
 
-    // Synchronize linked Incoming Stock items
+    // Synchronize linked Incoming Stock items by lot number or PO reference
     if (this.state.incomingStock) {
+      const lotKey = item.lot_number?.trim().toLowerCase();
       for (const inc of this.state.incomingStock) {
-        if (
-          inc.linked_po_number === po.po_number &&
-          (inc.id === `inc-po-${po.po_number}-${item.id}` || (item.lot_number && inc.lot_number === item.lot_number) || inc.id.includes(item.id))
-        ) {
+        const incLotKey = inc.lot_number?.trim().toLowerCase();
+        const matchesLot = Boolean(lotKey && incLotKey && lotKey === incLotKey);
+        const matchesPoItem = inc.linked_po_number === po.po_number && (inc.id === `inc-po-${po.po_number}-${item.id}` || inc.id.includes(item.id));
+        if (matchesLot || matchesPoItem) {
           inc.received_status = 'RECEIVED';
           inc.source_sheet = 'INCOMING CLOSE';
+          if (!inc.linked_po_number) inc.linked_po_number = po.po_number;
           if (params.warehouseLocation) inc.port = params.warehouseLocation;
         }
       }
@@ -1269,9 +1271,13 @@ class Store {
 
     // Ensure lot in inventory is available
     if (item.lot_number) {
-      const lot = this.state.lots.find(l => l.lot_number === item.lot_number);
-      if (lot && params.warehouseLocation) {
-        lot.warehouse_location = params.warehouseLocation;
+      const lotKey = item.lot_number.trim().toLowerCase();
+      const lot = this.state.lots.find(l => (l.lot_number || '').trim().toLowerCase() === lotKey);
+      if (lot) {
+        lot.status = 'Available';
+        if (params.warehouseLocation) {
+          lot.warehouse_location = params.warehouseLocation;
+        }
       }
     }
 
@@ -2703,6 +2709,33 @@ class Store {
         }
       }
     }
+
+    // 4. Auto-synchronize receiving status on startup
+    const lotPoStatusMap = new Map<string, string[]>();
+    for (const po of this.state.purchaseOrders) {
+      if (!po.items) continue;
+      for (const it of po.items) {
+        if (it.lot_number && it.lot_number.trim()) {
+          const lk = it.lot_number.trim().toLowerCase();
+          if (!lotPoStatusMap.has(lk)) lotPoStatusMap.set(lk, []);
+          lotPoStatusMap.get(lk)!.push(it.status || 'Open');
+        }
+      }
+    }
+
+    for (const inc of this.state.incomingStock) {
+      if (inc.lot_number && inc.lot_number.trim()) {
+        const lk = inc.lot_number.trim().toLowerCase();
+        const poStatuses = lotPoStatusMap.get(lk);
+        if (poStatuses && poStatuses.length > 0) {
+          const allPoRec = poStatuses.every(s => s === 'Received' || s.startsWith('Closed'));
+          if (allPoRec && inc.received_status !== 'RECEIVED') {
+            inc.received_status = 'RECEIVED';
+            inc.source_sheet = 'INCOMING CLOSE';
+          }
+        }
+      }
+    }
   }
 
   public getIncomingStock(filters?: { 
@@ -2854,6 +2887,33 @@ class Store {
 
     item.received_status = 'RECEIVED';
     item.source_sheet = 'INCOMING CLOSE';
+
+    // Synchronize all other incoming stock records sharing the same lot number
+    if (item.lot_number) {
+      const lotKey = item.lot_number.trim().toLowerCase();
+      for (const other of (this.state.incomingStock || [])) {
+        if (other.id !== item.id && (other.lot_number || '').trim().toLowerCase() === lotKey) {
+          other.received_status = 'RECEIVED';
+          other.source_sheet = 'INCOMING CLOSE';
+          if (options?.location) other.port = options.location;
+        }
+      }
+      // Synchronize matching PO items
+      for (const p of this.state.purchaseOrders) {
+        if (!p.items) continue;
+        let pChanged = false;
+        for (const it of p.items) {
+          if (it.lot_number && it.lot_number.trim().toLowerCase() === lotKey && it.status !== 'Received') {
+            it.status = 'Received';
+            if (options?.location) it.destination_port = options.location;
+            pChanged = true;
+          }
+        }
+        if (pChanged) {
+          this.recomputePOAggregates(p);
+        }
+      }
+    }
 
     let createdReceipt: Receipt | undefined;
     const receiptDate = options?.receipt_date || new Date().toISOString().split('T')[0];
