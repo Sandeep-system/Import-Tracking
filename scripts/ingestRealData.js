@@ -2,6 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
 
+let portalOverrides = { lots: {}, poItems: {} };
+try {
+  const overridePath = path.resolve(__dirname, 'portalMetadataOverrides.json');
+  if (fs.existsSync(overridePath)) {
+    portalOverrides = JSON.parse(fs.readFileSync(overridePath, 'utf8'));
+  }
+} catch (err) {
+  console.warn('Notice: Could not load portalMetadataOverrides.json:', err.message);
+}
+
 // Reference Date: Dynamic current date
 const TODAY_STR = new Date().toISOString().split('T')[0];
 
@@ -95,9 +105,11 @@ for (let r = 2; r <= rangeCloseStock.e.r; r++) {
   const dateShip = parseExcelDate(getV(12));
   const etaSea = parseExcelDate(getV(13));
   const heat = String(getV(15) || '').trim();
+  const secWeight = getV(16) !== undefined && getV(16) !== '' ? Number(getV(16)) || null : null;
   const terms = String(getV(17) || '').trim();
   const price = Number(getV(18)) || 0;
   const curr = String(getV(19) || 'USD').trim();
+  const bis = String(getV(20) || '').trim();
 
   incomingClosedStock.push({
     id: `inc-close-${r}`,
@@ -124,9 +136,11 @@ for (let r = 2; r <= rangeCloseStock.e.r; r++) {
     received_status: 'RECEIVED',
     heat_no: heat || null,
     heat_number: heat || null,
+    sec_weight: secWeight,
     delivery_terms: terms || null,
     price,
     currency: curr,
+    bis: bis || null,
     source_sheet: 'INCOMING CLOSE',
     created_at: new Date().toISOString()
   });
@@ -154,16 +168,23 @@ for (let r = 2; r <= rangeSe.e.r; r++) {
   const diaW = getV(5) !== undefined && getV(5) !== '' ? Number(getV(5)) || null : null;
   const t = getV(6) !== undefined && getV(6) !== '' ? Number(getV(6)) || null : null;
   const l = getV(7) !== undefined && getV(7) !== '' ? Number(getV(7)) || null : null;
-  const pc = getV(8) !== undefined && getV(8) !== '' ? Number(getV(8)) || 1 : 1;
+  const pcRaw = getV(8);
+  const pc = (pcRaw !== undefined && pcRaw !== '' && pcRaw !== null)
+    ? (isNaN(Number(pcRaw)) ? String(pcRaw).trim() : Number(pcRaw))
+    : 1;
   const weight = Number(getV(9)) || 0;
   const cust = String(getV(10) || 'SE').trim();
   const port = String(getV(11) || '').trim();
   const dateShip = parseExcelDate(getV(12));
   const etaSea = parseExcelDate(getV(13));
   const heat = String(getV(15) || '').trim();
+  const secWeight = getV(16) !== undefined && getV(16) !== '' ? Number(getV(16)) || null : null;
   const terms = String(getV(17) || '').trim();
   const price = Number(getV(18)) || 0;
-  const curr = String(getV(19) || 'USD').trim();
+  const curr = String(getV(19) || '').trim();
+  const sims = String(getV(20) || '').trim();
+  const payTerms = String(getV(21) || '').trim();
+  const hsnCode = getV(22) !== undefined && getV(22) !== '' ? String(getV(22)).trim() : '';
 
   // OPTION 2 RULE:
   // If date of shipment is blank OR in future (> TODAY_STR) and no seaport ETA -> Ready to Ship
@@ -180,6 +201,9 @@ for (let r = 2; r <= rangeSe.e.r; r++) {
       etaSea,
       port,
       terms,
+      payTerms,
+      sims,
+      hsnCode,
       supplier: sup,
       rows: 0,
       totalWeight: 0
@@ -192,6 +216,9 @@ for (let r = 2; r <= rangeSe.e.r; r++) {
     }
     if (etaSea && !seLotEntry.etaSea) seLotEntry.etaSea = etaSea;
     if (dateShip && !seLotEntry.dateShip) seLotEntry.dateShip = dateShip;
+    if (sims && !seLotEntry.sims) seLotEntry.sims = sims;
+    if (payTerms && !seLotEntry.payTerms) seLotEntry.payTerms = payTerms;
+    if (hsnCode && !seLotEntry.hsnCode) seLotEntry.hsnCode = hsnCode;
   }
   const seLotEntry = incomingSeLots.get(lot);
   seLotEntry.rows++;
@@ -222,9 +249,13 @@ for (let r = 2; r <= rangeSe.e.r; r++) {
     received_status: isReady ? 'READY' : 'IN_TRANSIT',
     heat_no: heat || null,
     heat_number: heat || null,
+    sec_weight: secWeight,
     delivery_terms: terms || null,
     price,
-    currency: curr,
+    currency: curr || null,
+    sims: sims || null,
+    payment_terms: payTerms || null,
+    hsn_code: hsnCode || null,
     source_sheet: 'INCOMING SE',
     created_at: new Date().toISOString()
   });
@@ -272,8 +303,10 @@ for (let r = 2; r <= rangePending.e.r; r++) {
   const price = Number(getV(18)) || 0;
   const currency = String(getV(19) || 'USD').trim();
   const ocNo = String(getV(20) || '').trim();
+  const ocDate = parseExcelDate(getV(21));
   const terms = String(getV(22) || 'FOB').trim();
-  const deliveryDate = parseExcelDate(getV(23));
+  const contractDeliveryDate = parseExcelDate(getV(23));
+  const deliveryDate = contractDeliveryDate || parseExcelDate(getV(24));
   const payment = String(getV(25) || 'DP at sight').trim();
   const destination = String(getV(26) || 'Nhava Sheva').trim();
   const invNo = String(getV(27) || '').trim();
@@ -281,11 +314,15 @@ for (let r = 2; r <= rangePending.e.r; r++) {
   const lotNo = getV(29) ? String(getV(29)).trim() : '';
   const customer = String(getV(30) || 'SE').trim();
   const remarks = String(getV(32) || '').trim();
+  const unit = grade.toLowerCase().includes('cutter') ? 'PCS' : 'KG';
 
   // --- DETERMINE ITEM STATUS (OPTION A: EXACT EXCEL FIDELITY + OPTION 2 LOT TRACKING) ---
   let itemStatus = 'Open';
   let itemEta = null;
+  let itemShipDate = null;
   let itemPol = null;
+  let itemSims = null;
+  let itemHsn = null;
 
   if (lotNo) {
     if (incomingCloseLots.has(lotNo)) {
@@ -294,7 +331,9 @@ for (let r = 2; r <= rangePending.e.r; r++) {
     } else if (incomingSeLots.has(lotNo)) {
       const seInfo = incomingSeLots.get(lotNo);
       itemEta = seInfo.etaSea || null;
-      itemPol = seInfo.port || null;
+      itemShipDate = seInfo.dateShip || null;
+      itemSims = seInfo.sims || null;
+      itemHsn = seInfo.hsnCode || null;
       if (seInfo.isReady) {
         itemStatus = 'Ready to Ship';
         pendingStats.ready++;
@@ -342,7 +381,7 @@ for (let r = 2; r <= rangePending.e.r; r++) {
     balance_quantity: balQty,
     physical_short_qty: balQty > 0 ? balQty : 0,
     actionable_pending_qty: balQty,
-    unit: 'KG',
+    unit: unit,
     purchase_price: price,
     currency: currency,
     expected_delivery_date: deliveryDate,
@@ -350,8 +389,13 @@ for (let r = 2; r <= rangePending.e.r; r++) {
     delivery_terms: terms,
     payment_terms: payment,
     lot_number: lotNo || null,
+    date_of_shipment: itemShipDate,
     eta_seaport: itemEta,
     port_of_loading: itemPol,
+    sims: itemSims,
+    hsn_code: itemHsn,
+    supplier_invoice: invNo || null,
+    supplier_invoice_date: invDate || null,
     remarks: remarks || null,
     status: itemStatus
   };
@@ -366,7 +410,7 @@ for (let r = 2; r <= rangePending.e.r; r++) {
       receipt_number: `RC-${orderNo}-${itemNo}`,
       receipt_date: invDate || orderDate,
       received_quantity: recdQty,
-      unit: 'KG',
+      unit: unit,
       supplier_invoice_number: invNo || null,
       supplier_invoice_date: invDate || null,
       lot_number: lotNo || null,
@@ -387,8 +431,10 @@ for (let r = 2; r <= rangePending.e.r; r++) {
       delivery_terms: terms,
       payment_terms: payment,
       currency: currency,
+      contract_delivery_date: contractDeliveryDate,
       expected_delivery_date: deliveryDate,
       oc_number: ocNo,
+      oc_date: ocDate,
       items: [poItem]
     });
   } else {
@@ -410,6 +456,8 @@ const activePurchaseOrders = Array.from(pendingPoGroups.values()).map(po => {
   } else if (statuses.some(s => s === 'In Transit')) {
     poStatus = 'In Transit';
   } else if (statuses.some(s => s === 'Ready to Ship')) {
+    poStatus = 'Ready to Ship';
+  } else if (totalRecd > 0) {
     poStatus = 'Ready to Ship';
   } else {
     poStatus = 'Open';
@@ -456,6 +504,7 @@ for (let r = 2; r <= rangeClosed.e.r; r++) {
   const origin = String(getV(5) || '').trim();
   const itemNo = Number(getV(6)) || (closedPoGroups.get(orderNo)?.items?.length || 0) + 1;
   const grade = String(getV(7) || 'Standard Grade').trim();
+  const gradeDoc = String(getV(8) || '').trim();
   const section = String(getV(9) || 'Round').trim();
   const diaW = getV(10) !== undefined && getV(10) !== '' ? Number(getV(10)) || null : null;
   const t = getV(11) !== undefined && getV(11) !== '' ? Number(getV(11)) || null : null;
@@ -463,8 +512,14 @@ for (let r = 2; r <= rangeClosed.e.r; r++) {
   const treatment = String(getV(13) || '').trim();
   const condition = String(getV(14) || '').trim();
   const orQty = Number(getV(15)) || 0;
-  const recdQty = Number(getV(16)) || orQty;
-  const rawBal = Number(getV(17));
+  const rawRecdCell = getV(16);
+  const rawBalCell = getV(17);
+  const remarksPre = String(getV(35) || '').trim();
+  const isShortClosedZero = (rawRecdCell === undefined || rawRecdCell === null || rawRecdCell === '') &&
+    ((rawBalCell !== undefined && rawBalCell !== '' && !isNaN(Number(rawBalCell)) && Math.abs(Number(rawBalCell) - orQty) < 0.001) ||
+      remarksPre.toLowerCase().includes('short closed'));
+  const recdQty = isShortClosedZero ? 0 : (Number(rawRecdCell) || orQty);
+  const rawBal = Number(rawBalCell);
   const isFullySettled = Math.abs(orQty - recdQty) < 0.001;
   let balQty = 0;
   let physShortQty = 0;
@@ -487,14 +542,17 @@ for (let r = 2; r <= rangeClosed.e.r; r++) {
   const price = Number(getV(18)) || 0;
   const currency = String(getV(19) || 'USD').trim();
   const ocNo = String(getV(20) || '').trim();
+  const ocDate = parseExcelDate(getV(21));
   const terms = String(getV(22) || 'FOB').trim();
+  const contractDeliveryDate = parseExcelDate(getV(23));
+  const deliveryDate = contractDeliveryDate || parseExcelDate(getV(24));
   const payment = String(getV(25) || 'DP at sight').trim();
   const destination = String(getV(26) || 'Nhava Sheva').trim();
   const invNo = String(getV(27) || '').trim();
   const invDate = parseExcelDate(getV(28));
   const lotNo = String(getV(29) || '').trim();
   const customer = String(getV(30) || 'SE').trim();
-  const remarks = String(getV(35) || '').trim();
+  const remarks = remarksPre;
 
   const itemId = `poi-close-${orderNo}-${itemNo}-${r}`;
   const poItem = {
@@ -503,6 +561,7 @@ for (let r = 2; r <= rangeClosed.e.r; r++) {
     po_number: orderNo,
     line_number: itemNo,
     grade_code: grade,
+    grade_doc: gradeDoc || null,
     section_name: section,
     diameter_width: diaW,
     thickness: t,
@@ -518,12 +577,15 @@ for (let r = 2; r <= rangeClosed.e.r; r++) {
     unit: 'KG',
     purchase_price: price,
     currency: currency,
+    expected_delivery_date: deliveryDate,
     destination_port: destination,
     delivery_terms: terms,
     payment_terms: payment,
     lot_number: lotNo || null,
+    supplier_invoice: invNo || null,
+    supplier_invoice_date: invDate || null,
     remarks: remarks || null,
-    status: 'Closed — Fully Received'
+    status: isShortClosedZero ? 'Closed — Short Received' : 'Closed — Fully Received'
   };
 
   if (recdQty > 0 || invNo) {
@@ -556,7 +618,10 @@ for (let r = 2; r <= rangeClosed.e.r; r++) {
       delivery_terms: terms,
       payment_terms: payment,
       currency: currency,
+      contract_delivery_date: contractDeliveryDate,
+      expected_delivery_date: deliveryDate,
       oc_number: ocNo,
+      oc_date: ocDate,
       items: [poItem]
     });
   } else {
@@ -755,6 +820,53 @@ for (const [lot, incs] of incsByLot.entries()) {
       inc.linked_po_id = match.po_id;
       inc.linked_po_item_id = match.item_id;
       poRemainingQty.set(match.po_number, Math.max(0, (poRemainingQty.get(match.po_number) || 0) - incWeight));
+    }
+  }
+}
+
+// --- INHERIT CURRENCY FROM LINKED PO & APPLY PORTAL METADATA OVERRIDES ---
+const poByNumber = new Map(allPurchaseOrders.map(po => [String(po.po_number).trim(), po]));
+for (const inc of allIncs) {
+  if (inc.linked_po_number) {
+    const linkedPo = poByNumber.get(String(inc.linked_po_number).trim());
+    if (linkedPo && linkedPo.currency && (!inc.currency || inc.currency === 'USD')) {
+      inc.currency = linkedPo.currency;
+    }
+  }
+  if (!inc.currency) {
+    inc.currency = 'USD';
+  }
+  const lotKey = String(inc.lot_number || '').trim();
+  const lotOverride = portalOverrides.lots && portalOverrides.lots[lotKey];
+  if (lotOverride) {
+    if (lotOverride.port_of_loading && !inc.port_of_loading) inc.port_of_loading = lotOverride.port_of_loading;
+    if (lotOverride.forwarder_name && !inc.forwarder_name) inc.forwarder_name = lotOverride.forwarder_name;
+    if (lotOverride.container_type && !inc.container_type) inc.container_type = lotOverride.container_type;
+    if (lotOverride.container_count != null && inc.container_count == null) inc.container_count = lotOverride.container_count;
+    if (lotOverride.sims && (!inc.sims || lotOverride.sims === 'Done' || lotOverride.sims === 'Not Required')) {
+      inc.sims = lotOverride.sims;
+    }
+  }
+}
+
+for (const po of allPurchaseOrders) {
+  const poOverride = portalOverrides.poItems && portalOverrides.poItems[String(po.po_number).trim()];
+  for (const item of (po.items || [])) {
+    if (poOverride && poOverride[String(item.line_number)]) {
+      const ov = poOverride[String(item.line_number)];
+      if (ov.length != null && item.length == null) item.length = ov.length;
+      if (ov.grade_doc && !item.grade_doc) item.grade_doc = ov.grade_doc;
+    }
+    const lotKey = String(item.lot_number || '').trim();
+    const lotOverride = lotKey && portalOverrides.lots && portalOverrides.lots[lotKey];
+    if (lotOverride) {
+      if (lotOverride.port_of_loading && !item.port_of_loading) item.port_of_loading = lotOverride.port_of_loading;
+      if (lotOverride.forwarder_name && !item.forwarder_name) item.forwarder_name = lotOverride.forwarder_name;
+      if (lotOverride.container_type && !item.container_type) item.container_type = lotOverride.container_type;
+      if (lotOverride.container_count != null && item.container_count == null) item.container_count = lotOverride.container_count;
+      if (lotOverride.sims && (!item.sims || lotOverride.sims === 'Done' || lotOverride.sims === 'Not Required')) {
+        item.sims = lotOverride.sims;
+      }
     }
   }
 }

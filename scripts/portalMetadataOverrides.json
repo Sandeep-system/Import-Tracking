@@ -1,0 +1,155 @@
+{
+  "lots": {
+    "1833": {
+      "container_type": "LCL",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1836": {
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    "1839": {
+      "port_of_loading": "Shenzhen",
+      "container_type": "40ft",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1844": {
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura/ Ocean Freight USD675 / 28000INR+GST +2500INR",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": "Done"
+    },
+    "1849": {
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": "Done"
+    },
+    "1852": {
+      "port_of_loading": "Dalian",
+      "forwarder_name": "Globus O/F$87/24693.12+GST",
+      "container_type": "LCL",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1853": {
+      "port_of_loading": "Shanghai",
+      "forwarder_name": "Ruchi (60088.084INR)",
+      "container_type": "LCL",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1854": {
+      "port_of_loading": "Kobe",
+      "forwarder_name": "Aum Aura O/F 1780, 3000+49814Rail Fght+31625 Shipping Charges",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1855": {
+      "container_type": "20ft",
+      "container_count": 3,
+      "sims": "Done"
+    },
+    "1856": {
+      "container_type": "LCL",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1857": {
+      "port_of_loading": "Shanghai",
+      "forwarder_name": "Ruchi (68$ - INR27259.16)",
+      "container_type": "LCL",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1859": {
+      "port_of_loading": "Shanghai",
+      "forwarder_name": "Ruchi (O/F 82/ 65139.96INR)",
+      "container_type": "LCL",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1861": {
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2
+    },
+    "1862": {
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 2
+    },
+    "1864": {
+      "port_of_loading": "Shanghai",
+      "container_type": "20ft",
+      "container_count": 1,
+      "sims": "Done"
+    },
+    "1865": {
+      "port_of_loading": "Chengdu",
+      "forwarder_name": "Aum Aura(o/f $60+500+1000+500)",
+      "container_type": "LCL",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1866": {
+      "port_of_loading": "Dalian",
+      "forwarder_name": "Globus O/F $95+750+4500",
+      "container_type": "LCL",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1867": {
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2
+    },
+    "1868": {
+      "port_of_loading": "Koper",
+      "forwarder_name": "Aum Aura (O/F$1030$+3000+28675)",
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    "1869": {
+      "port_of_loading": "Kobe",
+      "container_type": "20ft",
+      "container_count": 2
+    },
+    "1870": {
+      "port_of_loading": "Kobe",
+      "forwarder_name": "Aum Aura(O/F 1780$)",
+      "container_type": "20ft",
+      "container_count": 1
+    },
+    "1871": {
+      "port_of_loading": "Ningbo",
+      "container_type": "LCL",
+      "container_count": 1,
+      "sims": "Not Required"
+    },
+    "1872": {
+      "port_of_loading": "Shekou",
+      "forwarder_name": "Aum Aura (O/F 3090$+3000+25910 per container)",
+      "container_type": "20ft",
+      "container_count": 2
+    },
+    "1873": {
+      "port_of_loading": "Shanghai",
+      "container_type": "LCL",
+      "container_count": 1,
+      "sims": "Not Required"
+    }
+  },
+  "poItems": {
+    "1146": {
+      "1": { "length": 5800 },
+      "2": { "grade_doc": "QD 61" },
+      "3": { "grade_doc": "QD 61" }
+    }
+  }
+}

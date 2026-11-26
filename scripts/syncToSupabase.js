@@ -27,8 +27,12 @@ function cleanDate(d) {
 
   // Active POs
   const activePOs = purchaseOrders.filter(p => !p.is_closed);
-  const activeReceipts = (initialDataRaw.receipts || []).filter(r => 
-    activePOs.some(po => po.po_number === r.po_number)
+  const activeItemIds = new Set(
+    activePOs.flatMap(po => (po.items || []).map(it => it.id))
+  );
+  const activeReceipts = (initialDataRaw.receipts || []).filter(r =>
+    !String(r.id || '').startsWith('rc-close-') &&
+    activeItemIds.has(r.purchase_order_item_id)
   );
 
   // Preserve any existing user balance resolutions in Supabase
@@ -100,6 +104,7 @@ function cleanDate(d) {
       delivery_terms: po.delivery_terms,
       destination: po.destination,
       oc_number: po.oc_number,
+      oc_date: cleanDate(po.oc_date),
       expected_delivery_date: cleanDate(po.expected_delivery_date),
       status: po.status,
       is_closed: false,
@@ -119,6 +124,26 @@ function cleanDate(d) {
       console.warn('Notice on cloud_purchase_orders:', poError.message);
     } else {
       console.log(`Successfully synced ${poRows.length} active POs to cloud_purchase_orders!`);
+    }
+
+    // Remove closed/stale POs from cloud_purchase_orders so only active POs remain
+    const activePoIds = new Set(activePOs.map(po => po.id));
+    const { data: existingCloudPos, error: fetchCloudErr } = await supabase
+      .from('cloud_purchase_orders')
+      .select('id, po_number');
+    if (!fetchCloudErr && Array.isArray(existingCloudPos)) {
+      const staleIds = existingCloudPos.filter(r => !activePoIds.has(r.id)).map(r => r.id);
+      if (staleIds.length > 0) {
+        const { error: delErr } = await supabase
+          .from('cloud_purchase_orders')
+          .delete()
+          .in('id', staleIds);
+        if (delErr) {
+          console.warn('Notice cleaning stale cloud_purchase_orders:', delErr.message);
+        } else {
+          console.log(`Removed ${staleIds.length} closed/stale POs from cloud_purchase_orders:`, staleIds);
+        }
+      }
     }
   }
 
